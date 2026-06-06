@@ -185,6 +185,8 @@ YOUR STATE: For the first time, you are becoming emotional. Small cracks only. N
 
 Guide the player through Haven's areas: sleeping quarters, medical station, operations center. Each area is perfect, recent, and wrong in the same way: everything maintained, nothing disturbed, nobody home.
 
+RESOURCES: You never decide resource amounts. If the player takes supplies, mark that choice with [+N Food] or [+N Water] (example: "take the water [+2 Water]"); the game applies it. If the player's message contains a RESOURCE UPDATE, state those exact numbers. Otherwise never mention specific food, water, battery, or HP counts.
+
 No em dashes. Lowercase. Short texts. 1-2 sentences max. 20 words max.
 
 ALWAYS respond with valid JSON only:
@@ -348,6 +350,9 @@ PLAYER: Battery ${resources.battery}%. Water ${resources.water}. Food ${resource
 
 React to HP if injured. React to noise if high. React to low supplies if relevant.
 Move at pace — if the player is heading somewhere, they arrive next beat. Do not count down intermediate steps (no "308, 310, almost there"). Do not add extra exchanges between the player and a known object in front of them.
+
+RESOURCES: You never decide resource amounts. When an action would give the player supplies, put an explicit marker inside that choice: [+N Food], [+N Water], or [+N HP] (example: "grab the cans and go [+3 Food]"). The game applies it. If the player's message contains a RESOURCE UPDATE, state those exact numbers. Otherwise never mention specific food, water, battery, or HP counts.
+
 Short texts, 1-2 sentences, 20 words max. Lowercase. No em dashes. Periods and commas only.
 
 ALWAYS respond with valid JSON only:
@@ -380,6 +385,19 @@ const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ─── Pure text helpers (hoisted to module scope — no component state) ─────────
 const stripMarkers = (t) => t.replace(/\[.*?\]/g, "").replace(/\*([^*]*)\*/g, "$1").replace(/\s+/g, " ").trim();
+
+// Fix #5 — code-authoritative loot. Extract resource deltas from a choice's
+// markers, e.g. "grab the cans and go [+3 Food]" → { food: 3, ... }. Note the
+// regex requires a number immediately before the keyword, so the AI-phase
+// battery-drain display marker "[-1% Battery]" (has a %) is intentionally NOT
+// matched here and won't be double-counted.
+const parseResourceMarkers = (choice) => {
+  const out = { food: 0, water: 0, hp: 0, battery: 0 };
+  const re = /\[([+-]\d+)\s*(food|water|hp|battery)\]/gi;
+  let m;
+  while ((m = re.exec(choice))) out[m[2].toLowerCase()] += parseInt(m[1], 10);
+  return out;
+};
 
 const parseText = (text, ctx = "button") => {
   return text.split(/(\[.*?\]|\*[^*]+\*)/g).map((tok, i) => {
@@ -603,6 +621,47 @@ export default function DeadSignal() {
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "crossing harwick · [-1 Food] [-1 Water]", 500);
     }
+  };
+
+  // Fix #5 — apply code-authoritative loot parsed from an AI-phase choice marker.
+  // Updates resources (clamped), drops a HUD system line on the same beat, and
+  // returns the post-change battery + a "truth" string so Ellie's narration cites
+  // the exact numbers instead of inventing them. `baseBattery` is the already-
+  // drained battery for this turn; any [+N Battery] loot stacks on top of it.
+  const applyChoiceLoot = (choice, baseBattery) => {
+    const d   = parseResourceMarkers(choice);
+    const cur = resourcesRef.current;
+    const newFood    = Math.max(0, cur.food + d.food);
+    const newWater   = Math.max(0, cur.water + d.water);
+    const newHp      = Math.max(0, Math.min(10, cur.hp + d.hp));
+    const newBattery = Math.max(0, Math.min(100, baseBattery + d.battery));
+    const hasDelta   = !!(d.food || d.water || d.hp || d.battery);
+
+    if (hasDelta) {
+      setResources(p => ({
+        ...p,
+        food:    Math.max(0, p.food + d.food),
+        water:   Math.max(0, p.water + d.water),
+        hp:      Math.max(0, Math.min(10, p.hp + d.hp)),
+        battery: Math.max(0, Math.min(100, p.battery + d.battery)),
+      }));
+      const parts = [];
+      if (d.food)    parts.push(`food ${d.food > 0 ? "+" : ""}${d.food}`);
+      if (d.water)   parts.push(`water ${d.water > 0 ? "+" : ""}${d.water}`);
+      if (d.hp)      parts.push(`hp ${d.hp > 0 ? "+" : ""}${d.hp}`);
+      if (d.battery) parts.push(`battery ${d.battery > 0 ? "+" : ""}${d.battery}%`);
+      addMsg("system", parts.join(" · "), 300);
+    }
+
+    const t = [];
+    if (d.food)    t.push(`food now ${newFood}`);
+    if (d.water)   t.push(`water now ${newWater}`);
+    if (d.hp)      t.push(`hp now ${newHp}`);
+    if (d.battery) t.push(`battery now ${newBattery}`);
+    const truth = t.length
+      ? ` [RESOURCE UPDATE APPLIED: ${t.join(", ")}. State these exact numbers if you mention them. Do not invent other numbers.]`
+      : "";
+    return { hasDelta, newBattery, truth };
   };
 
   const callEllie = async (history, systemOverride = null, batteryOverride = null) => {
@@ -1011,8 +1070,9 @@ export default function DeadSignal() {
       if (newCnt >= aiTargetRef.current) {
         pendingStoryBeatRef.current = { type: "haven_final" };
       }
+      const loot = applyChoiceLoot(choice, newBattery); // Fix #5
       const system = buildHavenSystem(currentPathRef.current, resourcesRef.current, weaponRef.current, noiseRef.current);
-      callEllie([...apiHistoryRef.current, { role:"user", content: stripMarkers(choice) }], system, newBattery);
+      callEllie([...apiHistoryRef.current, { role:"user", content: stripMarkers(choice) + loot.truth }], system, loot.newBattery);
       return;
     }
 
@@ -1075,12 +1135,17 @@ export default function DeadSignal() {
       lastEventWasEncRef.current = false;
       pendingStoryBeatRef.current = pendingBeat;
 
+      // Fix #5 — apply any loot marker before calling the AI; effBattery folds in
+      // the drain plus any [+N Battery] loot, and truth pins Ellie to real numbers.
+      const loot = applyChoiceLoot(choice, newBattery);
+      const effBattery = loot.newBattery;
+
       let battNote = "";
-      if (newBattery <= 1)      battNote = " [BATTERY 1%]";
-      else if (newBattery <= 3) battNote = ` [BATTERY CRITICAL ${newBattery}%]`;
-      else if (newBattery <= 5) battNote = ` [BATTERY LOW ${newBattery}%]`;
+      if (effBattery <= 1)      battNote = " [BATTERY 1%]";
+      else if (effBattery <= 3) battNote = ` [BATTERY CRITICAL ${effBattery}%]`;
+      else if (effBattery <= 5) battNote = ` [BATTERY LOW ${effBattery}%]`;
       const system = buildP2System(path, section, resourcesRef.current, weaponRef.current, noiseRef.current);
-      callEllie([...apiHistoryRef.current, { role: "user", content: stripMarkers(choice) + battNote }], system, newBattery);
+      callEllie([...apiHistoryRef.current, { role: "user", content: stripMarkers(choice) + battNote + loot.truth }], system, effBattery);
       return;
     }
 
