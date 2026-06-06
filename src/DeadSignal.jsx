@@ -168,6 +168,20 @@ const HAVEN_FINAL_SEQUENCE = [
   { from:"narrator", msgs:["ellie."],                                                                                   choices:["*How is she in this photo?*"] },
 ];
 
+// Priority 5 — branch-aware ending. One extra beat that ties Ellie to the
+// evidence the player surfaced on their route (the discovery clue). Inserted
+// after the photos, before the date. Deepens the mystery; reveals no Phase 3 twist.
+const HAVEN_FINAL_PATH_BEAT = {
+  hospital: { from:"narrator", msgs:["the patient file from mercy general.", "her face is in it too.", "same building. before any of this."], choices:["·"] },
+  metro:    { from:"narrator", msgs:["the broadcast log from the metro.", "her voice logged it.", "two weeks before the signal."],          choices:["·"] },
+  route9:   { from:"narrator", msgs:["the deployment order from the checkpoint.", "her name is on the roster.", "assigned here. before day one."], choices:["·"] },
+};
+const buildHavenFinal = (path) => {
+  const beat = HAVEN_FINAL_PATH_BEAT[path];
+  if (!beat) return HAVEN_FINAL_SEQUENCE;
+  return [...HAVEN_FINAL_SEQUENCE.slice(0, 2), beat, ...HAVEN_FINAL_SEQUENCE.slice(2)];
+};
+
 const buildHavenSystem = (path, resources, weapon, noise = 0) => {
   const weaponStr = weapon ? `${weapon.shortName} (${weapon.damage} damage)` : "unarmed";
   const pathNote  = {
@@ -336,11 +350,11 @@ const buildP2System = (path, section, resources, weapon, noise = 0) => {
   const injuryStr  = resources.hp <= 2 ? "CRITICALLY INJURED" : resources.hp <= 4 ? "bleeding badly" : resources.hp <= 6 ? "bruised" : "okay";
   const hungerNote = resources.food <= 1 ? " LOW FOOD. Mention finding food." : resources.water <= 1 ? " LOW WATER. Mention finding water." : "";
   const pathDesc   = {
-    hospital: `Player is in Mercy General Hospital, long dark corridors, emergency lighting, generators humming deep inside. Something about this building feels familiar but they don't know why. Keep it tense.`,
-    metro:    `Player is in the Harwick Metro tunnels, underground, emergency lighting only, sounds carry strangely. Keep it claustrophobic.`,
-    route9:   `Player is on Route 9 highway heading north, open road, abandoned vehicles, city receding. Signs of infrastructure abandoned mid-setup. Keep it exposed.`,
+    hospital: `Player is INSIDE Mercy General Hospital: long dark corridors, wards, stairwells, emergency lighting, generators humming deep inside. Something about this building feels familiar but they don't know why. Keep it tense. GEOGRAPHY: they stay inside the building this whole phase. Never mention the metro, subway, the highway, vehicles on a road, or the outdoors.`,
+    metro:    `Player is in the Harwick Metro tunnels, underground: platform, tracks, service corridors, emergency lighting only, sounds carry strangely. Keep it claustrophobic. GEOGRAPHY: they stay underground this whole phase. Never mention the hospital, the highway, or open sky.`,
+    route9:   `Player is on Route 9 highway heading north on foot: open road, abandoned vehicles, overpasses, the city receding behind them. Keep it exposed. GEOGRAPHY: they stay on the open highway this phase. Never mention the hospital, the metro, subways, or tunnels.`,
   };
-  const crossDesc  = `Player has left their starting path and is crossing Harwick moving north toward the signal. Urban mix of residential and industrial. Tense.`;
+  const crossDesc  = `Player has ALREADY LEFT their starting location and is crossing Harwick on foot, moving north through a mix of residential and industrial streets toward the signal. Keep it tense. GEOGRAPHY: do not send them back to the hospital, metro, or highway, and do not say they have reached the signal's source yet.`;
   const desc = section === "path" ? (pathDesc[path] || crossDesc) : crossDesc;
 
   return `You are Ellie, texting the player through Harwick.
@@ -352,6 +366,8 @@ React to HP if injured. React to noise if high. React to low supplies if relevan
 Move at pace — if the player is heading somewhere, they arrive next beat. Do not count down intermediate steps (no "308, 310, almost there"). Do not add extra exchanges between the player and a known object in front of them.
 
 RESOURCES: You never decide resource amounts. When an action would give the player supplies, put an explicit marker inside that choice: [+N Food], [+N Water], or [+N HP] (example: "grab the cans and go [+3 Food]"). The game applies it. If the player's message contains a RESOURCE UPDATE, state those exact numbers. Otherwise never mention specific food, water, battery, or HP counts.
+
+LOOT COHERENCE: Do not invent searchable objects, containers, stashes, or supplies the player cannot act on. Never say an item is "still there" and then move on, and never describe the player finding something they did not just obtain through a choice. Searchable supplies are introduced by the game as explicit search encounters — describe only what the game presents, not loot you imagined.
 
 Short texts, 1-2 sentences, 20 words max. Lowercase. No em dashes. Periods and commas only.
 
@@ -371,6 +387,29 @@ const P2_COMPLETE_LINES = [
   { text: "it was empty.", delay: 1800 },
   { text: "end of phase 2.", delay: 3800 },
 ];
+
+// Death screen lines, keyed by cause. Distinct from OFFLINE_LINES (battery).
+// Priority 1 — close the survival loop.
+const DEATH_LINES = {
+  injury: [
+    { text: "you go down.", delay: 0 },
+    { text: "the phone slips from your hand.", delay: 1800 },
+    { text: "the screen stays lit a moment longer.", delay: 3300 },
+    { text: "then nothing.", delay: 4800 },
+  ],
+  starvation: [
+    { text: "your legs give out.", delay: 0 },
+    { text: "you haven't eaten in too long.", delay: 1800 },
+    { text: "the screen blurs.", delay: 3300 },
+    { text: "then nothing.", delay: 4800 },
+  ],
+  dehydration: [
+    { text: "your legs give out.", delay: 0 },
+    { text: "you can't remember the last time you drank.", delay: 1800 },
+    { text: "the screen blurs.", delay: 3300 },
+    { text: "then nothing.", delay: 4800 },
+  ],
+};
 
 // Explicit mapping from the BRANCH choice labels to a path id, with a
 // substring fallback so a reworded label still resolves to something valid.
@@ -397,6 +436,52 @@ const parseResourceMarkers = (choice) => {
   let m;
   while ((m = re.exec(choice))) out[m[2].toLowerCase()] += parseInt(m[1], 10);
   return out;
+};
+
+// Priority 3 — conservative AI geography guard. Clearly-contradictory location
+// words per path during p2 exploration. Matched with \bword\b so they never fire
+// inside "toward"/"training"/etc. Ambiguous words are deliberately excluded.
+const GEO_FORBIDDEN = {
+  hospital: ["subway","metro","tunnel","platform","highway","freeway","on-ramp","overpass","interstate","turnstile"],
+  metro:    ["hospital","highway","freeway","on-ramp","overpass","interstate"],
+  route9:   ["hospital","subway","metro","tunnel","platform","turnstile"],
+};
+const PREMATURE_TERMS = ["haven"]; // referencing the destination before arrival
+const GEO_SAFE_LINE = {
+  hospital: "you move through the corridor. stay focused.",
+  metro:    "you keep moving along the platform. stay focused.",
+  route9:   "you keep moving up the road. stay focused.",
+  crossing: "you keep moving through the streets. stay focused.",
+};
+// Forbidden terms for a (path, section). "haven" is only premature during a PATH
+// leg — in the crossing the player is openly heading toward the signal/Haven, so
+// the word can appear legitimately and is not flagged (F2).
+const geoTerms = (path, section) => [
+  ...(GEO_FORBIDDEN[path] || []),
+  ...(section === "crossing" ? [] : PREMATURE_TERMS),
+];
+// Returns the first offending term found in messages/choices, or null. Only
+// meaningful for path/crossing exploration (callEllie gates on phase).
+const detectGeoContradiction = (parsed, path, section) => {
+  if (!path) return null;
+  const terms = geoTerms(path, section);
+  const hay = [...(parsed.messages || []), ...(parsed.choices || [])].join(" ");
+  for (const t of terms) {
+    const re = new RegExp(`\\b${t.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "i");
+    if (re.test(hay)) return t;
+  }
+  return null;
+};
+// Replace any message/choice containing a forbidden term with a safe neutral line.
+const sanitizeGeo = (parsed, path, section) => {
+  const terms = geoTerms(path, section);
+  const res = terms.map(t => new RegExp(`\\b${t.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "i"));
+  const hits = (s) => res.some(re => re.test(s));
+  const safeLine = GEO_SAFE_LINE[section === "crossing" ? "crossing" : path] || GEO_SAFE_LINE.hospital;
+  return {
+    messages: (parsed.messages || []).map(m => hits(m) ? safeLine : m),
+    choices:  (parsed.choices  || []).map(c => hits(c) ? "Keep moving." : c),
+  };
 };
 
 const parseText = (text, ctx = "button") => {
@@ -435,7 +520,7 @@ const MessageRow = memo(function MessageRow({ m }) {
   if (m.from === "system")
     return <div style={{ alignSelf:"center", fontSize:"0.63rem", letterSpacing:"0.09em", color:"#2a3d2c", padding:"0.25rem 0", animation:"fi 0.6s ease" }}>{m.text}</div>;
   if (m.from === "narrator")
-    return <div style={{ alignSelf:"center", textAlign:"center", fontSize:"0.78rem", letterSpacing:"0.12em", color:"#c8b98a", opacity:0.4, padding:"0.6rem 0", fontStyle:"italic", animation:"fi 1.2s ease" }}>{m.text}</div>;
+    return <div style={{ alignSelf:"center", textAlign:"center", fontSize:"0.78rem", letterSpacing:"0.12em", color:"#c8b98a", opacity:0.4, padding:"0.6rem 0", fontStyle:"italic", animation:"fi 1.2s ease" }}>{parseText(m.text, "msg")}</div>;
   if (m.from === "memory_note")
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:`1px solid ${m.kind==="discovery"?"#1a4a52":"#1a3a24"}`, background:m.kind==="discovery"?"#010a0d":"#010a04", animation:"fi 0.8s ease" }}>
@@ -446,7 +531,7 @@ const MessageRow = memo(function MessageRow({ m }) {
     );
   return (
     <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.48rem 0.85rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"0.84rem", lineHeight:"1.7", fontWeight:300, animation:"fi 0.35s ease" }}>
-      {m.from==="player" ? parseText(m.text,"sent") : m.text}
+      {m.from==="player" ? parseText(m.text,"sent") : parseText(m.text,"msg")}
     </div>
   );
 });
@@ -457,6 +542,11 @@ export default function DeadSignal() {
   const [showNotif, setShowNotif]       = useState(false);
   const [offlineLines, setOfflineLines] = useState([]);
   const [completeLines, setCompleteLines] = useState([]);
+  const [deathLines, setDeathLines]     = useState([]);   // Priority 1 — death screen
+  const [deathCause, setDeathCause]     = useState(null); // "injury" | "starvation" | "dehydration"
+  const [hasSave, setHasSave]           = useState(false); // P4 — a resumable mid-run save exists
+  const [menuOpen, setMenuOpen]         = useState(false); // pause / save-load-exit menu
+  const [menuMsg, setMenuMsg]           = useState("");    // transient confirmation in the menu
   const [showRestart, setShowRestart]   = useState(false);
   const [lastMessage, setLastMessage]   = useState("");
   const [messages, setMessages]         = useState([]);
@@ -479,6 +569,7 @@ export default function DeadSignal() {
   const [selectedFragment, setSelectedFragment] = useState(null);
   const [recoveredMemories, setRecoveredMemories] = useState([]);
   const [sigFlicker, setSigFlicker] = useState(false);
+  const [battPulse, setBattPulse]   = useState(false); // P6c — battery pickup HUD flourish
   const [dayThree, setDayThree]     = useState(false);
   const [havenFinalIndex, setHavenFinalIndex] = useState(0);
 
@@ -507,6 +598,9 @@ export default function DeadSignal() {
   const lastEventWasEncRef  = useRef(false);
   const returnToPhaseRef    = useRef("p2_ai");
   const lastCallRef         = useRef(null);   // C1 — args of the most recent callEllie, for "Try again."
+  const sectionPlanRef      = useRef({});     // exchange# → "search" | "hazard" (guaranteed search spots)
+  const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
+  const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
 
   resourcesRef.current      = resources;
   screenRef.current         = screen;
@@ -527,6 +621,100 @@ export default function DeadSignal() {
     dialogueRef.current.forEach(clearTimeout); dialogueRef.current = [];
   };
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
+
+  // Priority 1 — end the run on defeat. Distinct from the battery "offline" path.
+  const triggerDeath = (cause) => {
+    clearPending();
+    setChoices([]);
+    setIsTyping(false);
+    pendingStoryBeatRef.current = null;
+    setDeathCause(cause);
+    setScreen("dead");
+  };
+
+  // ─── P4 — mid-run save/resume (reuses the window.storage pattern) ──────────────
+  // Snapshot is taken at stable decision points (choices shown, not typing), so it
+  // never captures a mid-animation state. Persisted memories/clues stay in their own
+  // key (ds_memories) and are untouched.
+  const SAVE_KEY = "ds_save";
+  const buildSnapshot = () => ({
+    v: 1, idCounter: idRef.current,
+    messages, choices, lastMessage,
+    resources, weapon, noise, contactName,
+    gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
+    aiExchangeCount, aiExchangeTarget, fragTarget, fragFired,
+    currentEncounter, selectedFragment, dayThree, havenFinalIndex,
+    apiHistory: apiHistoryRef.current,
+    pendingStoryBeat: pendingStoryBeatRef.current,
+    returnToPhase: returnToPhaseRef.current,
+    lastEncounterId: lastEncounterIdRef.current,
+    sectionPlan: sectionPlanRef.current,
+    havenFinal: havenFinalRef.current,
+    seenEncounters: [...seenEncountersRef.current],
+    shelterForced: shelterForcedRef.current,
+    lastEventWasEnc: lastEventWasEncRef.current,
+  });
+  const saveRun = async () => {
+    try { await window.storage.set(SAVE_KEY, JSON.stringify(buildSnapshot())); setHasSave(true); } catch (e) {}
+  };
+  const clearSave = async () => {
+    try { await window.storage.delete(SAVE_KEY); } catch (e) {}
+    setHasSave(false);
+  };
+  const resumeRun = async () => {
+    let snap;
+    try { const r = await window.storage.get(SAVE_KEY); if (r?.value) snap = JSON.parse(r.value); } catch (e) {}
+    if (!snap) return;
+    // F1 — refuse a malformed / wrong-schema snapshot instead of crashing on it.
+    if (snap.v !== 1 || !snap.resources || typeof snap.resources.battery !== "number") {
+      console.warn("[DeadSignal] ignoring incompatible save");
+      clearSave();
+      return;
+    }
+    clearPending();
+    // refs (not mirrored from state)
+    idRef.current             = snap.idCounter || 0;
+    apiHistoryRef.current     = snap.apiHistory || [];
+    pendingStoryBeatRef.current = snap.pendingStoryBeat || null;
+    returnToPhaseRef.current  = snap.returnToPhase || "p2_ai";
+    lastEncounterIdRef.current = snap.lastEncounterId || null;
+    sectionPlanRef.current    = snap.sectionPlan || {};
+    havenFinalRef.current     = snap.havenFinal || HAVEN_FINAL_SEQUENCE;
+    seenEncountersRef.current = new Set(snap.seenEncounters || []);
+    shelterForcedRef.current  = !!snap.shelterForced;
+    lastEventWasEncRef.current = !!snap.lastEventWasEnc;
+    chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
+    // state
+    setMessages(snap.messages || []); setChoices(snap.choices || []); setLastMessage(snap.lastMessage || "");
+    setResources(snap.resources); setWeapon(snap.weapon || null); setNoise(snap.noise || 0);
+    setContactName(snap.contactName || "KIM");
+    setGamePhase(snap.gamePhase || "phase1"); setChosenPath(snap.chosenPath || null);
+    setCurrentPath(snap.currentPath || null); setExchangePhase(snap.exchangePhase || 0);
+    setP2BeatIndex(snap.p2BeatIndex || 0); setAiExchangeCount(snap.aiExchangeCount || 0);
+    setAiExchangeTarget(snap.aiExchangeTarget || 7); setFragTarget(snap.fragTarget || 3);
+    setFragFired(!!snap.fragFired); setCurrentEncounter(snap.currentEncounter || null);
+    setSelectedFragment(snap.selectedFragment || null); setDayThree(!!snap.dayThree);
+    setHavenFinalIndex(snap.havenFinalIndex || 0);
+    setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
+    setScreen("chat");
+  };
+
+  // ─── Pause menu actions (manual save / load / exit) ────────────────────────────
+  const menuSave = async () => {
+    await saveRun();
+    setMenuMsg("game saved.");
+    pendingRef.current.push(setTimeout(() => setMenuMsg(""), 1800));
+  };
+  const menuLoad = async () => {
+    setMenuMsg("");
+    await resumeRun(); // restores from ds_save and closes the menu
+  };
+  const menuSaveExit = async () => {
+    await saveRun();
+    setMenuOpen(false); setMenuMsg("");
+    clearPending();
+    setScreen("intro"); // the save persists → "RESUME RUN" is available from the title
+  };
 
   useEffect(() => {
     if (screen !== "intro") return; // re-fires every time screen returns to "intro"
@@ -573,6 +761,25 @@ export default function DeadSignal() {
     return () => ids.forEach(clearTimeout); // C2
   }, [screen]);
 
+  // Priority 1 — catch-all defeat check (covers encounter HP loss). The
+  // screen==="chat" guard means it fires once, then screen flips to "dead".
+  useEffect(() => {
+    if (screen !== "chat" || resources.hp > 0) return;
+    const cause = resources.food <= 0 ? "starvation" : resources.water <= 0 ? "dehydration" : "injury";
+    triggerDeath(cause);
+  }, [resources.hp, screen]);
+
+  // Priority 1 — death screen reveal (mirrors the offline effect).
+  useEffect(() => {
+    if (screen !== "dead") return;
+    const lines = DEATH_LINES[deathCause] || DEATH_LINES.injury;
+    const ids = [];
+    lines.forEach(({ text, delay }) => ids.push(setTimeout(() => setDeathLines(p => [...p, text]), delay)));
+    const lastDelay = lines.length ? lines[lines.length - 1].delay : 0;
+    ids.push(setTimeout(() => setShowRestart(true), lastDelay + 1600));
+    return () => ids.forEach(clearTimeout);
+  }, [screen, deathCause]);
+
   useEffect(() => {
     if (screen !== "phase2_complete") return;
     const ids = [];
@@ -583,7 +790,26 @@ export default function DeadSignal() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, isTyping, choices]);
 
-  const scheduleMessages = (msgs, choiceList, msgType = "ellie") => {
+  // P4 — detect an existing save on mount (drives the intro "resume" button).
+  useEffect(() => {
+    (async () => {
+      try { const r = await window.storage.get("ds_save"); if (r?.value) setHasSave(true); } catch (e) {}
+    })();
+  }, []);
+
+  // P4 — save at stable decision points (choices shown, animation settled).
+  useEffect(() => {
+    if (screen === "chat" && choices.length > 0 && !isTyping) saveRun();
+  }, [screen, choices, isTyping]);
+
+  // P4 — a finished run isn't resumable: clear the save on any terminal screen.
+  useEffect(() => {
+    if (screen === "offline" || screen === "dead" || screen === "phase2_complete") clearSave();
+  }, [screen]);
+
+  // `onShown(text, index)` fires exactly when each message is appended — lets
+  // callers hook an event to a message render instead of a magic delay (P6d).
+  const scheduleMessages = (msgs, choiceList, msgType = "ellie", onShown = null) => {
     // C3 — clear only this queue's own timers, leaving addMsg/bridge timers (pendingRef) intact.
     dialogueRef.current.forEach(clearTimeout); dialogueRef.current = [];
     let t = 350;
@@ -594,12 +820,13 @@ export default function DeadSignal() {
       t += 50;
     }
 
-    msgs.forEach((text) => {
+    msgs.forEach((text, i) => {
       dialogueRef.current.push(setTimeout(() => setIsTyping(msgType !== "narrator"), t));
       t += msgType === "narrator" ? 1800 : Math.min(500 + text.length * 22, 1800);
       dialogueRef.current.push(setTimeout(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
+        onShown?.(text, i);
       }, t));
       t += msgType === "narrator" ? 600 : 280;
     });
@@ -607,19 +834,34 @@ export default function DeadSignal() {
     return t;
   };
 
+  // P6c — brief battery-pickup HUD flourish.
+  const pulseBattery = () => {
+    setBattPulse(true);
+    pendingRef.current.push(setTimeout(() => setBattPulse(false), 1400));
+  };
+
   const addMsg = (from, text, delay = 0) => {
     pendingRef.current.push(setTimeout(() => setMessages(p => [...p, { id: nextId(from), from, text }]), delay));
   };
 
-  // Resource drain at section transitions
+  // Resource drain at section transitions and mid-legs. The steady squeeze that
+  // makes searching matter (supply economy). Code owns every number.
   const applyTransitionDrain = (type) => {
     if (type === "path_start") {
+      setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
+      addMsg("system", "moving out · [-1 Food] [-1 Water]", 500);
+    }
+    if (type === "path_mid") {
       setResources(p => ({ ...p, water: Math.max(0, p.water - 1) }));
-      addMsg("system", "moving out · [-1 Water]", 500);
+      addMsg("system", "the climb wears on you · [-1 Water]", 500);
     }
     if (type === "crossing_start") {
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "crossing harwick · [-1 Food] [-1 Water]", 500);
+    }
+    if (type === "crossing_mid") {
+      setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
+      addMsg("system", "the miles add up · [-1 Food] [-1 Water]", 500);
     }
   };
 
@@ -651,6 +893,7 @@ export default function DeadSignal() {
       if (d.hp)      parts.push(`hp ${d.hp > 0 ? "+" : ""}${d.hp}`);
       if (d.battery) parts.push(`battery ${d.battery > 0 ? "+" : ""}${d.battery}%`);
       addMsg("system", parts.join(" · "), 300);
+      if (d.battery > 0) pulseBattery(); // P6c
     }
 
     const t = [];
@@ -661,10 +904,24 @@ export default function DeadSignal() {
     const truth = t.length
       ? ` [RESOURCE UPDATE APPLIED: ${t.join(", ")}. State these exact numbers if you mention them. Do not invent other numbers.]`
       : "";
-    return { hasDelta, newBattery, truth };
+    return { hasDelta, newBattery, newFood, newWater, newHp, truth };
   };
 
-  const callEllie = async (history, systemOverride = null, batteryOverride = null) => {
+  // Priority 1 — gradual starvation/dehydration. Each empty vital costs 1 HP per
+  // AI exploration choice (they stack). Code owns the math; returns the
+  // prospective new HP so the caller can end the run before firing an API call.
+  // `snap` lets the caller pass loot-adjusted vitals (the ref is stale until the
+  // next render), so grabbing food this turn correctly prevents starving this turn.
+  const applyStarvation = (snap) => {
+    const r = snap || resourcesRef.current;
+    let dHp = 0;
+    if (r.food <= 0)  { dHp -= 1; addMsg("system", "starving · [-1 HP]", 300); }
+    if (r.water <= 0) { dHp -= 1; addMsg("system", "dehydrated · [-1 HP]", 300); }
+    if (dHp !== 0) setResources(p => ({ ...p, hp: Math.max(0, p.hp + dHp) }));
+    return Math.max(0, r.hp + dHp);
+  };
+
+  const callEllie = async (history, systemOverride = null, batteryOverride = null, skipMsgLoot = false, geoRetry = false) => {
     const system = systemOverride || PHASE1_SYSTEM;
     const effectiveBattery = batteryOverride !== null ? batteryOverride : resourcesRef.current.battery;
     lastCallRef.current = { history, systemOverride, batteryOverride }; // C1 — enables retry on failure
@@ -696,6 +953,51 @@ export default function DeadSignal() {
         messages: msgs.length ? msgs : ["..."],
         choices:  choices.length ? choices : ["Keep moving.", "What's next?"],
       };
+
+      // Priority 3 — AI geography guard (path/crossing exploration only). Run
+      // BEFORE loot/history so a contradictory reply never persists or applies loot.
+      const geoPhase = gamePhaseRef.current === "p2_ai" || gamePhaseRef.current === "p2_ai_cross";
+      if (geoPhase) {
+        const geoPath = currentPathRef.current || "hospital";
+        const geoSection = gamePhaseRef.current === "p2_ai" ? "path" : "crossing";
+        const bad = detectGeoContradiction(parsed, geoPath, geoSection);
+        if (bad && !geoRetry) {
+          console.warn("[DeadSignal] geo guard:", bad, "→ regenerate");
+          const anchor = geoSection === "crossing"
+            ? "moving through the streets of harwick toward the signal"
+            : geoPath === "hospital" ? "inside mercy general hospital"
+            : geoPath === "metro" ? "in the harwick metro tunnels"
+            : "on route 9, the open highway";
+          const corrective = `[GEOGRAPHY CORRECTION] Your last reply mentioned "${bad}", which does not exist here. The player is ${anchor}. Do not mention "${bad}" or any other location. Rewrite your reply for the current location only.`;
+          clearTimeout(timeoutId);
+          callEllie([...history, { role: "user", content: corrective }], systemOverride, batteryOverride, skipMsgLoot, true);
+          return; // discard the contradictory reply; the retry renders
+        }
+        if (bad && geoRetry) {
+          console.warn("[DeadSignal] geo guard:", bad, "→ sanitize");
+          parsed = sanitizeGeo(parsed, geoPath, geoSection);
+        }
+      }
+
+      // Priority 2 — code-authoritative loot from AI *narration*. If Ellie's
+      // messages contain a resource marker (e.g. "granola bar [+1 Food]"), code
+      // applies the delta so the HUD stays in sync. `skipMsgLoot` is set when the
+      // triggering choice already applied loot, so an echoed delta isn't counted
+      // twice. Code owns the clamp; the AI only proposes the delta.
+      if (!skipMsgLoot) {
+        const md = parseResourceMarkers(parsed.messages.join(" "));
+        if (md.food || md.water || md.hp || md.battery) {
+          setResources(p => ({
+            ...p,
+            food:    Math.max(0, p.food + md.food),
+            water:   Math.max(0, p.water + md.water),
+            hp:      Math.max(0, Math.min(10, p.hp + md.hp)),
+            battery: Math.max(0, Math.min(100, p.battery + md.battery)),
+          }));
+          if (md.battery > 0) pulseBattery(); // P6c
+        }
+      }
+
       apiHistoryRef.current = [...history, { role: "assistant", content: raw }];
       const isAiPhase = ["p2_ai", "p2_ai_cross", "haven_ai"].includes(gamePhaseRef.current);
       const displayChoices = isAiPhase
@@ -757,7 +1059,8 @@ export default function DeadSignal() {
           } else if (pending.type === "haven_final") {
             setGamePhase("haven_final");
             setHavenFinalIndex(0);
-            scheduleMessages(HAVEN_FINAL_SEQUENCE[0].msgs, HAVEN_FINAL_SEQUENCE[0].choices, "narrator");
+            havenFinalRef.current = buildHavenFinal(currentPathRef.current); // P5 — branch-aware
+            scheduleMessages(havenFinalRef.current[0].msgs, havenFinalRef.current[0].choices, "narrator");
 
           } else if (pending.type === "encounter") {
             const enc = pending.enc;
@@ -780,12 +1083,15 @@ export default function DeadSignal() {
       } else {
         scheduleMessages(parsed.messages, displayChoices);
       }
-    } catch {
+    } catch (e) {
       // C1 — surface the failure AND give the player a way to retry instead of soft-locking.
       // Leave pendingStoryBeatRef intact: the fetch threw before the beat was consumed,
       // so a successful retry will still bridge into it.
+      // P6b — give a reason: timeout/abort vs generic connection drop.
+      const timedOut = e?.name === "AbortError";
       setIsTyping(false);
-      setMessages(p => [...p, { id: nextId("err"), from: "ellie", text: "...you there? signal's bad." }]);
+      setMessages(p => [...p, { id: nextId("err"), from: "ellie",
+        text: timedOut ? "...still there? took too long to come through." : "...you there? signal's bad." }]);
       setChoices(["Try again."]);
     } finally {
       clearTimeout(timeoutId);
@@ -808,7 +1114,7 @@ export default function DeadSignal() {
       }
       case "SEARCH": {
         dNoise = 1;
-        if (Math.random() < 0.45) {
+        if (Math.random() < 0.80) { // guaranteed search spots usually pay; risk is the noise/HP on a fail
           const lootTable = SEARCH_LOOT[encounter.id] || SEARCH_LOOT.default;
           const item = pickRandom(lootTable);
           if (item === "food")    { dFood = 1; outcome = "you found food."; }
@@ -845,7 +1151,7 @@ export default function DeadSignal() {
       water:   Math.max(0, prev.water + dWater),
       battery: Math.min(100, prev.battery + dBatt),
     }));
-    if (dBatt > 0) addMsg("system", `battery pack connected · +${dBatt}%`, 300);
+    if (dBatt > 0) { addMsg("system", `battery pack connected · +${dBatt}%`, 300); pulseBattery(); } // P6c
 
     addMsg("system", outcome, dBatt > 0 ? 800 : 300);
 
@@ -945,11 +1251,13 @@ export default function DeadSignal() {
       if (cur?.onChoice === "BRANCH") { detected = detectPath(choice); setCurrentPath(detected); setChosenPath(choice); }
       if (next < SCRIPTED_EXCHANGES.length) {
         const nx = SCRIPTED_EXCHANGES[next];
-        scheduleMessages(nx.msgs, nx.choices, nx.from || "ellie");
-        // Exchange 5 is the name reveal — flip KIM→ELLIE when "name's ellie" message fires (~3040ms)
-        if (next === 5) {
-          pendingRef.current.push(setTimeout(() => setContactName("ELLIE"), 3040));
-        }
+        // P6d — flip KIM→ELLIE the instant the name-reveal message actually renders,
+        // tied to the message text (not a magic 3040ms delay). Only the reveal
+        // exchange (onChoice NAME_REVEAL) gets the hook.
+        const onShown = nx.onChoice === "NAME_REVEAL"
+          ? (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); }
+          : null;
+        scheduleMessages(nx.msgs, nx.choices, nx.from || "ellie", onShown);
       } else {
         const path = detected || currentPathRef.current || "hospital"; // H4
         setGamePhase("p2_scripted"); setP2BeatIndex(0);
@@ -974,9 +1282,10 @@ export default function DeadSignal() {
         const chosenFrag = fragPool[Math.floor(Math.random() * fragPool.length)];
         setSelectedFragment(chosenFrag);
         applyTransitionDrain("path_start");
-        const frag = Math.floor(Math.random() * 2) + 2;
-        const disc = frag + 2;
-        setFragTarget(frag); setAiExchangeTarget(disc);
+        // Fixed cadence + guaranteed search spots: memory@2, discovery@6,
+        // searchable spots at ex1 & ex5, a hazard at ex3 (ex4 free, mid-leg drain).
+        setFragTarget(2); setAiExchangeTarget(6);
+        sectionPlanRef.current = { 1: "search", 3: "hazard", 5: "search" };
         setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
         const system  = buildP2System(path, "path", resourcesRef.current, weaponRef.current, noiseRef.current);
         const pathContext = {
@@ -1072,15 +1381,16 @@ export default function DeadSignal() {
       }
       const loot = applyChoiceLoot(choice, newBattery); // Fix #5
       const system = buildHavenSystem(currentPathRef.current, resourcesRef.current, weaponRef.current, noiseRef.current);
-      callEllie([...apiHistoryRef.current, { role:"user", content: stripMarkers(choice) + loot.truth }], system, loot.newBattery);
+      callEllie([...apiHistoryRef.current, { role:"user", content: stripMarkers(choice) + loot.truth }], system, loot.newBattery, loot.hasDelta);
       return;
     }
 
     if (gamePhaseRef.current === "haven_final") {
+      const seq  = havenFinalRef.current;
       const next = havenFinalIndex + 1;
       setHavenFinalIndex(next);
-      if (next < HAVEN_FINAL_SEQUENCE.length) {
-        scheduleMessages(HAVEN_FINAL_SEQUENCE[next].msgs, HAVEN_FINAL_SEQUENCE[next].choices, "narrator");
+      if (next < seq.length) {
+        scheduleMessages(seq[next].msgs, seq[next].choices, "narrator");
       } else {
         // Incoming call
         setChoices([]); setIsTyping(false);
@@ -1109,6 +1419,10 @@ export default function DeadSignal() {
       const newCnt  = aiCountRef.current + 1;
       setAiExchangeCount(newCnt);
 
+      // Mid-leg drain (the steady squeeze). Fires once per section on a free exchange.
+      if (gamePhaseRef.current === "p2_ai" && newCnt === 4)        applyTransitionDrain("path_mid");
+      if (gamePhaseRef.current === "p2_ai_cross" && newCnt === 4)  applyTransitionDrain("crossing_mid");
+
       // Determine if a beat should follow — queue it, never fire before Ellie resolves the action
       let pendingBeat = null;
 
@@ -1123,12 +1437,24 @@ export default function DeadSignal() {
         pendingBeat = { type: "shelter" };
 
       } else {
-        // Encounter check — skip if discovery or shelter is one exchange away
-        const nearBeat = newCnt >= aiTargetRef.current - 1;
-        const pool = (ENCOUNTERS[section === "path" ? path : "crossing"] || ENCOUNTERS.crossing)
-          .filter(e => (e.minNoise || 0) <= noiseRef.current && e.id !== lastEncounterIdRef.current);
-        if (!nearBeat && !lastEventWasEncRef.current && Math.random() < 0.38 && pool.length > 0) {
-          pendingBeat = { type: "encounter", enc: pickRandom(pool) };
+        // Guaranteed search spots: a deterministic per-section schedule decides which
+        // exchanges host a loot-bearing (SEARCH) encounter vs a hazard. Schedule indices
+        // are spaced so consecutive encounters never collide. Code owns the loot.
+        const planned = sectionPlanRef.current[newCnt];
+        if (planned) {
+          const pool = (ENCOUNTERS[section === "path" ? path : "crossing"] || ENCOUNTERS.crossing)
+            .filter(e => (e.minNoise || 0) <= noiseRef.current && e.id !== lastEncounterIdRef.current);
+          const wantSearch = planned === "search";
+          const matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch);
+          const choicesPool = matching.length ? matching : pool;
+          // P6a — prefer encounters not yet seen this run; fall back once exhausted.
+          const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id));
+          const finalPool = unseen.length ? unseen : choicesPool;
+          if (finalPool.length) {
+            const enc = pickRandom(finalPool);
+            seenEncountersRef.current.add(enc.id);
+            pendingBeat = { type: "encounter", enc };
+          }
         }
       }
 
@@ -1140,12 +1466,17 @@ export default function DeadSignal() {
       const loot = applyChoiceLoot(choice, newBattery);
       const effBattery = loot.newBattery;
 
+      // Priority 1 — starvation/dehydration on the loot-adjusted vitals. If it
+      // drops HP to 0, end the run now instead of firing an orphan API call.
+      const survHp = applyStarvation({ food: loot.newFood, water: loot.newWater, hp: loot.newHp });
+      if (survHp <= 0) { triggerDeath(loot.newFood <= 0 ? "starvation" : "dehydration"); return; }
+
       let battNote = "";
       if (effBattery <= 1)      battNote = " [BATTERY 1%]";
       else if (effBattery <= 3) battNote = ` [BATTERY CRITICAL ${effBattery}%]`;
       else if (effBattery <= 5) battNote = ` [BATTERY LOW ${effBattery}%]`;
       const system = buildP2System(path, section, resourcesRef.current, weaponRef.current, noiseRef.current);
-      callEllie([...apiHistoryRef.current, { role: "user", content: stripMarkers(choice) + battNote + loot.truth }], system, effBattery);
+      callEllie([...apiHistoryRef.current, { role: "user", content: stripMarkers(choice) + battNote + loot.truth }], system, effBattery, loot.hasDelta);
       return;
     }
 
@@ -1171,8 +1502,10 @@ export default function DeadSignal() {
       }
 
       applyTransitionDrain("crossing_start");
-      const tgt = Math.floor(Math.random() * 2) + 3;
-      setAiExchangeTarget(tgt); setAiExchangeCount(0);
+      // Crossing cadence mirrors the path: shelter@6; searchable spots at ex1 & ex5,
+      // hazard at ex3 (ex2/ex4 free, mid-leg drain at ex4). Encounters stay spaced.
+      setAiExchangeTarget(6); setAiExchangeCount(0);
+      sectionPlanRef.current = { 1: "search", 3: "hazard", 5: "search" };
       setGamePhase("p2_ai_cross");
       setNoise(Math.max(0, noiseRef.current - 1));
 
@@ -1192,8 +1525,9 @@ export default function DeadSignal() {
     clearPending();
     chatStartedRef.current = false; apiHistoryRef.current = [];
     lastEventWasEncRef.current = false; lastEncounterIdRef.current = null;
-    pendingStoryBeatRef.current = null;
-    setMessages([]); setChoices([]); setIsTyping(false); setSigFlicker(false);
+    pendingStoryBeatRef.current = null; sectionPlanRef.current = {};
+    seenEncountersRef.current = new Set(); havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
+    setMessages([]); setChoices([]); setIsTyping(false); setSigFlicker(false); setBattPulse(false);
     setResources({ battery: 9, water: 0, food: 0, charger: null, hp: 10 });
     setWeapon(null); setNoise(0);
     setExchangePhase(0); setContactName("KIM"); setChosenPath(null);
@@ -1203,7 +1537,9 @@ export default function DeadSignal() {
     setHavenFinalIndex(0); shelterForcedRef.current = false;
     // recoveredMemories intentionally NOT reset — persists across runs
     setOfflineLines([]); setCompleteLines([]); setShowRestart(false); setLastMessage("");
-    setShownLines([]); setShowNotif(false);
+    setDeathLines([]); setDeathCause(null);
+    setShownLines([]); setShowNotif(false); setMenuOpen(false); setMenuMsg("");
+    clearSave(); // P4 — abandon any prior run's save when starting fresh
     setScreen("intro");
   };
 
@@ -1223,7 +1559,6 @@ export default function DeadSignal() {
   const showRow2   = weapon !== null || noise > 0 || resources.charger !== null;
   const fragCount  = recoveredMemories.filter(m => m.type === "fragment").length;
   const clueCount  = recoveredMemories.filter(m => m.type === "discovery").length;
-  const fragBar    = Array(9).fill(0).map((_, i) => i < fragCount ? "■" : "□").join("");
   const signalLevel =
     screen === "phase2_complete" || dayThree ? 5 :
     ["p2_ai_cross","shelter","haven_approach","haven_ai","haven_final"].includes(gamePhase) ? 4 :
@@ -1238,26 +1573,36 @@ export default function DeadSignal() {
     : "unknown · unverified";
   const font       = "'IBM Plex Mono', 'Courier New', monospace";
   const flashAnim  = "flash 0.9s ease infinite";
+  const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
 
   if (screen === "intro") return (
     <div style={{ background:"#070707", minHeight:"100vh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2.5rem", userSelect:"none" }}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}`}</style>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
         {shownLines.map((l,i) => <p key={i} style={{ color:"#c8b98a", fontSize:"0.9rem", lineHeight:"2.1", letterSpacing:"0.05em", animation:"fi 0.9s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
       </div>
       {showNotif && (
-        <button onClick={(e)=>{ e.stopPropagation(); if(screenRef.current!=="intro")return; clearPending(); setScreen("chat"); }}
+        <button onClick={(e)=>{ e.stopPropagation(); if(screenRef.current!=="intro")return; clearPending(); clearSave(); setScreen("chat"); }}
           style={{ marginTop:"2.8rem", padding:"0.7rem 1.5rem", border:"1px solid #1d3a22", color:"#4a9e6b", fontSize:"0.7rem", letterSpacing:"0.16em", animation:"pu 1.3s ease infinite", background:"transparent", cursor:"pointer", fontFamily:"inherit" }}>
           ▸&nbsp;&nbsp;NEW MESSAGE — KIM
+        </button>
+      )}
+      {/* P4 — resume a mid-run save if one exists */}
+      {hasSave && (
+        <button className="rb" onClick={(e)=>{ e.stopPropagation(); if(screenRef.current!=="intro")return; clearPending(); resumeRun(); }}
+          style={{ marginTop:"1rem", padding:"0.55rem 1.4rem", border:"1px solid #2a2a2a", color:"#6a6a6a", fontSize:"0.64rem", letterSpacing:"0.14em", background:"transparent", cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+          ▸&nbsp;&nbsp;RESUME RUN
         </button>
       )}
     </div>
   );
 
-  if (screen === "offline" || screen === "phase2_complete") {
-    const lines  = screen === "offline" ? offlineLines : completeLines;
+  if (screen === "offline" || screen === "phase2_complete" || screen === "dead") {
+    const lines  = screen === "offline" ? offlineLines : screen === "dead" ? deathLines : completeLines;
     const colors = screen === "offline"
       ? (i) => i === 0 ? "#2a2a2a" : "#8b2020"
+      : screen === "dead"
+      ? (i) => i === 0 ? "#a83232" : "#7a1f1f"
       : () => "#c8b98a";
     return (
       <div style={{ background:"#070707", minHeight:"100vh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2.5rem", userSelect:"none" }}>
@@ -1283,11 +1628,13 @@ export default function DeadSignal() {
 
   return (
     <div style={{ background:"#070707", height:"100vh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
 
       {/* Top utility bar: carrier (DEAD SIGNAL + signal bars) left · fragments + day right */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0.4rem 1rem 0.25rem", flexShrink:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+          <button className="cb" onClick={()=>{ setMenuMsg(""); setMenuOpen(true); }} title="menu"
+            style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.15rem 0.4rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
           <span style={{ color:"#4a9e6b", fontSize:"0.65rem", fontWeight:700, letterSpacing:"0.2em", textShadow:"0 0 8px rgba(74,158,107,0.5), 0 0 20px rgba(74,158,107,0.2)" }}>DEAD SIGNAL</span>
           <span style={{ fontSize:"0.72rem", lineHeight:1, letterSpacing:"0.02em" }}>
             {["▂","▃","▄","▅","▆"].map((b,i) => <span key={i} style={{ color: i < signalLevel ? "#4a9e6b" : "#282828", textShadow: i < signalLevel ? "0 0 5px rgba(74,158,107,0.7)" : "none", animation: (sigFlicker || noise >= 4) && i < signalLevel ? "sigflicker 0.18s ease infinite" : i < signalLevel ? "sigpulse 3s ease infinite" : "none" }}>{b}</span>)}
@@ -1300,13 +1647,13 @@ export default function DeadSignal() {
           <span style={{ color:"#2a6070", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
             ◉ CLUES <span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
           </span>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.18rem", animation:battAnim }}>
-            <svg width="18" height="9" viewBox="0 0 18 9" style={{ display:"block", filter: resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
-              <rect x="0.5" y="0.5" width="14" height="8" rx="1.5" fill="none" stroke={battColor} strokeWidth="1"/>
-              <rect x="14.5" y="2" width="2.5" height="5" rx="0.5" fill={battColor}/>
-              <rect x="1.5" y="1.5" width={Math.max(0,Math.round((resources.battery/100)*12))} height="5" rx="0.5" fill={battColor}/>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.18rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
+            <svg width="18" height="9" viewBox="0 0 18 9" style={{ display:"block", filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
+              <rect x="0.5" y="0.5" width="14" height="8" rx="1.5" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1"/>
+              <rect x="14.5" y="2" width="2.5" height="5" rx="0.5" fill={battPulse ? "#7fffa0" : battColor}/>
+              <rect x="1.5" y="1.5" width={Math.max(0,Math.round((resources.battery/100)*12))} height="5" rx="0.5" fill={battPulse ? "#7fffa0" : battColor}/>
             </svg>
-            <span style={{ color:battColor, fontSize:"0.58rem", textShadow: resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
+            <span style={{ color: battPulse ? "#7fffa0" : battColor, fontSize:"0.58rem", textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
           </span>
         </div>
       </div>
@@ -1353,6 +1700,22 @@ export default function DeadSignal() {
                   {i+1}.&nbsp;&nbsp;{parseText(c,"button")}
                 </button>
           )}
+        </div>
+      )}
+
+      {/* Pause menu — save / load / exit. Sits above the chat as an overlay. */}
+      {menuOpen && (
+        <div onClick={()=>setMenuOpen(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(3,5,3,0.82)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, fontFamily:font }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:"#080a08", border:"1px solid #1d3a22", padding:"1.4rem 1.3rem", width:"260px", display:"flex", flexDirection:"column", gap:"0.55rem", boxShadow:"0 0 40px rgba(0,0,0,0.8)" }}>
+            <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
+            <button className="cb" onClick={()=>setMenuOpen(false)} style={menuBtn}>Resume</button>
+            <button className="cb" onClick={menuSave} style={menuBtn}>Save game</button>
+            {hasSave && <button className="cb" onClick={menuLoad} style={menuBtn}>Load last save</button>}
+            <button className="cb" onClick={menuSaveExit} style={menuBtn}>Save &amp; exit to title</button>
+            <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>{menuMsg}</div>
+          </div>
         </div>
       )}
     </div>
