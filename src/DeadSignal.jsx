@@ -529,6 +529,24 @@ const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{
 // hide the FRAGMENTS/CLUES word labels so the HUD stays on one line (icon + count remain).
 const RESPONSIVE_CSS = "@media (max-width:480px){.statlabel{display:none}}";
 
+// Diagnostic overlay — only renders when the URL has ?debug. Shows the live audio-context
+// state so iOS audio interruptions can be diagnosed without a Mac/remote inspector.
+const AudioDebug = () => {
+  const [s, setS] = useState(null);
+  useEffect(() => {
+    if (typeof location === "undefined" || !/[?&]debug/.test(location.search)) return;
+    const id = setInterval(() => setS(audioEngine.status()), 400);
+    return () => clearInterval(id);
+  }, []);
+  if (!s) return null;
+  return (
+    <div style={{ position:"fixed", top:0, left:0, zIndex:9999, background:"#000", color:"#0f0",
+      fontFamily:"monospace", fontSize:"11px", padding:"3px 6px", letterSpacing:"0.02em", pointerEvents:"none" }}>
+      aud:{s.state} · unlocked:{s.unlocked?1:0} · nodes:{s.hasNodes?1:0} · rebuilds:{s.rebuilds} · muted:{s.muted?1:0}
+    </div>
+  );
+};
+
 // Sleek iOS-style signal strength: 4 rounded ascending bars. `level` is the game's
 // signalLevel (1–5), mapped to 1–4 lit bars. `flicker` drives the unstable animation.
 // (Relies on the sigflicker/sigpulse keyframes defined in the chat screen's <style>.)
@@ -1983,6 +2001,7 @@ export default function DeadSignal() {
   return (
     <div style={{ background:"#070707", height:"100dvh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}${RESPONSIVE_CSS}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
+      <AudioDebug />
 
       {/* Top utility bar: DEAD SIGNAL far left · menu button centered · fragments/battery right */}
       <div style={{ display:"flex", flexWrap:"nowrap", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", padding:"calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem", flexShrink:0 }}>

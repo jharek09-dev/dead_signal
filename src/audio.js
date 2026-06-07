@@ -57,10 +57,12 @@ function build() {
 // can start. Debounced because a single tap fires both pointerdown and touchend, and a double
 // rebuild can clobber the first one mid-resume.
 let lastRebuild = 0;
+let rebuildCount = 0;
 function rebuildContext() {
   const now = Date.now();
   if (now - lastRebuild < 800) return; // one rebuild per gesture
   lastRebuild = now;
+  rebuildCount++;
   const old = Tone.getContext();
   nodes = null;
   const ctx = new Tone.Context();
@@ -97,6 +99,13 @@ const audioEngine = {
   },
 
   isUnlocked() { return unlocked; },
+
+  // Diagnostic snapshot for the on-screen ?debug overlay.
+  status() {
+    let state = "n/a";
+    try { state = Tone.getContext().state; } catch (e) {}
+    return { unlocked, muted, state, hasNodes: !!nodes, rebuilds: rebuildCount };
+  },
 
   setMuted(m) {
     muted = !!m;
