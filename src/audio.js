@@ -51,10 +51,16 @@ function build() {
   nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve };
 }
 
-// iOS can leave the AudioContext permanently "interrupted" (e.g. after another app such as
-// Messages plays a sound) — resume() never recovers it; the context must be recreated and the
-// node graph rebuilt. Only safe inside a user gesture so the fresh context can start.
+// iOS can leave the AudioContext permanently "interrupted"/"suspended" (e.g. after another
+// app such as Messages plays a sound) — resume() never recovers it; the context must be
+// recreated and the node graph rebuilt. Only safe inside a user gesture so the fresh context
+// can start. Debounced because a single tap fires both pointerdown and touchend, and a double
+// rebuild can clobber the first one mid-resume.
+let lastRebuild = 0;
 function rebuildContext() {
+  const now = Date.now();
+  if (now - lastRebuild < 800) return; // one rebuild per gesture
+  lastRebuild = now;
   const old = Tone.getContext();
   nodes = null;
   const ctx = new Tone.Context();
@@ -106,12 +112,12 @@ const audioEngine = {
     if (!unlocked) return;
     try {
       const ctx = Tone.getContext();
-      const st = ctx.state;
-      if (st === "running") return;
-      if (st === "suspended") { try { if (typeof ctx.resume === "function") ctx.resume(); } catch (e) {} return; }
-      // "interrupted" / "closed": resume() won't help — recreate, but only within a gesture
-      // (autoplay policy), otherwise the new context can't start either.
-      if (fromGesture) { try { rebuildContext(); } catch (e) {} }
+      if (ctx.state === "running") return;
+      // On a real user tap, recreate the context whenever it isn't running — iOS reports a
+      // dead context as either "interrupted" OR "suspended" and resume() won't revive it.
+      if (fromGesture) { try { rebuildContext(); } catch (e) {} return; }
+      // Passive (focus / visibility, no gesture): best-effort light resume for a plain suspend.
+      if (ctx.state === "suspended" && typeof ctx.resume === "function") { try { ctx.resume(); } catch (e) {} }
     } catch (e) {}
   },
 
