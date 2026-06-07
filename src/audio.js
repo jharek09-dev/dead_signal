@@ -51,6 +51,20 @@ function build() {
   nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve };
 }
 
+// iOS can leave the AudioContext permanently "interrupted" (e.g. after another app such as
+// Messages plays a sound) — resume() never recovers it; the context must be recreated and the
+// node graph rebuilt. Only safe inside a user gesture so the fresh context can start.
+function rebuildContext() {
+  const old = Tone.getContext();
+  nodes = null;
+  const ctx = new Tone.Context();
+  Tone.setContext(ctx);
+  build(); // recreate master/limiter/reverb/synths on the new context
+  nodes.master.gain.value = muted ? 0 : Tone.dbToGain(MASTER_DB);
+  try { if (typeof ctx.resume === "function") ctx.resume(); } catch (e) {}
+  try { old.dispose(); } catch (e) {} // close the dead context so iOS doesn't run out
+}
+
 const audioEngine = {
   async unlock() {
     if (unlocked) return;
@@ -84,13 +98,20 @@ const audioEngine = {
     nodes.master.gain.rampTo(muted ? 0 : Tone.dbToGain(MASTER_DB), 0.12);
   },
 
-  // iOS suspends/interrupts the AudioContext when the page is backgrounded and does
-  // not auto-resume. Call this on return-to-foreground / next gesture. Safe to spam.
-  resume() {
+  // iOS suspends/interrupts the AudioContext when the page is backgrounded and does not
+  // auto-resume. Call on return-to-foreground (fromGesture=false → light resume attempt) and
+  // on the next tap (fromGesture=true → recreate the context if it's stuck "interrupted").
+  // Safe to spam; no-op when already running.
+  resume(fromGesture) {
     if (!unlocked) return;
     try {
-      const c = Tone.getContext();
-      if (c.state !== "running" && typeof c.resume === "function") c.resume();
+      const ctx = Tone.getContext();
+      const st = ctx.state;
+      if (st === "running") return;
+      if (st === "suspended") { try { if (typeof ctx.resume === "function") ctx.resume(); } catch (e) {} return; }
+      // "interrupted" / "closed": resume() won't help — recreate, but only within a gesture
+      // (autoplay policy), otherwise the new context can't start either.
+      if (fromGesture) { try { rebuildContext(); } catch (e) {} }
     } catch (e) {}
   },
 

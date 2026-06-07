@@ -845,19 +845,20 @@ export default function DeadSignal() {
   // backgrounded and won't auto-resume — so resume on return-to-foreground and on the next
   // gesture (resume() no-ops when already running, so this is effectively free).
   useEffect(() => {
-    const resume = () => audioEngine.resume();
-    const onVis  = () => { if (document.visibilityState === "visible") audioEngine.resume(); };
+    const soft = () => audioEngine.resume(false);             // visibility/focus: light resume
+    const hard = () => audioEngine.resume(true);              // real tap: may recreate the context
+    const onVis = () => { if (document.visibilityState === "visible") audioEngine.resume(false); };
     document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("pageshow", resume);
-    window.addEventListener("focus", resume);
-    window.addEventListener("pointerdown", resume, { passive: true });
-    window.addEventListener("touchend", resume, { passive: true });
+    window.addEventListener("pageshow", soft);
+    window.addEventListener("focus", soft);
+    window.addEventListener("pointerdown", hard, { passive: true });
+    window.addEventListener("touchend", hard, { passive: true });
     return () => {
       document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("pageshow", resume);
-      window.removeEventListener("focus", resume);
-      window.removeEventListener("pointerdown", resume);
-      window.removeEventListener("touchend", resume);
+      window.removeEventListener("pageshow", soft);
+      window.removeEventListener("focus", soft);
+      window.removeEventListener("pointerdown", hard);
+      window.removeEventListener("touchend", hard);
     };
   }, []);
 
