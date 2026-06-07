@@ -84,6 +84,16 @@ const audioEngine = {
     nodes.master.gain.rampTo(muted ? 0 : Tone.dbToGain(MASTER_DB), 0.12);
   },
 
+  // iOS suspends/interrupts the AudioContext when the page is backgrounded and does
+  // not auto-resume. Call this on return-to-foreground / next gesture. Safe to spam.
+  resume() {
+    if (!unlocked) return;
+    try {
+      const c = Tone.getContext();
+      if (c.state !== "running" && typeof c.resume === "function") c.resume();
+    } catch (e) {}
+  },
+
   // ── One-shots ──────────────────────────────────────────────────────────────
   tapResponse() { if (unlocked && !muted) try { nodes.tapResp.triggerAttackRelease("C5", 0.10); } catch (e) {} },
   tapMenu()     { if (unlocked && !muted) try { nodes.tapMenu.triggerAttackRelease("A5", 0.12); } catch (e) {} },

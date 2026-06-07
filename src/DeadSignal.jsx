@@ -841,6 +841,26 @@ export default function DeadSignal() {
     return remove;
   }, []);
 
+  // Keep audio alive across app-switching. iOS suspends the AudioContext when the page is
+  // backgrounded and won't auto-resume — so resume on return-to-foreground and on the next
+  // gesture (resume() no-ops when already running, so this is effectively free).
+  useEffect(() => {
+    const resume = () => audioEngine.resume();
+    const onVis  = () => { if (document.visibilityState === "visible") audioEngine.resume(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pageshow", resume);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pointerdown", resume, { passive: true });
+    window.addEventListener("touchend", resume, { passive: true });
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pageshow", resume);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("touchend", resume);
+    };
+  }, []);
+
   // Terminal-screen audio (once unlocked). Only completion has a sound.
   useEffect(() => {
     if (audioReady && screen === "phase2_complete") audioEngine.terminal("complete");
