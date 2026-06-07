@@ -59,6 +59,16 @@ const audioEngine = {
       // page opts into the "playback" audio session. Feature-detected → no-op elsewhere.
       try { if (typeof navigator !== "undefined" && navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
       await Tone.start();
+      // iOS is finicky: confirm the context actually resumed; retry resume if not.
+      let state;
+      try {
+        const c = Tone.getContext();
+        state = c.state;
+        if (state !== "running" && typeof c.resume === "function") { await c.resume(); state = c.state; }
+      } catch (e) { state = undefined; }
+      // If the context is readable AND still not running, bail WITHOUT marking unlocked
+      // so the next user gesture (touchend/click) retries. If unreadable, proceed.
+      if (state && state !== "running") return;
       build();
       unlocked = true;
       // Apply whatever mute state was restored before the first gesture.

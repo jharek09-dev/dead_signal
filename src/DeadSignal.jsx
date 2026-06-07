@@ -823,17 +823,22 @@ export default function DeadSignal() {
   }, []);
 
   // Unlock the audio context on the first user gesture (browser autoplay policy).
+  // iOS Safari only grants audio activation on touchend/click (not pointerdown), and may
+  // not resume on the first try — so listen broadly and keep retrying until the context is
+  // actually running (audioEngine.unlock only reports success when it is).
   useEffect(() => {
+    const events = ["touchend", "click", "keydown", "pointerdown"];
+    const remove = () => events.forEach(e => window.removeEventListener(e, onGesture));
     const onGesture = async () => {
-      window.removeEventListener("pointerdown", onGesture);
-      window.removeEventListener("keydown", onGesture);
       await audioEngine.unlock();
-      audioEngine.setMuted(mutedRef.current);
-      setAudioReady(true);
+      if (audioEngine.isUnlocked()) {
+        audioEngine.setMuted(mutedRef.current);
+        setAudioReady(true);
+        remove(); // only stop listening once audio is genuinely unlocked
+      }
     };
-    window.addEventListener("pointerdown", onGesture);
-    window.addEventListener("keydown", onGesture);
-    return () => { window.removeEventListener("pointerdown", onGesture); window.removeEventListener("keydown", onGesture); };
+    events.forEach(e => window.addEventListener(e, onGesture, { passive: true }));
+    return remove;
   }, []);
 
   // Terminal-screen audio (once unlocked). Only completion has a sound.
