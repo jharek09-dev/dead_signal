@@ -12,7 +12,7 @@
 
 import * as Tone from "tone";
 
-const MASTER_DB = -8; // overall headroom; one-shots are mixed well below this
+const MASTER_DB = -4; // overall headroom; one-shots are mixed below this (the -2 limiter catches peaks)
 
 let unlocked = false;
 let muted    = false;
@@ -39,13 +39,13 @@ function build() {
     s.connect(master);
     return s;
   };
-  const tapResp = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.06 } }, -20);
-  const tapMenu = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.002, decay: 0.14, sustain: 0, release: 0.10 } }, -18);
-  const blip    = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.04 } }, -30);
-  const sting   = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.002, decay: 0.18, sustain: 0, release: 0.12 } }, -19);
+  const tapResp = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.06 } }, -15);
+  const tapMenu = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.002, decay: 0.14, sustain: 0, release: 0.10 } }, -14);
+  const blip    = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.04 } }, -24);
+  const sting   = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.002, decay: 0.18, sustain: 0, release: 0.12 } }, -15);
   // Soft chord voice for the "complete" resolve tone.
   const resolve = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "sine" }, envelope: { attack: 0.4, decay: 1.2, sustain: 0.2, release: 3.5 } });
-  resolve.volume.value = -16;
+  resolve.volume.value = -13;
   resolve.connect(reverb); resolve.connect(master);
 
   nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve };
@@ -55,6 +55,9 @@ const audioEngine = {
   async unlock() {
     if (unlocked) return;
     try {
+      // iOS Safari mutes Web Audio with the hardware ring/silent switch unless the
+      // page opts into the "playback" audio session. Feature-detected → no-op elsewhere.
+      try { if (typeof navigator !== "undefined" && navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
       await Tone.start();
       build();
       unlocked = true;
