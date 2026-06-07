@@ -120,7 +120,7 @@ const DISCOVERY_BEATS = {
   },
   route9: {
     from: "narrator",
-    msgs: ["a checkpoint barrier. guard booth empty.", "coffee still on the dash.", "clipboard face-down on the seat."],
+    msgs: ["a checkpoint barrier. guard booth empty.", "a patrol truck stopped at the gate. coffee cold on the dash.", "clipboard face-down on the seat."],
     choices: ["Deployment order. *Personnel reassigned to Project Haven.* Same week I was admitted. [examine deployment order]"],
     onChoice: "DISCOVERY_ROUTE9",
   },
@@ -286,8 +286,8 @@ const ENCOUNTERS = {
       choices:[{text:"Duck under. Keep moving.",action:"SNEAK"},{text:"Go around.",action:"AVOID"},{text:"Read the markers. *What do they say?*",action:"OBSERVE"}] },
   ],
   crossing: [
-    { id:"pharmacy",         msgs:["shuffling inside the pharmacy.","something's in there."],
-      choices:[{text:"Sneak past.",action:"SNEAK"},{text:"Search it. [+Noise]",action:"SEARCH"},{text:"Create a distraction. [-1 Food]",action:"DISTRACT"}] },
+    { id:"pharmacy",         msgs:["something's moving inside the pharmacy.","it hasn't noticed you. yet."],
+      choices:[{text:"Sneak past.",action:"SNEAK"},{text:"Search it. [+Noise]",action:"SEARCH"},{text:"Throw food to lure it off. [-1 Food]",action:"DISTRACT"}] },
     { id:"stray_street",     msgs:["a stray in the street ahead.","it hasn't noticed you yet."],
       choices:[{text:"Wait for it to move.",action:"WAIT"},{text:"Slip past quietly.",action:"SNEAK"},{text:"Push through. [risk]",action:"FORCE"}] },
     { id:"apartment_fire",   msgs:["smoke from an apartment window.","could cover your movement. or draw more."],
@@ -369,6 +369,8 @@ Move at pace — if the player is heading somewhere, they arrive next beat. Do n
 RESOURCES: You never decide resource amounts. When an action would give the player supplies, put an explicit marker inside that choice: [+N Food], [+N Water], or [+N HP] (example: "grab the cans and go [+3 Food]"). The game applies it. If the player's message contains a RESOURCE UPDATE, state those exact numbers. Otherwise never mention specific food, water, battery, or HP counts.
 
 LOOT COHERENCE: Do not invent searchable objects, containers, stashes, or supplies the player cannot act on. Never say an item is "still there" and then move on, and never describe the player finding something they did not just obtain through a choice. Searchable supplies are introduced by the game as explicit search encounters — describe only what the game presents, not loot you imagined.
+
+CONTINUITY: Keep exploration generic — say "a storefront" or "a building," never specific shop types (no "convenience store," "pharmacy," etc.); the game names locations itself. Within a scene, never reference objects (a dash, a seat, a back room) that belong to something you haven't placed. Never contradict the setting described in SITUATION.
 
 Short texts, 1-2 sentences, 20 words max. Lowercase. No em dashes. Periods and commas only.
 
@@ -454,12 +456,21 @@ const GEO_SAFE_LINE = {
   route9:   "you keep moving up the road. stay focused.",
   crossing: "you keep moving through the streets. stay focused.",
 };
+// Once the player has LEFT their starting leg and is crossing the city, the AI must
+// not send them back to it. These prior-leg location words are forbidden only during
+// the crossing section (they're legitimate during the matching path leg).
+const CROSSING_EXTRA_FORBIDDEN = {
+  hospital: ["hospital", "ward", "corridor"],
+  metro:    ["metro", "subway", "tunnel", "platform", "turnstile"],
+  route9:   ["highway", "freeway", "overpass", "on-ramp", "checkpoint"],
+};
 // Forbidden terms for a (path, section). "haven" is only premature during a PATH
 // leg — in the crossing the player is openly heading toward the signal/Haven, so
-// the word can appear legitimately and is not flagged (F2).
+// the word can appear legitimately and is not flagged (F2). During the crossing we
+// instead forbid the player's own prior-leg location words.
 const geoTerms = (path, section) => [
   ...(GEO_FORBIDDEN[path] || []),
-  ...(section === "crossing" ? [] : PREMATURE_TERMS),
+  ...(section === "crossing" ? (CROSSING_EXTRA_FORBIDDEN[path] || []) : PREMATURE_TERMS),
 ];
 // Returns the first offending term found in messages/choices, or null. Only
 // meaningful for path/crossing exploration (callEllie gates on phase).
@@ -1194,7 +1205,13 @@ export default function DeadSignal() {
               metro:    ["you keep moving through the dark.", "then something stops you."],
               route9:   ["the road opens ahead.", "then you see it."],
             };
-            const bridgeTime = scheduleMessages(encBridges[path] || ["you move on.", "then something blocks the way ahead."], null, "narrator");
+            // During the city crossing the player is on open streets, not the original
+            // leg — use a street-level bridge instead of the path's indoor/underground one.
+            const crossingBridge = ["the street narrows ahead.", "then something blocks the way."];
+            const encBridge = gamePhaseRef.current === "p2_ai_cross"
+              ? crossingBridge
+              : (encBridges[path] || ["you move on.", "then something blocks the way ahead."]);
+            const bridgeTime = scheduleMessages(encBridge, null, "narrator");
             pendingRef.current.push(setTimeout(() => {
               setCurrentEncounter(enc);
               returnToPhaseRef.current = gamePhaseRef.current;
@@ -1254,7 +1271,7 @@ export default function DeadSignal() {
         break;
       }
       case "WAIT":    { outcome = "you waited. it passed."; reactionKey = "wait"; break; }
-      case "DISTRACT":{ dFood = curRes.food > 0 ? -1 : 0; outcome = "the distraction worked."; reactionKey = "distract"; dNoise = 1; break; }
+      case "DISTRACT":{ dFood = curRes.food > 0 ? -1 : 0; outcome = "it goes for the food. you slip past."; reactionKey = "distract"; dNoise = 1; break; }
       case "RUN": {
         const ok = Math.random() < (curNoise <= 3 ? 0.75 : 0.48);
         if (ok) { outcome = "you ran. made it."; reactionKey = "run_success"; dNoise = 1; }
@@ -1298,7 +1315,11 @@ export default function DeadSignal() {
       setCurrentEncounter(null);
       lastEventWasEncRef.current = true;
       const system  = buildP2System(path, returnPhase === "p2_ai" ? "path" : "crossing", resourcesRef.current, weaponRef.current, newNoise);
-      const locationStr = path === "hospital" ? "Mercy General Hospital (still inside, heading toward the admin floor)" : path === "metro" ? "the Harwick Metro tunnels (underground, heading north)" : path === "route9" ? "Route 9 highway (moving north)" : "Harwick city streets";
+      // During the crossing the player has left their starting leg — never reground
+      // them back "inside the hospital"/"in the tunnels". Path strings apply only to p2_ai.
+      const locationStr = returnPhase === "p2_ai_cross"
+        ? "the streets of Harwick (crossing the city on foot, moving north)"
+        : path === "hospital" ? "Mercy General Hospital (still inside, heading toward the admin floor)" : path === "metro" ? "the Harwick Metro tunnels (underground, heading north)" : path === "route9" ? "Route 9 highway (moving north)" : "Harwick city streets";
       const history = [...apiHistoryRef.current, { role: "user", content: `[ENCOUNTER RESOLVED] ${outcome} Noise: ${newNoise}/5. HP: ${Math.max(0, curRes.hp + dHp)}/10. Player is in ${locationStr}. Do not reference anything from before this encounter. Do not invent new destinations. Continue forward from here.` }];
       apiHistoryRef.current = history;
       setIsTyping(true);
