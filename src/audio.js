@@ -39,10 +39,10 @@ function build() {
     s.connect(master);
     return s;
   };
-  const tapResp = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.06 } }, -15);
-  const tapMenu = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.002, decay: 0.14, sustain: 0, release: 0.10 } }, -14);
+  const tapResp = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.07 } }, -9);
+  const tapMenu = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.002, decay: 0.15, sustain: 0, release: 0.10 } }, -9);
   const blip    = mk({ oscillator: { type: "sine" },     envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.04 } }, -24);
-  const sting   = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.002, decay: 0.18, sustain: 0, release: 0.12 } }, -15);
+  const sting   = mk({ oscillator: { type: "triangle" }, envelope: { attack: 0.002, decay: 0.18, sustain: 0, release: 0.12 } }, -12);
   // Soft chord voice for the "complete" resolve tone.
   const resolve = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "sine" }, envelope: { attack: 0.4, decay: 1.2, sustain: 0.2, release: 3.5 } });
   resolve.volume.value = -13;
@@ -85,8 +85,8 @@ const audioEngine = {
   },
 
   // ── One-shots ──────────────────────────────────────────────────────────────
-  tapResponse() { if (unlocked && !muted) try { nodes.tapResp.triggerAttackRelease("C3", 0.08); } catch (e) {} },
-  tapMenu()     { if (unlocked && !muted) try { nodes.tapMenu.triggerAttackRelease("G3", 0.12); } catch (e) {} },
+  tapResponse() { if (unlocked && !muted) try { nodes.tapResp.triggerAttackRelease("C5", 0.10); } catch (e) {} },
+  tapMenu()     { if (unlocked && !muted) try { nodes.tapMenu.triggerAttackRelease("A5", 0.12); } catch (e) {} },
   blip()        { if (unlocked && !muted) try { nodes.blip.triggerAttackRelease("E6", 0.04); } catch (e) {} },
   gain() {
     if (!unlocked || muted) return;
@@ -95,7 +95,7 @@ const audioEngine = {
   },
   loss() {
     if (!unlocked || muted) return;
-    try { nodes.sting.triggerAttackRelease("F2", 0.22); } catch (e) {}
+    try { nodes.sting.triggerAttackRelease("C4", 0.22); } catch (e) {}
   },
 
   // ── Terminal-screen audio ────────────────────────────────────────────────
