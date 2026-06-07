@@ -6,9 +6,12 @@ import react from "@vitejs/plugin-react";
 // path (/api/messages) that Vite proxies to api.anthropic.com, injecting the
 // key and required headers server-side. Set VITE_API_URL=/api/messages and
 // ANTHROPIC_API_KEY in your .env to use it (see .env.example).
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+    // GitHub Pages serves the app from /dead_signal/; local dev stays at root so
+    // `npm run dev` and the preview tooling are unaffected.
+    base: command === "build" ? "/dead_signal/" : "/",
     plugins: [react()],
     server: {
       proxy: {

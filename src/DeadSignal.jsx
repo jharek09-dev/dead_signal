@@ -1073,7 +1073,16 @@ export default function DeadSignal() {
     const apiUrl = (typeof window !== "undefined" && window.__DS_API_URL__) || "https://api.anthropic.com/v1/messages";
     try {
       const res  = await fetch(apiUrl, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Direct browser → Anthropic (GitHub Pages build). In local dev the
+          // same-origin /api/messages proxy overwrites these server-side, so the
+          // empty client key is harmless and never needs to live in local .env.
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_KEY || "",
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
         body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1000, system, messages: sentHistory }),
         signal: controller.signal,
       });
