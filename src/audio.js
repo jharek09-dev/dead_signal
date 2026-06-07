@@ -51,35 +51,14 @@ function build() {
   nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve };
 }
 
-// iOS can leave the AudioContext permanently "interrupted"/"suspended" (e.g. after another
-// app such as Messages plays a sound) — resume() never recovers it; the context must be
-// recreated and the node graph rebuilt. Only safe inside a user gesture so the fresh context
-// can start. Debounced because a single tap fires both pointerdown and touchend, and a double
-// rebuild can clobber the first one mid-resume.
-let lastRebuild = 0;
-let rebuildCount = 0;
-function rebuildContext() {
-  const now = Date.now();
-  if (now - lastRebuild < 800) return; // one rebuild per gesture
-  lastRebuild = now;
-  rebuildCount++;
-  const old = Tone.getContext();
-  nodes = null;
-  const ctx = new Tone.Context();
-  Tone.setContext(ctx);
-  build(); // recreate master/limiter/reverb/synths on the new context
-  nodes.master.gain.value = muted ? 0 : Tone.dbToGain(MASTER_DB);
-  try { if (typeof ctx.resume === "function") ctx.resume(); } catch (e) {}
-  try { old.dispose(); } catch (e) {} // close the dead context so iOS doesn't run out
-}
-
 const audioEngine = {
   async unlock() {
     if (unlocked) return;
     try {
-      // iOS Safari mutes Web Audio with the hardware ring/silent switch unless the
-      // page opts into the "playback" audio session. Feature-detected → no-op elsewhere.
-      try { if (typeof navigator !== "undefined" && navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+      // Do NOT set navigator.audioSession.type = "playback": that keeps audio playing while
+      // the tab is backgrounded (it leaks out of the tab and leaves the context in a stuck
+      // state on return). Safari's default session is browser-only — it suspends on
+      // background and resumes on return, which is exactly what we want.
       await Tone.start();
       // iOS is finicky: confirm the context actually resumed; retry resume if not.
       let state;
@@ -104,7 +83,7 @@ const audioEngine = {
   status() {
     let state = "n/a";
     try { state = Tone.getContext().state; } catch (e) {}
-    return { unlocked, muted, state, hasNodes: !!nodes, rebuilds: rebuildCount };
+    return { unlocked, muted, state, hasNodes: !!nodes };
   },
 
   setMuted(m) {
@@ -113,20 +92,13 @@ const audioEngine = {
     nodes.master.gain.rampTo(muted ? 0 : Tone.dbToGain(MASTER_DB), 0.12);
   },
 
-  // iOS suspends/interrupts the AudioContext when the page is backgrounded and does not
-  // auto-resume. Call on return-to-foreground (fromGesture=false → light resume attempt) and
-  // on the next tap (fromGesture=true → recreate the context if it's stuck "interrupted").
-  // Safe to spam; no-op when already running.
-  resume(fromGesture) {
+  // Resume the (single) context after the tab is backgrounded. Called on return-to-foreground
+  // and on the next tap; iOS reliably resumes a plain-suspended context within a user gesture.
+  resume() {
     if (!unlocked) return;
     try {
       const ctx = Tone.getContext();
-      if (ctx.state === "running") return;
-      // On a real user tap, recreate the context whenever it isn't running — iOS reports a
-      // dead context as either "interrupted" OR "suspended" and resume() won't revive it.
-      if (fromGesture) { try { rebuildContext(); } catch (e) {} return; }
-      // Passive (focus / visibility, no gesture): best-effort light resume for a plain suspend.
-      if (ctx.state === "suspended" && typeof ctx.resume === "function") { try { ctx.resume(); } catch (e) {} }
+      if (ctx.state !== "running" && typeof ctx.resume === "function") ctx.resume();
     } catch (e) {}
   },
 

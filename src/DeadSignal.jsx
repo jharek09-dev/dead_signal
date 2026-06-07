@@ -542,7 +542,7 @@ const AudioDebug = () => {
   return (
     <div style={{ position:"fixed", top:0, left:0, zIndex:9999, background:"#000", color:"#0f0",
       fontFamily:"monospace", fontSize:"11px", padding:"3px 6px", letterSpacing:"0.02em", pointerEvents:"none" }}>
-      aud:{s.state} · unlocked:{s.unlocked?1:0} · nodes:{s.hasNodes?1:0} · rebuilds:{s.rebuilds} · muted:{s.muted?1:0}
+      aud:{s.state} · unlocked:{s.unlocked?1:0} · nodes:{s.hasNodes?1:0} · muted:{s.muted?1:0}
     </div>
   );
 };
@@ -863,20 +863,19 @@ export default function DeadSignal() {
   // backgrounded and won't auto-resume — so resume on return-to-foreground and on the next
   // gesture (resume() no-ops when already running, so this is effectively free).
   useEffect(() => {
-    const soft = () => audioEngine.resume(false);             // visibility/focus: light resume
-    const hard = () => audioEngine.resume(true);              // real tap: may recreate the context
-    const onVis = () => { if (document.visibilityState === "visible") audioEngine.resume(false); };
+    const resume = () => audioEngine.resume();
+    const onVis = () => { if (document.visibilityState === "visible") audioEngine.resume(); };
     document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("pageshow", soft);
-    window.addEventListener("focus", soft);
-    window.addEventListener("pointerdown", hard, { passive: true });
-    window.addEventListener("touchend", hard, { passive: true });
+    window.addEventListener("pageshow", resume);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pointerdown", resume, { passive: true });
+    window.addEventListener("touchend", resume, { passive: true });
     return () => {
       document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("pageshow", soft);
-      window.removeEventListener("focus", soft);
-      window.removeEventListener("pointerdown", hard);
-      window.removeEventListener("touchend", hard);
+      window.removeEventListener("pageshow", resume);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("touchend", resume);
     };
   }, []);
 
