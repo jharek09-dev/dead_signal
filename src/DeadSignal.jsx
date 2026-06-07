@@ -641,8 +641,10 @@ export default function DeadSignal() {
   const [menuOpen, setMenuOpen]         = useState(false); // pause / save-load-exit menu
   const [menuMsg, setMenuMsg]           = useState("");    // transient confirmation in the menu
   const [menuNote, setMenuNote]         = useState("");    // transient note on the main menu (e.g. Story teaser)
-  const [confirmReset, setConfirmReset] = useState(false); // two-tap confirm for the pause-menu wipe
+  const [confirmReset, setConfirmReset] = useState(false); // two-tap confirm for the pause-menu "reset this run"
+  const [optConfirm, setOptConfirm]     = useState(false); // two-tap confirm for Options "reset all data"
   const [showRestart, setShowRestart]   = useState(false);
+  const [winProfile, setWinProfile]     = useState(null); // post-finish profile summary for the win screen
   const [lastMessage, setLastMessage]   = useState("");
   const [messages, setMessages]         = useState([]);
   const [choices, setChoices]           = useState([]);
@@ -694,6 +696,8 @@ export default function DeadSignal() {
   const seenBeatsRef        = useRef(new Set()); // exploration beats shown this run (prefer unseen)
   const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
+  const activeProfileRef    = useRef(null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
+  const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
 
   resourcesRef.current      = resources;
@@ -744,13 +748,21 @@ export default function DeadSignal() {
   const snapshotDay = () =>
     (dayThree || gamePhase.startsWith("haven")) ? 3
     : (gamePhase.startsWith("p2") || gamePhase === "encounter" || gamePhase === "shelter" || exchangePhase >= 10) ? 2 : 1;
-  const buildSnapshot = () => ({
+  // ─── Per-slot progression model (schema v2) ────────────────────────────────────
+  // A slot holds a persistent PROFILE (playthroughs + collected fragments/clues) plus
+  // an optional in-progress RUN snapshot. Finishing a run merges its collection into the
+  // profile and clears the run (back to the beginning). 100% = all 9 fragments + 3 clues.
+  const emptyProfile = () => ({ playthroughs: 0, fragments: [], clues: [], complete: false });
+  const profileComplete = (p) => (p?.fragments?.length || 0) >= 9 && (p?.clues?.length || 0) >= 3;
+  // The resumable mid-run snapshot (the old v1 body) — now also carries this run's memories.
+  const buildRunSnapshot = () => ({
     v: 1, idCounter: idRef.current,
     messages, choices, lastMessage,
     resources, weapon, noise, contactName,
     gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
     aiExchangeCount, aiExchangeTarget, fragFired,
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
+    recoveredMemories, // this run's cumulative collection (profile + new this run)
     pendingStoryBeat: pendingStoryBeatRef.current,
     returnToPhase: returnToPhaseRef.current,
     lastEncounterId: lastEncounterIdRef.current,
@@ -758,22 +770,48 @@ export default function DeadSignal() {
     seenEncounters: [...seenEncountersRef.current],
     shelterForced: shelterForcedRef.current,
     lastEventWasEnc: lastEventWasEncRef.current,
-    // P4 — lightweight summary so the slot screen renders without restoring the run.
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
-  // A snapshot is resumable only if it's a real-progress run with a sane schema.
-  const validSnap = (s) => !!s && s.v === 1 && s.gamePhase && s.gamePhase !== "phase1"
-    && s.resources && typeof s.resources.battery === "number";
-  // Read every slot's meta (or null) for the slot screen; clean up invalid saves.
+  // The full per-slot record written to storage.
+  const buildSlotData = (profile, run) => ({ v: 2, profile: profile || emptyProfile(), run: run || null });
+  // A run body is resumable only if it's real progress with a sane schema.
+  const validRun = (r) => !!r && r.gamePhase && r.gamePhase !== "phase1" && r.resources && typeof r.resources.battery === "number";
+  // Normalize any stored value → { profile, run } (or null). Handles legacy v1 saves.
+  const normalizeSlot = (raw) => {
+    if (!raw) return null;
+    if (raw.v === 2) {
+      const profile = (raw.profile && typeof raw.profile === "object") ? raw.profile : emptyProfile();
+      const run = validRun(raw.run) ? raw.run : null;
+      const hasProgress = (profile.playthroughs || 0) > 0 || (profile.fragments?.length || 0) > 0 || (profile.clues?.length || 0) > 0;
+      if (!run && !hasProgress) return null;
+      return { profile, run };
+    }
+    if (raw.v === 1) { // legacy bare snapshot → migrate to a run with an empty profile
+      if (!validRun(raw)) return null;
+      return { profile: emptyProfile(), run: raw };
+    }
+    return null;
+  };
+  // Read every slot's display summary (or null) for the slot screen; clean up junk.
   const refreshSlots = async () => {
     const next = [];
     for (let i = 0; i < SLOT_COUNT; i++) {
-      let snap;
-      try { const r = await window.storage.get(slotKey(i)); if (r?.value) snap = JSON.parse(r.value); } catch (e) {}
-      if (validSnap(snap)) {
-        next.push(snap.meta || { day: 2, location: "—", hp: snap.resources.hp, battery: snap.resources.battery, savedAt: 0 });
+      let raw;
+      try { const r = await window.storage.get(slotKey(i)); if (r?.value) raw = JSON.parse(r.value); } catch (e) {}
+      const slot = normalizeSlot(raw);
+      if (slot) {
+        const p = slot.profile;
+        const rmeta = slot.run ? (slot.run.meta || { day: 2, location: "—", hp: slot.run.resources?.hp, battery: slot.run.resources?.battery }) : null;
+        next.push({
+          playthroughs: p.playthroughs || 0,
+          frags: p.fragments?.length || 0,
+          clues: p.clues?.length || 0,
+          complete: !!p.complete || profileComplete(p),
+          hasRun: !!slot.run,
+          ...(rmeta ? { day: rmeta.day, location: rmeta.location, hp: rmeta.hp, battery: rmeta.battery } : {}),
+        });
       } else {
-        if (snap) { try { await window.storage.delete(slotKey(i)); } catch (e) {} } // drop a malformed save
+        if (raw) { try { await window.storage.delete(slotKey(i)); } catch (e) {} }
         next.push(null);
       }
     }
@@ -784,48 +822,56 @@ export default function DeadSignal() {
     if (gamePhaseRef.current === "phase1") return false;
     const i = activeSlotRef.current;
     if (i == null) return false; // no slot claimed for this run
-    try { await window.storage.set(slotKey(i), JSON.stringify(buildSnapshot())); await refreshSlots(); return true; } catch (e) { return false; }
+    const profile = activeProfileRef.current || emptyProfile();
+    try { await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, buildRunSnapshot()))); await refreshSlots(); return true; } catch (e) { return false; }
   };
   const deleteSlot = async (i) => {
     if (i == null) return;
     try { await window.storage.delete(slotKey(i)); } catch (e) {}
-    if (activeSlotRef.current === i) activeSlotRef.current = null;
+    if (activeSlotRef.current === i) { activeSlotRef.current = null; activeProfileRef.current = null; }
     await refreshSlots();
   };
+  // Seed the HUD memory list from a committed profile (used when starting a playthrough).
+  const memsFromProfile = (p) => [
+    ...((p?.fragments) || []).map(name => ({ name, type: "fragment" })),
+    ...((p?.clues) || []).map(name => ({ name, type: "discovery" })),
+  ];
   const resumeSlot = async (i) => {
-    let snap;
-    try { const r = await window.storage.get(slotKey(i)); if (r?.value) snap = JSON.parse(r.value); } catch (e) {}
-    if (!snap) return;
-    // F1 — refuse a malformed / wrong-schema snapshot instead of crashing on it.
-    if (!validSnap(snap)) {
-      console.warn("[DeadSignal] ignoring incompatible save");
-      deleteSlot(i);
+    let raw;
+    try { const r = await window.storage.get(slotKey(i)); if (r?.value) raw = JSON.parse(r.value); } catch (e) {}
+    const slot = normalizeSlot(raw);
+    if (!slot || !slot.run) { // nothing resumable
+      if (raw && !slot) { console.warn("[DeadSignal] ignoring incompatible save"); deleteSlot(i); }
       return;
     }
+    const run = slot.run;
     activeSlotRef.current = i; // this run now auto-saves back to slot i
+    activeProfileRef.current = slot.profile || emptyProfile();
     clearPending();
     // refs (not mirrored from state)
-    idRef.current             = snap.idCounter || 0;
-    pendingStoryBeatRef.current = snap.pendingStoryBeat || null;
-    returnToPhaseRef.current  = snap.returnToPhase || "p2_ai";
-    lastEncounterIdRef.current = snap.lastEncounterId || null;
-    havenFinalRef.current     = snap.havenFinal || HAVEN_FINAL_SEQUENCE;
-    seenEncountersRef.current = new Set(snap.seenEncounters || []);
+    idRef.current             = run.idCounter || 0;
+    pendingStoryBeatRef.current = run.pendingStoryBeat || null;
+    returnToPhaseRef.current  = run.returnToPhase || "p2_ai";
+    lastEncounterIdRef.current = run.lastEncounterId || null;
+    havenFinalRef.current     = run.havenFinal || HAVEN_FINAL_SEQUENCE;
+    seenEncountersRef.current = new Set(run.seenEncounters || []);
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
-    shelterForcedRef.current  = !!snap.shelterForced;
-    lastEventWasEncRef.current = !!snap.lastEventWasEnc;
+    shelterForcedRef.current  = !!run.shelterForced;
+    lastEventWasEncRef.current = !!run.lastEventWasEnc;
     chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
     // state
-    setMessages(snap.messages || []); setChoices(snap.choices || []); setLastMessage(snap.lastMessage || "");
-    setResources(snap.resources); setWeapon(snap.weapon || null); setNoise(snap.noise || 0);
-    setContactName(snap.contactName || "KIM");
-    setGamePhase(snap.gamePhase || "phase1"); setChosenPath(snap.chosenPath || null);
-    setCurrentPath(snap.currentPath || null); setExchangePhase(snap.exchangePhase || 0);
-    setP2BeatIndex(snap.p2BeatIndex || 0); setAiExchangeCount(snap.aiExchangeCount || 0);
-    setAiExchangeTarget(snap.aiExchangeTarget || 7);
-    setFragFired(!!snap.fragFired); setCurrentEncounter(snap.currentEncounter || null);
-    setSelectedFragment(snap.selectedFragment || null); setDayThree(!!snap.dayThree);
-    setHavenFinalIndex(snap.havenFinalIndex || 0);
+    setMessages(run.messages || []); setChoices(run.choices || []); setLastMessage(run.lastMessage || "");
+    setResources(run.resources); setWeapon(run.weapon || null); setNoise(run.noise || 0);
+    setContactName(run.contactName || "KIM");
+    setGamePhase(run.gamePhase || "phase1"); setChosenPath(run.chosenPath || null);
+    setCurrentPath(run.currentPath || null); setExchangePhase(run.exchangePhase || 0);
+    setP2BeatIndex(run.p2BeatIndex || 0); setAiExchangeCount(run.aiExchangeCount || 0);
+    setAiExchangeTarget(run.aiExchangeTarget || 7);
+    setFragFired(!!run.fragFired); setCurrentEncounter(run.currentEncounter || null);
+    setSelectedFragment(run.selectedFragment || null); setDayThree(!!run.dayThree);
+    setHavenFinalIndex(run.havenFinalIndex || 0);
+    // memories: prefer the run's own cumulative set; else committed profile; else legacy global
+    setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
     setScreen("chat");
   };
@@ -920,25 +966,17 @@ export default function DeadSignal() {
     return () => ids.forEach(clearTimeout); // C2 — cancel on screen change/unmount
   }, [screen]);
 
-  // Load persisted memories on mount
+  // One-time migration read: fragments/clues are now tracked PER SLOT (in each slot's
+  // profile), persisted via saveRun. The legacy global `ds_memories` is read once here
+  // only to seed a resumed legacy (v1) save so its collection isn't lost.
   useEffect(() => {
-    const load = async () => {
+    (async () => {
       try {
-        const result = await window.storage.get("ds_memories");
-        if (result?.value) setRecoveredMemories(JSON.parse(result.value));
-      } catch(e) {}
-    };
-    load();
+        const r = await window.storage.get("ds_memories");
+        if (r?.value) legacyMemoriesRef.current = JSON.parse(r.value);
+      } catch (e) {}
+    })();
   }, []);
-
-  // Save memories whenever they change
-  useEffect(() => {
-    if (recoveredMemories.length === 0) return;
-    const save = async () => {
-      try { await window.storage.set("ds_memories", JSON.stringify(recoveredMemories)); } catch(e) {}
-    };
-    save();
-  }, [recoveredMemories]);
 
   useEffect(() => {
     if (screen !== "chat" || chatStartedRef.current) return;
@@ -995,7 +1033,8 @@ export default function DeadSignal() {
         if (legacy?.value) {
           const snap = JSON.parse(legacy.value);
           const slot0 = await window.storage.get(slotKey(0));
-          if (validSnap(snap) && !slot0?.value) {
+          if (validRun(snap) && !slot0?.value) {
+            // Leave it as a bare v1 body — normalizeSlot() migrates it (→ empty profile + run) on read.
             if (!snap.meta) snap.meta = { day: 2, location: "—", hp: snap.resources.hp, battery: snap.resources.battery, savedAt: 0 };
             await window.storage.set(slotKey(0), JSON.stringify(snap));
           }
@@ -1011,17 +1050,35 @@ export default function DeadSignal() {
     if (screen === "chat" && choices.length > 0 && !isTyping) saveRun();
   }, [screen, choices, isTyping]);
 
-  // Terminal screens aren't resumable: always clear the run save. Failure
-  // (death / battery-offline) is a full clean slate — also wipe fragments/clues,
-  // so even a reload on the screen starts fresh. Finishing keeps memories (the
-  // buttons there decide).
+  // Terminal screens resolve the active slot's profile (the per-slot progression).
+  //  • death / offline → discard the in-progress run, KEEP the accumulated profile
+  //    (a single failure no longer erases fragments earned in earlier playthroughs).
+  //  • win → merge this run's collection into the profile, bump playthroughs, clear the
+  //    run (back to the beginning), and keep the slot (it locks at 100%).
   useEffect(() => {
+    const i = activeSlotRef.current;
     if (screen === "dead" || screen === "offline") {
-      deleteSlot(activeSlotRef.current);
+      const profile = activeProfileRef.current || emptyProfile();
+      const hasProgress = (profile.playthroughs || 0) > 0 || profile.fragments.length || profile.clues.length;
+      (async () => {
+        try {
+          if (i != null && hasProgress) await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, null)));
+          else if (i != null) await window.storage.delete(slotKey(i)); // nothing committed yet → empty
+        } catch (e) {}
+        await refreshSlots();
+      })();
       setRecoveredMemories([]);
-      (async () => { try { await window.storage.delete("ds_memories"); } catch (e) {} })();
     } else if (screen === "phase2_complete") {
-      deleteSlot(activeSlotRef.current);
+      const prev = activeProfileRef.current || emptyProfile();
+      const fragments = [...new Set([...(prev.fragments || []), ...recoveredMemories.filter(m => m.type === "fragment").map(m => m.name)])];
+      const clues     = [...new Set([...(prev.clues     || []), ...recoveredMemories.filter(m => m.type === "discovery").map(m => m.name)])];
+      const profile = { playthroughs: (prev.playthroughs || 0) + 1, fragments, clues, complete: fragments.length >= 9 && clues.length >= 3 };
+      activeProfileRef.current = profile;
+      setWinProfile({ playthroughs: profile.playthroughs, frags: fragments.length, clues: clues.length, complete: profile.complete });
+      (async () => {
+        try { if (i != null) await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, null))); } catch (e) {}
+        await refreshSlots();
+      })();
     }
   }, [screen]);
 
@@ -1819,28 +1876,38 @@ export default function DeadSignal() {
     </button>
   );
 
+  // Return to the title (terminal screens already resolved the slot's profile).
   const handleRestart = () => {
     resetRunState();
-    deleteSlot(activeSlotRef.current); // P4 — abandon the just-finished run's slot
     setScreen("menu");
   };
 
-  // P4 — start a fresh run in slot i, clearing any prior occupant first.
-  const beginRunInSlot = async (i) => {
-    await deleteSlot(i);
+  // Start a playthrough in slot i. `fresh` wipes the slot's profile (new/empty slot or a
+  // 100% Reset); otherwise the existing profile is preserved (play again / keep collecting).
+  const beginRun = async (i, { fresh } = {}) => {
+    let profile = emptyProfile();
+    if (fresh) {
+      try { await window.storage.delete(slotKey(i)); } catch (e) {}
+    } else {
+      try { const r = await window.storage.get(slotKey(i)); if (r?.value) { const s = normalizeSlot(JSON.parse(r.value)); if (s) profile = s.profile || emptyProfile(); } } catch (e) {}
+    }
     resetRunState();
-    activeSlotRef.current = i; // this run auto-saves into slot i
+    activeSlotRef.current = i;       // this run auto-saves into slot i
+    activeProfileRef.current = profile;
+    setRecoveredMemories(memsFromProfile(profile)); // HUD starts from committed progress
     setSlotConfirm(null);
     setScreen("intro");
   };
 
+  // Options → "reset all data": the ONLY full wipe. Clears every slot + legacy globals.
   const handleFullReset = async () => {
     for (let i = 0; i < SLOT_COUNT; i++) { try { await window.storage.delete(slotKey(i)); } catch(e) {} }
-    activeSlotRef.current = null;
+    activeSlotRef.current = null; activeProfileRef.current = null; legacyMemoriesRef.current = null;
     try { await window.storage.delete("ds_memories"); } catch(e) {}
     setRecoveredMemories([]);
     resetRunState();
     await refreshSlots();
+    setOptConfirm(false);
     setScreen("menu");
   };
 
@@ -1874,7 +1941,6 @@ export default function DeadSignal() {
   const flashAnim  = "flash 0.9s ease infinite";
   const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
   const hasAnySave = slots.some(Boolean); // P4 — at least one occupied slot
-  const allFull    = slots.every(Boolean); // P4 — every slot occupied (overwrite needed for a new run)
 
   if (screen === "intro") return (
     <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
@@ -1915,12 +1981,39 @@ export default function DeadSignal() {
           style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;STORY
         </button>
+        <button className="rb" onClick={withMenuSound(()=>{ setMenuNote(""); setOptConfirm(false); setScreen("options"); })}
+          style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          ▸&nbsp;&nbsp;OPTIONS
+        </button>
         <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#505050", fontSize:"0.58rem", letterSpacing:"0.14em", marginTop:"0.3rem" }}>{menuNote}</div>
       </div>
     </div>
   );
 
-  // ─── Slot screen — 3-save picker. START picks/overwrites a slot; LOAD resumes one.
+  // ─── Options — settings hub. Today: the only full "reset all data" lives here. ──────
+  if (screen === "options") return (
+    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.dz:hover{border-color:#7a2424!important;color:#ff8a8a!important}`}</style>
+      {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
+      <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>OPTIONS</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(300px, 100%)" }}>
+        <div style={{ border:"1px solid #3a1414", padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.55rem", animation:"fi 0.8s ease forwards" }}>
+          <span style={{ color:"#8b3030", fontSize:"0.58rem", letterSpacing:"0.18em" }}>DANGER ZONE</span>
+          <span style={{ color:"#7a6a6a", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Erases all three save slots and every collected fragment and clue. This cannot be undone.</span>
+          <button className="dz" onClick={withMenuSound(()=>{ if (optConfirm) handleFullReset(); else setOptConfirm(true); })}
+            style={{ background:"transparent", border:`1px solid ${optConfirm ? "#7a2424" : "#5a2020"}`, color: optConfirm ? "#ff8a8a" : "#c85050", padding:"0.6rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
+            {optConfirm ? "⚠ TAP AGAIN — ERASE EVERYTHING" : "RESET ALL DATA"}
+          </button>
+        </div>
+        <button className="rb" onClick={withMenuSound(()=>{ setOptConfirm(false); setScreen("menu"); })}
+          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          ◂ BACK
+        </button>
+      </div>
+    </div>
+  );
+
+  // ─── Slot screen — 3 save profiles. Each tracks playthroughs + fragments/clues.
   if (screen === "slots") return (
     <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.del:hover{border-color:#5a2020!important;color:#e08a8a!important}`}</style>
@@ -1931,41 +2024,59 @@ export default function DeadSignal() {
       <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(340px, 100%)" }}>
         {slots.map((m, i) => {
           const occupied   = !!m;
+          const complete   = occupied && m.complete;
+          const inProgress = occupied && m.hasRun && !complete;
+          const between    = occupied && !m.hasRun && !complete; // finished ≥1 run, not 100%
           const delPending = slotConfirm && slotConfirm.index === i && slotConfirm.action === "delete";
-          const ovrPending = slotConfirm && slotConfirm.index === i && slotConfirm.action === "overwrite";
+          const resPending = slotConfirm && slotConfirm.index === i && slotConfirm.action === "reset";
+          const progress = occupied && (
+            <div style={{ display:"flex", gap:"1rem", fontSize:"0.58rem", letterSpacing:"0.06em", color:"#6a6a6a" }}>
+              <span>▷ {m.playthroughs} {m.playthroughs === 1 ? "run" : "runs"}</span>
+              <span style={{ color: m.frags > 0 ? "#4a9e6b" : "#3a5a44" }}>◈ {m.frags}/9</span>
+              <span style={{ color: m.clues > 0 ? "#4ab5c8" : "#2d4a52" }}>◉ {m.clues}/3</span>
+            </div>
+          );
           return (
-            <div key={i} style={{ border:"1px solid #1c1c1c", padding:"0.7rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.5rem", animation:"fi 0.8s ease forwards" }}>
+            <div key={i} style={{ border:`1px solid ${complete ? "#2a4a32" : "#1c1c1c"}`, padding:"0.7rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.5rem", animation:"fi 0.8s ease forwards" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
                 <span style={{ color:"#7a7a7a", fontSize:"0.6rem", letterSpacing:"0.18em" }}>SLOT {i + 1}</span>
-                {occupied && <span style={{ color:"#c8b98a", fontSize:"0.62rem", letterSpacing:"0.07em" }}>DAY {m.day} · {m.location}</span>}
+                {complete
+                  ? <span style={{ color:"#4a9e6b", fontSize:"0.6rem", letterSpacing:"0.14em", textShadow:"0 0 8px rgba(74,158,107,0.45)" }}>100% COMPLETE</span>
+                  : inProgress && <span style={{ color:"#c8b98a", fontSize:"0.62rem", letterSpacing:"0.07em" }}>DAY {m.day} · {m.location}</span>}
               </div>
-              {occupied ? (
+              {occupied && progress}
+              {complete ? (
+                <>
+                  <span style={{ color:"#3a6a48", fontSize:"0.56rem", letterSpacing:"0.06em" }}>everything recovered · locked</span>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <button className="rb" onClick={withMenuSound(()=>{ if (resPending) { clearPending(); beginRun(i, { fresh:true }); } else setSlotConfirm({ index:i, action:"reset" }); })}
+                      style={{ flex:1, background:"transparent", border:`1px solid ${resPending ? "#5a4a20" : "#2a2a2a"}`, color: resPending ? "#c8a840" : "#7a7050", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
+                      {resPending ? "RESET?" : "RESET"}
+                    </button>
+                    <button className="del" onClick={withMenuSound(()=>{ if (delPending) deleteSlot(i); else setSlotConfirm({ index:i, action:"delete" }); })}
+                      style={{ background:"transparent", border:`1px solid ${delPending ? "#5a2020" : "#2a2a2a"}`, color: delPending ? "#e08a8a" : "#7a5a5a", padding:"0.45rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
+                      {delPending ? "DELETE?" : "DELETE"}
+                    </button>
+                  </div>
+                </>
+              ) : inProgress ? (
                 <>
                   <div style={{ display:"flex", gap:"1.2rem", fontSize:"0.6rem", letterSpacing:"0.06em", color:"#6a6a6a" }}>
                     <span>HP {m.hp}/10</span><span>BATT {m.battery}</span>
                   </div>
-                  <div style={{ display:"flex", gap:"0.5rem" }}>
-                    {/* Occupied slots load the save (continue) in both modes. */}
-                    <button className="rb" onClick={withMenuSound(()=>{ clearPending(); resumeSlot(i); })}
-                      style={{ flex:1, background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
-                      {slotMode === "load" ? "▸ LOAD" : "▸ CONTINUE"}
-                    </button>
-                    <button className="del" onClick={withMenuSound(()=>{ if (delPending) deleteSlot(i); else setSlotConfirm({ index:i, action:"delete" }); })}
-                      style={{ background:"transparent", border:`1px solid ${delPending ? "#5a2020" : "#2a2a2a"}`, color: delPending ? "#e08a8a" : "#7a5a5a", padding:"0.45rem 0.7rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
-                      {delPending ? "DELETE?" : "DELETE"}
-                    </button>
-                  </div>
-                  {/* Overwrite is only needed in START mode when no empty slot is left. */}
-                  {slotMode === "start" && allFull && (
-                    <button className="rb" onClick={withMenuSound(()=>{ if (ovrPending) beginRunInSlot(i); else setSlotConfirm({ index:i, action:"overwrite" }); })}
-                      style={{ background:"transparent", border:`1px solid ${ovrPending ? "#5a4a20" : "#2a2a2a"}`, color: ovrPending ? "#c8a840" : "#7a7050", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.6rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
-                      {ovrPending ? "OVERWRITE?" : "OVERWRITE — START FRESH"}
-                    </button>
-                  )}
+                  <button className="rb" onClick={withMenuSound(()=>{ clearPending(); resumeSlot(i); })}
+                    style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
+                    ▸ CONTINUE
+                  </button>
                 </>
+              ) : between ? (
+                <button className="rb" onClick={withMenuSound(()=>{ clearPending(); beginRun(i, { fresh:false }); })}
+                  style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
+                  ▸ PLAY AGAIN
+                </button>
               ) : (
                 slotMode === "start" ? (
-                  <button className="rb" onClick={withMenuSound(()=>{ beginRunInSlot(i); })}
+                  <button className="rb" onClick={withMenuSound(()=>{ beginRun(i, { fresh:true }); })}
                     style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
                     ▸ NEW RUN
                   </button>
@@ -2000,20 +2111,24 @@ export default function DeadSignal() {
           {screen === "phase2_complete" && showRestart && (
             <p style={{ color:"#505050", fontSize:"0.72rem", marginTop:"1.5rem", letterSpacing:"0.14em", animation:"fi 1s ease forwards" }}>— to be continued —</p>
           )}
+          {screen === "phase2_complete" && showRestart && winProfile && (
+            <p style={{ marginTop:"1rem", fontSize:"0.66rem", letterSpacing:"0.1em", animation:"fi 1s ease forwards", color:"#6a6a6a" }}>
+              playthrough {winProfile.playthroughs} · <span style={{ color: winProfile.frags > 0 ? "#4a9e6b" : "#3a5a44" }}>◈ {winProfile.frags}/9</span> · <span style={{ color: winProfile.clues > 0 ? "#4ab5c8" : "#2d4a52" }}>◉ {winProfile.clues}/3</span>
+              {winProfile.complete && <><br/><span style={{ color:"#4a9e6b", letterSpacing:"0.16em", textShadow:"0 0 8px rgba(74,158,107,0.45)" }}>— 100% · everything recovered —</span></>}
+            </p>
+          )}
           {screen === "offline" && lastMessage && lines.length >= 3 && (
             <p style={{ color:"#1a1a1a", fontSize:"0.68rem", marginTop:"1.5rem", letterSpacing:"0.06em", fontWeight:300 }}>last sent: "{lastMessage}"</p>
           )}
         </div>
         {showRestart && (
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"3rem" }}>
-            {screen === "phase2_complete" ? (<>
-              {/* Finishing is the only place memories can be kept. */}
-              <button className="rb" onClick={withMenuSound(handleRestart)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>play again · keep memories</button>
-              <button className="rb" onClick={withMenuSound(handleFullReset)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#444444", padding:"0.5rem 1.5rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>full reset · clear everything</button>
-            </>) : (
-              /* Death / battery-offline: save + memories already wiped on entry; just go home. */
-              <button className="rb" onClick={withMenuSound(handleRestart)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;return to title</button>
+            {/* Win: the slot is saved with updated progress. Play again (keeps the profile,
+                unless 100% — then it's locked and you return to title to Reset from the slot). */}
+            {screen === "phase2_complete" && !(winProfile && winProfile.complete) && (
+              <button className="rb" onClick={withMenuSound(()=>{ const i = activeSlotRef.current; if (i != null) beginRun(i, { fresh:false }); else handleRestart(); })} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;play again</button>
             )}
+            <button className="rb" onClick={withMenuSound(handleRestart)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#505050", padding:"0.55rem 1.5rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;return to title</button>
           </div>
         )}
       </div>
@@ -2116,10 +2231,11 @@ export default function DeadSignal() {
             <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>
             {slots[activeSlotRef.current] && <button className="cb" onClick={withMenuSound(menuLoad)} style={menuBtn}>Load last save</button>}
             <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>
-            {/* Restart · full wipe — two-tap confirm. Clears the save AND fragments/clues. */}
-            <button onClick={withMenuSound(()=>{ if (confirmReset) { handleFullReset(); } else { setConfirmReset(true); setMenuMsg("tap again — wipes save & memories"); } })}
+            {/* Reset THIS run — two-tap confirm. Wipes only the active slot (run + its
+                fragments/clues); other slots are untouched. Full wipe lives in Options. */}
+            <button onClick={withMenuSound(async ()=>{ if (confirmReset) { const i = activeSlotRef.current; if (i != null) await deleteSlot(i); resetRunState(); setMenuOpen(false); setConfirmReset(false); setMenuMsg(""); setScreen("menu"); } else { setConfirmReset(true); setMenuMsg("tap again — wipes this run's save & memories"); } })}
               style={{ ...menuBtn, color: confirmReset ? "#e08a8a" : "#a87a7a", border:`1px solid ${confirmReset ? "#5a2020" : "#3a2020"}` }}>
-              {confirmReset ? "Confirm — wipe everything?" : "Restart · wipe save"}
+              {confirmReset ? "Confirm — reset this run?" : "Reset this run"}
             </button>
             <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>{menuMsg}</div>
           </div>
