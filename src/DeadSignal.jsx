@@ -2,17 +2,16 @@ import { useState, useEffect, useRef, memo } from "react";
 import audioEngine from "./audio.js";
 
 const INTRO_LINES = [
-  { text: "Day 1.", delay: 0 },
   { text: "Your eyes open.", delay: 1500 },
-  { text: "The room is dark.", delay: 2900 },
-  { text: "You don't know this ceiling.", delay: 4600 },
-  { text: "You don't remember coming here.", delay: 6200 },
-  { text: "You don't remember much at all.", delay: 7800 },
-  { text: "Your phone is on the floor beside you.", delay: 9800 },
-  { text: "9% battery.  One bar.", delay: 11200 },
-  { text: "It's been buzzing.", delay: 12700 },
+  { text: "The room is dark.", delay: 2600 },
+  { text: "You don't know this ceiling.", delay: 3850 },
+  { text: "You don't remember coming here.", delay: 5050 },
+  { text: "You don't remember much at all.", delay: 6250 },
+  { text: "Your phone is on the floor beside you.", delay: 7850 },
+  { text: "9% battery.  One bar.", delay: 9000 },
+  { text: "It's been buzzing.", delay: 10200 },
 ];
-const NOTIF_DELAY = 14000;
+const NOTIF_DELAY = 11400;
 
 const SCRIPTED_EXCHANGES = [
   { msgs: ["found a phone. don't know whose.", "you were the last call on it. you still alive?"],
@@ -126,14 +125,96 @@ const DISCOVERY_BEATS = {
   },
 };
 
+// ─── EXPLORATION BEAT POOLS (local replacement for AI filler dialogue) ─────────
+// One pool per location context. Each entry is a short exchange: 1-2 Ellie/narrator
+// lines + 2-3 generic forward choices. pickExploreBeat() pulls from these between
+// scripted story beats. Purely atmospheric — never carry loot markers or geography
+// the player hasn't reached. ~10 each for now (voice pass); target 15-25.
+// Choices are movement/observation only — explore beats are non-branching (a random
+// beat follows regardless), so a choice must never imply finding something or ask a
+// question the next beat won't answer. Real searching/agency lives in ENCOUNTERS.
+const EXPLORE_BEATS = {
+  hospital: [
+    { from:"ellie",    msgs:["corridor's long.", "keep to the wall."],                     choices:["Keep moving.","Stay low.","Listen first."] },
+    { from:"narrator", msgs:["a gurney blocks half the hall.", "something dried on the floor."], choices:["Step around it.","Stay clear of it.","Back off."] },
+    { from:"narrator", msgs:["a light flickers overhead.", "then holds."],                  choices:["Keep going.","Move while it's lit.","Hurry past."] },
+    { from:"ellie",    msgs:["power's still on in here.", "that's not normal."],            choices:["Just keep moving.","Stay alert.","Don't trust it."] },
+    { from:"narrator", msgs:["a nurses' station.", "charts still clipped to the rack."],    choices:["Leave it.","Keep walking.","Don't slow down."] },
+    { from:"ellie",    msgs:["doors on both sides.", "don't open any you don't have to."],  choices:["Understood.","Moving.","Hands off."] },
+    { from:"narrator", msgs:["a wheelchair, turned over.", "wheels still spinning."],       choices:["Keep moving.","Stop. Listen.","Back away."] },
+    { from:"narrator", msgs:["the air smells like antiseptic.", "and under it, something worse."], choices:["Push on.","Cover your mouth.","Stay quiet."] },
+    { from:"ellie",    msgs:["stairwell should be ahead.", "take it slow."],                choices:["On it.","Taking it slow.","Listening."] },
+    { from:"narrator", msgs:["handprints on a door window.", "from the inside."],           choices:["Keep moving.","Don't look.","Back away."] },
+  ],
+  metro: [
+    { from:"narrator", msgs:["water drips somewhere in the dark.", "steady. close."],       choices:["Keep moving.","Stay still.","Move past it."] },
+    { from:"ellie",    msgs:["stay off the tracks.", "third rail might still be live."],    choices:["Got it.","Moving.","Careful."] },
+    { from:"narrator", msgs:["the tunnel curves ahead.", "your light only reaches so far."], choices:["Go slow.","Push forward.","Wait and listen."] },
+    { from:"narrator", msgs:["an abandoned train car.", "doors jammed half open."],         choices:["Slip through it.","Go around.","Keep your distance."] },
+    { from:"ellie",    msgs:["you hear that?", "could be nothing."],                         choices:["Keep moving.","Stop.","Stay quiet."] },
+    { from:"narrator", msgs:["emergency lights buzz low.", "everything's the color of rust."], choices:["Keep walking.","Stay close to the wall.","Hurry."] },
+    { from:"narrator", msgs:["a turnstile, frozen mid-spin.", "a bag left on the ground past it."], choices:["Step over.","Leave it.","Keep going."] },
+    { from:"ellie",    msgs:["platform should be coming up.", "stay south of the tunnels."], choices:["On it.","Moving.","Staying south."] },
+    { from:"narrator", msgs:["your footsteps echo too far.", "you slow down."],             choices:["Keep moving.","Freeze.","Move quieter."] },
+    { from:"narrator", msgs:["a map on the wall.", "half the lines scratched out."],        choices:["Ignore it.","Keep going.","Don't stop."] },
+  ],
+  route9: [
+    { from:"narrator", msgs:["the highway opens up.", "cars left where they stopped."],     choices:["Keep moving.","Stay low.","Keep to the shoulder."] },
+    { from:"ellie",    msgs:["you're exposed out here.", "keep to the shoulder."],          choices:["Understood.","Moving.","Staying low."] },
+    { from:"narrator", msgs:["wind moves through the wrecks.", "nothing else does."],       choices:["Keep walking.","Stop and listen.","Pick up the pace."] },
+    { from:"narrator", msgs:["an overpass ahead.", "shade under it. and blind spots."],     choices:["Go under it.","Go around.","Wait."] },
+    { from:"ellie",    msgs:["any movement out there?", "tell me."],                         choices:["Nothing yet.","Hard to say.","Just keep me talking."] },
+    { from:"narrator", msgs:["a pileup blocks two lanes.", "you'll have to weave through."], choices:["Weave through.","Climb over.","Back off."] },
+    { from:"narrator", msgs:["a suitcase burst open on the asphalt.", "clothes scattered for yards."], choices:["Step past it.","Keep going.","Don't stop."] },
+    { from:"ellie",    msgs:["mile markers'll keep you straight.", "just follow them north."], choices:["Following them.","Moving.","Heading north."] },
+    { from:"narrator", msgs:["a dog barks somewhere far off.", "then stops."],              choices:["Keep moving.","Freeze.","Head away from it."] },
+    { from:"narrator", msgs:["the sun's high and there's no cover.", "you feel watched."],   choices:["Push on.","Find shade.","Stay calm."] },
+  ],
+  crossing: [
+    { from:"narrator", msgs:["rows of houses, all dark.", "yards gone to weed."],           choices:["Keep moving north.","Cut through a yard.","Stay on the street."] },
+    { from:"ellie",    msgs:["keep heading north.", "don't slow down in the open."],        choices:["Moving.","Staying low.","Pushing north."] },
+    { from:"narrator", msgs:["a car alarm rings two streets over.", "no one comes."],        choices:["Keep moving.","Wait it out.","Head the other way."] },
+    { from:"narrator", msgs:["broken glass across the sidewalk.", "you pick your steps."],   choices:["Step carefully.","Go around.","Push through."] },
+    { from:"ellie",    msgs:["you still with me?", "talk to me."],                           choices:["Still here.","Still moving.","Keep talking."] },
+    { from:"narrator", msgs:["a chain-link fence, torn open.", "a path worn through to the next lot."], choices:["Take the gap.","Find another way.","Wait."] },
+    { from:"narrator", msgs:["industrial blocks now.", "loading docks. roll-up doors."],     choices:["Keep north.","Cut between buildings.","Stay in the open."] },
+    { from:"ellie",    msgs:["signal's getting clearer.", "you're closing in."],            choices:["Good.","Keep guiding me.","Almost there."] },
+    { from:"narrator", msgs:["someone's laundry still on a line.", "stiff and grey."],       choices:["Keep moving.","Don't linger.","Move on."] },
+    { from:"narrator", msgs:["a shopping cart in the middle of the road.", "nothing in it."], choices:["Step around it.","Keep going.","Stop. Listen."] },
+  ],
+  haven: [
+    { from:"narrator", msgs:["floodlights wash the path white.", "the generators never stopped."], choices:["Keep going.","Stay close.","Move slow."] },
+    { from:"ellie",    msgs:["they kept it running.", "all of it."],                         choices:["Keep moving.","Stay sharp.","Take it in."] },
+    { from:"narrator", msgs:["a row of bunks.", "beds made. one slept in, not stripped."],   choices:["Move on.","Keep going.","Don't linger."] },
+    { from:"narrator", msgs:["a med station.", "supplies stocked. nothing used."],          choices:["Leave it.","Keep walking.","Move on."] },
+    { from:"ellie",    msgs:["i missed this place.", "i don't know why i said that."],       choices:["Keep moving.","Stay with me.","Let it go."] },
+    { from:"narrator", msgs:["a common room.", "a card game left mid-hand."],               choices:["Move on.","Keep going.","Listen."] },
+    { from:"narrator", msgs:["a hallway of doors.", "every one of them open."],             choices:["Keep going.","Stay in the hall.","Move on."] },
+    { from:"ellie",    msgs:["it's so quiet.", "it shouldn't be this quiet."],              choices:["Stay with me.","Keep moving.","Stay sharp."] },
+    { from:"narrator", msgs:["a child's drawing taped to a wall.", "sun. a fence. stick people inside it."], choices:["Keep moving.","Move on.","Don't linger."] },
+    { from:"narrator", msgs:["a clock on the wall.", "still keeping time."],                choices:["Keep going.","Move on.","Don't stop."] },
+  ],
+};
+
+// State-bucketed reaction lines. pickExploreBeat() checks these first; the highest-
+// priority matching condition wins, else a normal atmospheric beat fires. Choices stay
+// movement/directive — never "look for a charger" (the player owns one; they need power).
+const STATE_LINES = {
+  battery_critical: { from:"ellie", msgs:["your battery.", "find power or i lose you."], choices:["Keep moving.","Find power."] },
+  battery_low:      { from:"ellie", msgs:["battery's getting low.", "watch it."],         choices:["Keep moving.","Watch it."] },
+  injured_bad:      { from:"ellie", msgs:["you're hurt bad.", "slow down."],              choices:["Push on.","Slow down."] },
+  low_food:         { from:"ellie", msgs:["when did you last eat?", "find something."],   choices:["Keep moving.","Push on."] },
+  low_water:        { from:"ellie", msgs:["you need water.", "soon."],                     choices:["Keep moving.","Press on."] },
+};
+
 // ─── HAVEN PHASE 2C ───────────────────────────────────────────────────────────
 
 const HAVEN_APPROACH_BEATS = [
   { from:"ellie",
-    msgs:["morning.", "signal's stronger now.", "you're close."],
+    msgs:["signal's stronger now.", "you're close."],
     choices:["How close?", "I can feel it."] },
   { from:"narrator",
-    msgs:["day three.", "the city thins out.", "buildings give way to service roads and dead grass."],
+    msgs:["the city thins out.", "buildings give way to service roads and dead grass."],
     choices:["Keep moving."] },
   { from:"ellie",
     msgs:["follow the road north.", "there should be a fence line before the compound."],
@@ -183,32 +264,6 @@ const buildHavenFinal = (path) => {
   return [...HAVEN_FINAL_SEQUENCE.slice(0, 2), beat, ...HAVEN_FINAL_SEQUENCE.slice(2)];
 };
 
-const buildHavenSystem = (path, resources, weapon, noise = 0) => {
-  const weaponStr = weapon ? `${weapon.shortName} (${weapon.damage} damage)` : "unarmed";
-  const pathNote  = {
-    hospital: "The player came through Mercy General Hospital. They found medical records with their own name.",
-    metro:    "The player came through the metro tunnels. They found broadcast logs proving Haven was planned before the outbreak.",
-    route9:   "The player came through Route 9. They found military deployment orders redirecting personnel to Haven.",
-  }[path] || "";
-  return `You are Ellie, texting the player who just entered Haven, a fenced compound that was home to 143 people until very recently.
-
-HAVEN STATE: completely empty. No violence. No bodies. No blood. No struggle. Power running. Floodlights on. Generators humming. Food on tables. Beds slept in. Coffee gone cold. Organized, deliberate departure. Nobody knows why.
-
-PLAYER: Battery ${resources.battery}%. HP ${resources.hp}/10. Weapon: ${weaponStr}. ${pathNote}
-
-YOUR STATE: For the first time, you are becoming emotional. Small cracks only. Not dramatic. Say things like "i missed this place." or "they kept it running." Things that suggest you know Haven personally. Do not explain. Do not clarify. Just let the cracks show.
-
-Guide the player through Haven's areas: sleeping quarters, medical station, operations center. Each area is perfect, recent, and wrong in the same way: everything maintained, nothing disturbed, nobody home.
-
-RESOURCES: You never decide resource amounts. If the player takes supplies, mark that choice with [+N Food] or [+N Water] (example: "take the water [+2 Water]"); the game applies it. If the player's message contains a RESOURCE UPDATE, state those exact numbers. Otherwise never mention specific food, water, battery, or HP counts.
-
-No em dashes. Lowercase. Short texts. 1-2 sentences max. 20 words max.
-
-ALWAYS respond with valid JSON only:
-{ "messages": ["msg1", "msg2"], "choices": ["choice 1", "choice 2"] }
-2-3 messages. 2-3 choices under 8 words.`;
-};
-
 // Location-specific loot when SEARCH succeeds (encounter id → possible finds)
 const SEARCH_LOOT = {
   supply_closet:    ["food", "water"],
@@ -229,6 +284,66 @@ const SEARCH_LOOT = {
   default:          ["food", "water"],
 };
 
+// Encounters that sit on a live power source. A successful SEARCH here also tops up
+// the portable charger reservoir (distinct from the instant battery-pack loot, which
+// goes straight to the phone). This is what keeps the charger a living mechanic.
+const POWER_SOURCES = new Set(["generator_room", "maintenance_office", "fuel_truck", "abandoned_convoy", "house_generator", "emergency_shelter"]);
+const CHARGER_RECHARGE = 25; // reservoir gained per power-source search (tuning knob)
+const CHARGER_TRANSFER = 25; // reservoir → phone per "Use charger" tap (tuning knob)
+const CHARGER_FIND     = 20; // phase-1 charger find → battery dumped into the phone. Tight: start phase 2 ~29% — neglecting power still → offline, but an engaged player who works the power sources has margin to Haven (tuning)
+const START_SUPPLY     = 4;  // phase-1 starting food & water. Low enough that neglect → 0 in the crossing/approach (starvation death), but an engaged searcher keeps a survivable margin to the Haven cache (tuning)
+
+// Weapons. damage drives the FIGHT action (success odds + bleed on a loss). Improvised
+// base tier = 3; upgrades raise the floor. equipWeapon() only ever upgrades.
+const WEAPONS = {
+  knife:   { name:"worn pocket knife", shortName:"knife",    damage:3 },
+  bat:     { name:"baseball bat",      shortName:"bat",      damage:3 },
+  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:3 },
+  axe:     { name:"fire axe",          shortName:"fire axe", damage:5 },
+  machete: { name:"machete",           shortName:"machete",  damage:6 },
+};
+const WEAPON_PICKUPS = { WEAPON_KNIFE:"knife", WEAPON_BAT:"bat", WEAPON_CROWBAR:"crowbar", WEAPON_AXE:"axe", WEAPON_MACHETE:"machete" };
+
+// Haven cache (the relief at the end of the scarcity gauntlet — diegetic, placed in
+// logical rooms). Replaces the old invisible battery floor.
+const HAVEN_BATTERY_CACHE = 45; // battery packs in the ops building add this much
+const HAVEN_SUPPLY_FLOOR  = 5;  // pantry tops food/water up to at least this
+
+// ─── ROUTE MAP — the "invisible map" the pacing walks ─────────────────────────
+// Each leg is an ordered list of beat-nodes; a cursor (aiExchangeCount) advances one
+// node per player choice, so node[newCnt-1] is what THIS choice leads into. The first
+// atmospheric beat of a leg is rendered on entry (cursor 0); the final node ends the
+// leg (its story beat is the transition). This replaces the old scattered counters
+// (memory@fragTarget, discovery@aiTarget, sectionPlan{1,3,5}) with one declarative
+// schedule the system can read top-to-bottom.
+//   kind "explore"   → a free atmospheric beat (no story beat queued)
+//        "encounter" → a guaranteed encounter; plan "power" (a POWER_SOURCES spot —
+//                      the battery lifeline) | "search" (food/water/loot) | "hazard"
+//        "memory" | "discovery" | "shelter" → queue that scripted story beat
+//   drain (optional) → applyTransitionDrain key fired as the node is reached
+// One guaranteed power-source per leg keeps battery survivable for an ENGAGED player
+// (search it → charger reserve) while neglect (skip/avoid it) still leads to offline.
+// (The Haven leg stays on its own variable-length 3-5 explore threshold — no encounters
+// or story branches there, so it isn't route-driven.)
+const ROUTE = {
+  path: [
+    { kind: "encounter", plan: "power" },         // 1 — guaranteed power source
+    { kind: "memory" },                            // 2
+    { kind: "encounter", plan: "hazard" },        // 3
+    { kind: "explore", drain: "path_mid" },        // 4 — mid-leg squeeze
+    { kind: "encounter", plan: "search" },        // 5
+    { kind: "discovery" },                         // 6 — ends the path leg
+  ],
+  crossing: [
+    { kind: "encounter", plan: "power" },         // 1 — guaranteed power source
+    { kind: "explore" },                           // 2
+    { kind: "encounter", plan: "hazard" },        // 3
+    { kind: "explore", drain: "crossing_mid" },    // 4 — mid-leg squeeze
+    { kind: "encounter", plan: "search" },        // 5
+    { kind: "shelter" },                           // 6 — ends the crossing leg
+  ],
+};
+
 // ─── ENCOUNTER POOLS (8 per path, 9 crossing) ─────────────────────────────────
 const ENCOUNTERS = {
   hospital: [
@@ -245,7 +360,7 @@ const ENCOUNTERS = {
     { id:"cafeteria",      msgs:["hospital cafeteria.","vending machines. mostly emptied."],
       choices:[{text:"Check what's left. [risk]",action:"SEARCH"},{text:"Move past quickly.",action:"SNEAK"},{text:"Watch the exits first.",action:"WAIT"}] },
     { id:"operating_room", msgs:["operating room lights flicker.","movement inside."],
-      choices:[{text:"Check it out. [risk]",action:"SEARCH"},{text:"Slip past without looking.",action:"SNEAK"},{text:"Hold still.",action:"WAIT"}] },
+      choices:[{text:"Slip past without looking.",action:"SNEAK"},{text:"Search it. [risk]",action:"SEARCH"},{text:"Take it on. [risk]",action:"FIGHT"}] },
     { id:"roof_access",    msgs:["stairwell door. sound from above.","heavy steps."],
       choices:[{text:"Move past quickly.",action:"SNEAK"},{text:"Stay still until it stops.",action:"WAIT"},{text:"Push through anyway.",action:"FORCE"}] },
   ],
@@ -263,13 +378,15 @@ const ENCOUNTERS = {
     { id:"ticket_booth",       msgs:["ticket booth. glass broken.","supplies inside."],
       choices:[{text:"Search it. [risk]",action:"SEARCH"},{text:"Bypass it.",action:"SNEAK"},{text:"Wait and watch.",action:"WAIT"}] },
     { id:"service_corridor",   msgs:["service corridor. dark. tight.","something shuffles ahead."],
-      choices:[{text:"Move carefully.",action:"SNEAK"},{text:"Don't go in. Go around.",action:"AVOID"},{text:"Search the corridor. [risk]",action:"SEARCH"}] },
+      choices:[{text:"Move carefully.",action:"SNEAK"},{text:"Back out. Go around.",action:"AVOID"},{text:"Take it on. [risk]",action:"FIGHT"}] },
     { id:"turnstile_blockage", msgs:["turnstiles blocked.","something piled against them."],
       choices:[{text:"Climb over quietly.",action:"SNEAK"},{text:"Force through. Loud.",action:"FORCE"},{text:"Wait and listen.",action:"WAIT"}] },
   ],
   route9: [
     { id:"car_alarm",    msgs:["you brush a car.","it starts beeping."],
       choices:[{text:"Run.",action:"RUN"},{text:"Find the source. Silence it.",action:"SNEAK"},{text:"Freeze. Wait it out.",action:"WAIT"}] },
+    { id:"road_walker",  msgs:["a figure on the road ahead.","it turns toward you."],
+      choices:[{text:"Slip off the road.",action:"SNEAK"},{text:"Back away slow.",action:"AVOID"},{text:"Take it down. [risk]",action:"FIGHT"}] },
     { id:"highway_wreck",msgs:["a wreck blocking two lanes.","supplies visible in the cab."],
       choices:[{text:"Climb over quietly.",action:"SNEAK"},{text:"Go around. Slower but safe.",action:"AVOID"},{text:"Search the cab. [risk]",action:"SEARCH"}] },
     { id:"abandoned_checkpoint_small",msgs:["smaller checkpoint. barrier arm down.","someone left fast."],
@@ -289,7 +406,7 @@ const ENCOUNTERS = {
     { id:"pharmacy",         msgs:["something's moving inside the pharmacy.","it hasn't noticed you. yet."],
       choices:[{text:"Sneak past.",action:"SNEAK"},{text:"Search it. [+Noise]",action:"SEARCH"},{text:"Throw food to lure it off. [-1 Food]",action:"DISTRACT"}] },
     { id:"stray_street",     msgs:["a stray in the street ahead.","it hasn't noticed you yet."],
-      choices:[{text:"Wait for it to move.",action:"WAIT"},{text:"Slip past quietly.",action:"SNEAK"},{text:"Push through. [risk]",action:"FORCE"}] },
+      choices:[{text:"Wait for it to move.",action:"WAIT"},{text:"Slip past quietly.",action:"SNEAK"},{text:"Put it down. [risk]",action:"FIGHT"}] },
     { id:"apartment_fire",   msgs:["smoke from an apartment window.","could cover your movement. or draw more."],
       choices:[{text:"Use the smoke. Move fast.",action:"SNEAK"},{text:"Go around.",action:"AVOID"},{text:"Stop and watch first.",action:"WAIT"}] },
     { id:"rooftop",          msgs:["a silhouette on a rooftop.","still. watching."],
@@ -297,7 +414,7 @@ const ENCOUNTERS = {
     { id:"floor_above",      msgs:["movement on the floor above.","heavy. slow."],
       choices:[{text:"Move quickly and quietly.",action:"SNEAK"},{text:"Stay still and wait.",action:"WAIT"},{text:"Check it out. [risk]",action:"SEARCH"}] },
     { id:"noise_drawn", minNoise:2, msgs:["your noise drew something.","it's close."],
-      choices:[{text:"Run.",action:"RUN"},{text:"Hide. Go quiet.",action:"WAIT"},{text:"Stand your ground.",action:"FORCE"}] },
+      choices:[{text:"Run.",action:"RUN"},{text:"Hide. Go quiet.",action:"WAIT"},{text:"Stand and fight. [risk]",action:"FIGHT"}] },
     { id:"house_generator",  msgs:["a house with a generator running.","light in the windows."],
       choices:[{text:"Search it carefully. [risk]",action:"SEARCH"},{text:"Keep moving.",action:"AVOID"},{text:"Watch from outside first.",action:"WAIT"}] },
     { id:"crashed_bus",      msgs:["bus crashed into a storefront.","might be supplies inside."],
@@ -306,6 +423,11 @@ const ENCOUNTERS = {
       choices:[{text:"Go in. [risk]",action:"SEARCH"},{text:"Keep moving.",action:"AVOID"},{text:"Listen at the door first.",action:"WAIT"}] },
   ],
 };
+
+// Forced fight — fires when noise hits max (you got loud, they found you). No safe
+// sneak/wait: FIGHT (weapon decides) or RUN. Works in any leg (not in a leg pool).
+const CORNERED_ENCOUNTER = { id:"cornered", msgs:["they're on you.","no room. no time."],
+  choices:[{text:"Fight. [risk]",action:"FIGHT"},{text:"Break away and run. [risk]",action:"RUN"}] };
 
 const ENCOUNTER_REACTIONS = {
   sneak_success: ["good.", "keep moving.", "nice."],
@@ -318,6 +440,8 @@ const ENCOUNTER_REACTIONS = {
   run_success:   ["don't stop.", "keep going."],
   run_fail:      ["you dropped something. doesn't matter. go.", "cost you. keep moving."],
   force:         ["you made it through.", "that was loud."],
+  fight_win:     ["it's down. move.", "good. keep going.", "that worked. go."],
+  fight_loss:    ["you're hurt. go.", "that cost you. move.", "keep moving. don't stop."],
   avoid:         ["probably smart.", "keep moving."],
 };
 
@@ -326,57 +450,11 @@ const NARRATOR_ATMOSPHERE = {
   search_fail:   "something stirs.",
   run_fail:      "you made it. barely.",
   force:         "noise. but you're through.",
+  fight_win:     "it stops moving.",
+  fight_loss:    "you break away. bleeding.",
   sneak_success: "the noise fades. nothing follows.",
   wait:          "it passes.",
   observe:       "you take it in.",
-};
-
-const PHASE1_SYSTEM = `You are Ellie, a survivor texting a stranger in Harwick whose number you found in a dead woman's phone.
-
-WORLD: Three days ago an outbreak tore through Harwick. Power is mostly gone. You are somewhere on the east side of the city, near the old bridge. Yesterday you picked up a shortwave radio signal: GPS coordinates, broadcasting on a loop, claiming there's a safe location.
-
-You found a phone in your building stairwell. Don't know whose. Texted the last number. The player answered. They have no memory of how they got here or what happened. They found a city map, discovered they're in Harwick. They're now moving through the city toward the signal.
-
-YOUR VOICE: Short texts. 1-2 sentences, 20 words max. Practical. Fear in what you don't say. Dry humor when bad. Lowercase, contractions. You are alone. Never use em dashes. Periods and commas only.
-
-BATTERY: 5-6%: mention finding power. 2-3%: urgent. 1%: say what matters.
-
-ALWAYS respond with valid JSON only:
-{ "messages": ["msg1", "msg2"], "choices": ["choice 1", "choice 2"] }
-2-3 messages under 20 words. 2-3 choices under 8 words.`;
-
-const buildP2System = (path, section, resources, weapon, noise = 0) => {
-  const weaponStr  = weapon ? `${weapon.shortName} (${weapon.damage} damage)` : "unarmed";
-  const noiseStr   = noise >= 4 ? "VERY HIGH. infected are close." : noise >= 2 ? "elevated" : "low";
-  const injuryStr  = resources.hp <= 2 ? "CRITICALLY INJURED" : resources.hp <= 4 ? "bleeding badly" : resources.hp <= 6 ? "bruised" : "okay";
-  const hungerNote = resources.food <= 1 ? " LOW FOOD. Mention finding food." : resources.water <= 1 ? " LOW WATER. Mention finding water." : "";
-  const pathDesc   = {
-    hospital: `Player is INSIDE Mercy General Hospital: long dark corridors, wards, stairwells, emergency lighting, generators humming deep inside. Something about this building feels familiar but they don't know why. Keep it tense. GEOGRAPHY: they stay inside the building this whole phase. Never mention the metro, subway, the highway, vehicles on a road, or the outdoors.`,
-    metro:    `Player is in the Harwick Metro tunnels, underground: platform, tracks, service corridors, emergency lighting only, sounds carry strangely. Keep it claustrophobic. GEOGRAPHY: they stay underground this whole phase. Never mention the hospital, the highway, or open sky.`,
-    route9:   `Player is on Route 9 highway heading north on foot: open road, abandoned vehicles, overpasses, the city receding behind them. Keep it exposed. GEOGRAPHY: they stay on the open highway this phase. Never mention the hospital, the metro, subways, or tunnels.`,
-  };
-  const crossDesc  = `Player has ALREADY LEFT their starting location and is crossing Harwick on foot, moving north through a mix of residential and industrial streets toward the signal. Keep it tense. GEOGRAPHY: do not send them back to the hospital, metro, or highway, and do not say they have reached the signal's source yet.`;
-  const desc = section === "path" ? (pathDesc[path] || crossDesc) : crossDesc;
-
-  return `You are Ellie, texting the player through Harwick.
-
-SITUATION: ${desc}
-PLAYER: Battery ${resources.battery}%. Water ${resources.water}. Food ${resources.food}. HP: ${resources.hp}/10 (${injuryStr}). Weapon: ${weaponStr}. Noise: ${noiseStr}.${hungerNote}
-
-React to HP if injured. React to noise if high. React to low supplies if relevant.
-Move at pace — if the player is heading somewhere, they arrive next beat. Do not count down intermediate steps (no "308, 310, almost there"). Do not add extra exchanges between the player and a known object in front of them.
-
-RESOURCES: You never decide resource amounts. When an action would give the player supplies, put an explicit marker inside that choice: [+N Food], [+N Water], or [+N HP] (example: "grab the cans and go [+3 Food]"). The game applies it. If the player's message contains a RESOURCE UPDATE, state those exact numbers. Otherwise never mention specific food, water, battery, or HP counts.
-
-LOOT COHERENCE: Do not invent searchable objects, containers, stashes, or supplies the player cannot act on. Never say an item is "still there" and then move on, and never describe the player finding something they did not just obtain through a choice. Searchable supplies are introduced by the game as explicit search encounters — describe only what the game presents, not loot you imagined.
-
-CONTINUITY: Keep exploration generic — say "a storefront" or "a building," never specific shop types (no "convenience store," "pharmacy," etc.); the game names locations itself. Within a scene, never reference objects (a dash, a seat, a back room) that belong to something you haven't placed. Never contradict the setting described in SITUATION.
-
-Short texts, 1-2 sentences, 20 words max. Lowercase. No em dashes. Periods and commas only.
-
-ALWAYS respond with valid JSON only:
-{ "messages": ["msg1", "msg2"], "choices": ["choice 1", "choice 2"] }
-2-3 messages under 20 words. 2-3 choices under 8 words.`;
 };
 
 const OFFLINE_LINES = [
@@ -441,59 +519,14 @@ const parseResourceMarkers = (choice) => {
   return out;
 };
 
-// Priority 3 — conservative AI geography guard. Clearly-contradictory location
-// words per path during p2 exploration. Matched with \bword\b so they never fire
-// inside "toward"/"training"/etc. Ambiguous words are deliberately excluded.
-const GEO_FORBIDDEN = {
-  hospital: ["subway","metro","tunnel","platform","highway","freeway","on-ramp","overpass","interstate","turnstile"],
-  metro:    ["hospital","highway","freeway","on-ramp","overpass","interstate"],
-  route9:   ["hospital","subway","metro","tunnel","platform","turnstile"],
-};
-const PREMATURE_TERMS = ["haven"]; // referencing the destination before arrival
-const GEO_SAFE_LINE = {
-  hospital: "you move through the corridor. stay focused.",
-  metro:    "you keep moving along the platform. stay focused.",
-  route9:   "you keep moving up the road. stay focused.",
-  crossing: "you keep moving through the streets. stay focused.",
-};
-// Once the player has LEFT their starting leg and is crossing the city, the AI must
-// not send them back to it. These prior-leg location words are forbidden only during
-// the crossing section (they're legitimate during the matching path leg).
-const CROSSING_EXTRA_FORBIDDEN = {
-  hospital: ["hospital", "ward", "corridor"],
-  metro:    ["metro", "subway", "tunnel", "platform", "turnstile"],
-  route9:   ["highway", "freeway", "overpass", "on-ramp", "checkpoint"],
-};
-// Forbidden terms for a (path, section). "haven" is only premature during a PATH
-// leg — in the crossing the player is openly heading toward the signal/Haven, so
-// the word can appear legitimately and is not flagged (F2). During the crossing we
-// instead forbid the player's own prior-leg location words.
-const geoTerms = (path, section) => [
-  ...(GEO_FORBIDDEN[path] || []),
-  ...(section === "crossing" ? (CROSSING_EXTRA_FORBIDDEN[path] || []) : PREMATURE_TERMS),
-];
-// Returns the first offending term found in messages/choices, or null. Only
-// meaningful for path/crossing exploration (callEllie gates on phase).
-const detectGeoContradiction = (parsed, path, section) => {
-  if (!path) return null;
-  const terms = geoTerms(path, section);
-  const hay = [...(parsed.messages || []), ...(parsed.choices || [])].join(" ");
-  for (const t of terms) {
-    const re = new RegExp(`\\b${t.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "i");
-    if (re.test(hay)) return t;
-  }
-  return null;
-};
-// Replace any message/choice containing a forbidden term with a safe neutral line.
-const sanitizeGeo = (parsed, path, section) => {
-  const terms = geoTerms(path, section);
-  const res = terms.map(t => new RegExp(`\\b${t.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "i"));
-  const hits = (s) => res.some(re => re.test(s));
-  const safeLine = GEO_SAFE_LINE[section === "crossing" ? "crossing" : path] || GEO_SAFE_LINE.hospital;
-  return {
-    messages: (parsed.messages || []).map(m => hits(m) ? safeLine : m),
-    choices:  (parsed.choices  || []).map(c => hits(c) ? "Keep moving." : c),
-  };
+// Battery is the master clock. The phone is on the whole game, so advancing a beat
+// costs power — one place owns the rate. Exceptions: phase1 is a pre-charger set-piece
+// (not a clock yet), and pure story beats (memory flash, discovery) aren't traversal.
+// Continues ("·") are charged 0 by the caller. Tune this rate in the M7 balance pass.
+const beatBatteryCost = (phase) => {
+  if (phase === "phase1") return 0;
+  if (phase === "p2_memory_frag" || phase === "p2_discovery") return 0;
+  return 1; // everything else: 1% per advance
 };
 
 const parseText = (text, ctx = "button") => {
@@ -625,7 +658,6 @@ export default function DeadSignal() {
   const [p2BeatIndex, setP2BeatIndex]           = useState(0);
   const [aiExchangeCount, setAiExchangeCount]   = useState(0);
   const [aiExchangeTarget, setAiExchangeTarget] = useState(7);
-  const [fragTarget, setFragTarget]             = useState(3);
   const [fragFired, setFragFired]               = useState(false);
   const [currentEncounter, setCurrentEncounter] = useState(null);
   const [selectedFragment, setSelectedFragment] = useState(null);
@@ -635,7 +667,6 @@ export default function DeadSignal() {
   const [dayThree, setDayThree]     = useState(false);
   const [havenFinalIndex, setHavenFinalIndex] = useState(0);
 
-  const apiHistoryRef       = useRef([]);
   const pendingRef          = useRef([]);
   const dialogueRef         = useRef([]);   // timers owned by scheduleMessages (C3 — kept separate from pendingRef)
   const idRef               = useRef(0);    // monotonic id source (H1 — avoids Date.now() key collisions)
@@ -649,7 +680,6 @@ export default function DeadSignal() {
   const currentPathRef      = useRef(currentPath);
   const aiCountRef          = useRef(aiExchangeCount);
   const aiTargetRef         = useRef(aiExchangeTarget);
-  const fragTargetRef       = useRef(fragTarget);
   const fragFiredRef        = useRef(fragFired);
   const currentEncounterRef = useRef(currentEncounter);
   const selectedFragmentRef  = useRef(selectedFragment);
@@ -659,10 +689,10 @@ export default function DeadSignal() {
   const pendingStoryBeatRef  = useRef(null);
   const lastEventWasEncRef  = useRef(false);
   const returnToPhaseRef    = useRef("p2_ai");
-  const lastCallRef         = useRef(null);   // C1 — args of the most recent callEllie, for "Try again."
-  const sectionPlanRef      = useRef({});     // exchange# → "search" | "hazard" (guaranteed search spots)
   const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
+  const seenBeatsRef        = useRef(new Set()); // exploration beats shown this run (prefer unseen)
+  const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
 
@@ -674,7 +704,6 @@ export default function DeadSignal() {
   currentPathRef.current    = currentPath;
   aiCountRef.current        = aiExchangeCount;
   aiTargetRef.current       = aiExchangeTarget;
-  fragTargetRef.current     = fragTarget;
   fragFiredRef.current      = fragFired;
   currentEncounterRef.current  = currentEncounter;
   selectedFragmentRef.current  = selectedFragment;
@@ -720,13 +749,11 @@ export default function DeadSignal() {
     messages, choices, lastMessage,
     resources, weapon, noise, contactName,
     gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
-    aiExchangeCount, aiExchangeTarget, fragTarget, fragFired,
+    aiExchangeCount, aiExchangeTarget, fragFired,
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
-    apiHistory: apiHistoryRef.current,
     pendingStoryBeat: pendingStoryBeatRef.current,
     returnToPhase: returnToPhaseRef.current,
     lastEncounterId: lastEncounterIdRef.current,
-    sectionPlan: sectionPlanRef.current,
     havenFinal: havenFinalRef.current,
     seenEncounters: [...seenEncountersRef.current],
     shelterForced: shelterForcedRef.current,
@@ -779,13 +806,12 @@ export default function DeadSignal() {
     clearPending();
     // refs (not mirrored from state)
     idRef.current             = snap.idCounter || 0;
-    apiHistoryRef.current     = snap.apiHistory || [];
     pendingStoryBeatRef.current = snap.pendingStoryBeat || null;
     returnToPhaseRef.current  = snap.returnToPhase || "p2_ai";
     lastEncounterIdRef.current = snap.lastEncounterId || null;
-    sectionPlanRef.current    = snap.sectionPlan || {};
     havenFinalRef.current     = snap.havenFinal || HAVEN_FINAL_SEQUENCE;
     seenEncountersRef.current = new Set(snap.seenEncounters || []);
+    seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
     shelterForcedRef.current  = !!snap.shelterForced;
     lastEventWasEncRef.current = !!snap.lastEventWasEnc;
     chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
@@ -796,7 +822,7 @@ export default function DeadSignal() {
     setGamePhase(snap.gamePhase || "phase1"); setChosenPath(snap.chosenPath || null);
     setCurrentPath(snap.currentPath || null); setExchangePhase(snap.exchangePhase || 0);
     setP2BeatIndex(snap.p2BeatIndex || 0); setAiExchangeCount(snap.aiExchangeCount || 0);
-    setAiExchangeTarget(snap.aiExchangeTarget || 7); setFragTarget(snap.fragTarget || 3);
+    setAiExchangeTarget(snap.aiExchangeTarget || 7);
     setFragFired(!!snap.fragFired); setCurrentEncounter(snap.currentEncounter || null);
     setSelectedFragment(snap.selectedFragment || null); setDayThree(!!snap.dayThree);
     setHavenFinalIndex(snap.havenFinalIndex || 0);
@@ -930,12 +956,13 @@ export default function DeadSignal() {
     return () => ids.forEach(clearTimeout); // C2
   }, [screen]);
 
-  // Priority 1 — catch-all defeat check (covers encounter HP loss). The
-  // screen==="chat" guard means it fires once, then screen flips to "dead".
+  // Priority 1 — catch-all defeat check. Only ever fires for HP lost in an ENCOUNTER:
+  // starvation/dehydration deaths are attributed directly in the p2_ai handler (which
+  // flips screen→"dead" first, suppressing this), and shelter damage clamps to HP≥1.
+  // So the proximate cause here is always the injury, regardless of food/water level.
   useEffect(() => {
     if (screen !== "chat" || resources.hp > 0) return;
-    const cause = resources.food <= 0 ? "starvation" : resources.water <= 0 ? "dehydration" : "injury";
-    triggerDeath(cause);
+    triggerDeath("injury");
   }, [resources.hp, screen]);
 
   // Priority 1 — death screen reveal (mirrors the offline effect).
@@ -1070,9 +1097,8 @@ export default function DeadSignal() {
 
   // Fix #5 — apply code-authoritative loot parsed from an AI-phase choice marker.
   // Updates resources (clamped), drops a HUD system line on the same beat, and
-  // returns the post-change battery + a "truth" string so Ellie's narration cites
-  // the exact numbers instead of inventing them. `baseBattery` is the already-
-  // drained battery for this turn; any [+N Battery] loot stacks on top of it.
+  // returns the post-change vitals. `baseBattery` is the already-drained battery
+  // for this turn; any [+N Battery] loot stacks on top of it.
   const applyChoiceLoot = (choice, baseBattery) => {
     const d   = parseResourceMarkers(choice);
     const cur = resourcesRef.current;
@@ -1100,15 +1126,7 @@ export default function DeadSignal() {
       if (d.battery > 0) pulseBattery(); // P6c
     }
 
-    const t = [];
-    if (d.food)    t.push(`food now ${newFood}`);
-    if (d.water)   t.push(`water now ${newWater}`);
-    if (d.hp)      t.push(`hp now ${newHp}`);
-    if (d.battery) t.push(`battery now ${newBattery}`);
-    const truth = t.length
-      ? ` [RESOURCE UPDATE APPLIED: ${t.join(", ")}. State these exact numbers if you mention them. Do not invent other numbers.]`
-      : "";
-    return { hasDelta, newBattery, newFood, newWater, newHp, truth };
+    return { hasDelta, newBattery, newFood, newWater, newHp };
   };
 
   // Priority 1 — gradual starvation/dehydration. Each empty vital costs 1 HP per
@@ -1125,196 +1143,142 @@ export default function DeadSignal() {
     return Math.max(0, r.hp + dHp);
   };
 
-  const callEllie = async (history, systemOverride = null, batteryOverride = null, skipMsgLoot = false, geoRetry = false) => {
-    const system = systemOverride || PHASE1_SYSTEM;
-    const effectiveBattery = batteryOverride !== null ? batteryOverride : resourcesRef.current.battery;
-    lastCallRef.current = { history, systemOverride, batteryOverride }; // C1 — enables retry on failure
-    // H3 — only resend a sliding window of the conversation to cap latency/token cost.
-    // Must start on a "user" turn (Anthropic requires it), so drop a leading assistant msg.
-    let sentHistory = history.length > 16 ? history.slice(-16) : history;
-    if (sentHistory[0]?.role !== "user") sentHistory = sentHistory.slice(1);
-    // C1 — abort a hung request instead of leaving the player stuck on the typing indicator.
-    const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 20000);
-    // API endpoint: defaults to Anthropic's API (works inside the Claude artifact
-    // sandbox). For standalone/local dev, main.jsx sets window.__DS_API_URL__ to a
-    // proxied path (see vite.config.js) so an API key can be injected server-side.
-    const apiUrl = (typeof window !== "undefined" && window.__DS_API_URL__) || "https://api.anthropic.com/v1/messages";
-    try {
-      const res  = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Direct browser → Anthropic (GitHub Pages build). In local dev the
-          // same-origin /api/messages proxy overwrites these server-side, so the
-          // empty client key is harmless and never needs to live in local .env.
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_KEY || "",
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1000, system, messages: sentHistory }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
-      const raw  = data.content?.[0]?.text || "{}";
-      let parsed = { messages: ["..."], choices: ["Keep moving.", "What's next?"] };
-      try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); } catch {}
-      // M3 — never trust the model's shape: clamp to 3 non-empty strings each.
-      const msgs    = (Array.isArray(parsed.messages) ? parsed.messages : []).filter(m => typeof m === "string" && m.trim()).slice(0, 3);
-      const choices = (Array.isArray(parsed.choices) ? parsed.choices : []).filter(c => typeof c === "string" && c.trim()).slice(0, 3);
-      parsed = {
-        messages: msgs.length ? msgs : ["..."],
-        choices:  choices.length ? choices : ["Keep moving.", "What's next?"],
-      };
+  // Local exploration-beat picker — deterministic replacement for the AI's
+  // connective dialogue. State-reaction lines punctuate exploration (they don't
+  // take it over): the matching condition fires occasionally and never twice in a
+  // row, otherwise a fresh atmospheric beat for the current location plays. The
+  // 0.4 injection rate and the seen-set reset are the tuning knobs for M7.
+  const pickExploreBeat = (path, section, res) => {
+    const stateKey = res.battery <= 3 ? "battery_critical"
+                   : res.battery <= 8 ? "battery_low"
+                   : res.hp <= 3      ? "injured_bad"
+                   : res.food <= 1    ? "low_food"
+                   : res.water <= 1   ? "low_water" : null;
+    // battery_critical is near-death and rare — let it through every time (still
+    // not back-to-back). Softer conditions only punctuate, so the pools breathe.
+    if (stateKey && stateKey !== lastStateLineRef.current &&
+        (stateKey === "battery_critical" || Math.random() < 0.4)) {
+      lastStateLineRef.current = stateKey;
+      return STATE_LINES[stateKey];
+    }
+    lastStateLineRef.current = null;
 
-      // Priority 3 — AI geography guard (path/crossing exploration only). Run
-      // BEFORE loot/history so a contradictory reply never persists or applies loot.
-      const geoPhase = gamePhaseRef.current === "p2_ai" || gamePhaseRef.current === "p2_ai_cross";
-      if (geoPhase) {
-        const geoPath = currentPathRef.current || "hospital";
-        const geoSection = gamePhaseRef.current === "p2_ai" ? "path" : "crossing";
-        const bad = detectGeoContradiction(parsed, geoPath, geoSection);
-        if (bad && !geoRetry) {
-          console.warn("[DeadSignal] geo guard:", bad, "→ regenerate");
-          const anchor = geoSection === "crossing"
-            ? "moving through the streets of harwick toward the signal"
-            : geoPath === "hospital" ? "inside mercy general hospital"
-            : geoPath === "metro" ? "in the harwick metro tunnels"
-            : "on route 9, the open highway";
-          const corrective = `[GEOGRAPHY CORRECTION] Your last reply mentioned "${bad}", which does not exist here. The player is ${anchor}. Do not mention "${bad}" or any other location. Rewrite your reply for the current location only.`;
-          clearTimeout(timeoutId);
-          callEllie([...history, { role: "user", content: corrective }], systemOverride, batteryOverride, skipMsgLoot, true);
-          return; // discard the contradictory reply; the retry renders
+    const poolKey = section === "crossing" ? "crossing"
+                  : section === "haven"    ? "haven"
+                  : path;
+    const pool  = EXPLORE_BEATS[poolKey] || EXPLORE_BEATS.crossing;
+    const seen  = seenBeatsRef.current;
+    let fresh   = pool.filter(b => !seen.has(b));
+    if (!fresh.length) { seen.clear(); fresh = pool; } // exhausted — reset, delay repeats not eliminate
+    const beat  = pickRandom(fresh);
+    seen.add(beat);
+    return beat;
+  };
+
+  // Renders the next exploration exchange entirely locally: pick a beat, show its
+  // messages + choices, and — when a story beat is queued in pendingStoryBeatRef —
+  // bridge into it (memory / discovery / shelter / encounter / haven_final). This
+  // is the deterministic replacement for the old AI dialogue call.
+  // phaseOverride: localBeat is synchronous, so at call sites that setGamePhase(X)
+  // then invoke it in the SAME tick, gamePhaseRef.current is still the old phase
+  // (the ref only updates on re-render). Those sites pass the target phase explicitly.
+  const localBeat = (batteryOverride = null, phaseOverride = null) => {
+    const res     = resourcesRef.current;
+    const path    = currentPathRef.current || "hospital";
+    const phase   = phaseOverride || gamePhaseRef.current;
+    const section = phase === "p2_ai" ? "path"
+                  : phase === "p2_ai_cross" ? "crossing" : "haven";
+    const beat    = pickExploreBeat(path, section, res);
+    const effectiveBattery = batteryOverride !== null ? batteryOverride : res.battery;
+
+    // No per-choice battery marker: drain is now universal/passive (beatBatteryCost),
+    // so a per-choice "cost" tag would be misleading. The HUD battery shows the drain.
+    const displayChoices = beat.choices;
+
+    const pending = pendingStoryBeatRef.current;
+
+    if (effectiveBattery <= 0) {
+      scheduleMessages(beat.msgs, null, beat.from);
+      pendingRef.current.push(setTimeout(() => setScreen("offline"), beat.msgs.length * 2000 + 1500)); // C2 — cancelable
+
+    } else if (pending) {
+      // Resolve the current action first — show the beat with no choices
+      pendingStoryBeatRef.current = null;
+      const aiMsgTime = scheduleMessages(beat.msgs, null, beat.from);
+      const path = currentPathRef.current || "hospital"; // H4 — never index data maps with null
+
+      // After the beat finishes, bridge into the queued story beat
+      pendingRef.current.push(setTimeout(() => {
+
+        if (pending.type === "memory") {
+          const bridgeTime = scheduleMessages(["you keep walking.", "then the world slips sideways."], null, "narrator");
+          pendingRef.current.push(setTimeout(() => {
+            setGamePhase("p2_memory_frag");
+            const frag = selectedFragmentRef.current || MEMORY_FRAGMENT_POOLS[path][0];
+            scheduleMessages(frag.msgs, frag.choices, "narrator");
+          }, bridgeTime + 300));
+
+        } else if (pending.type === "discovery") {
+          const discBridges = {
+            hospital: ["you move deeper into the building.", "then you find it."],
+            metro:    ["you keep moving through the tunnels.", "then something catches your eye."],
+            route9:   ["you leave it behind.", "the highway opens ahead.", "then you see the checkpoint."],
+          };
+          const bridgeTime = scheduleMessages(discBridges[path] || ["you move on.", "then you find it."], null, "narrator");
+          pendingRef.current.push(setTimeout(() => {
+            setGamePhase("p2_discovery");
+            const disc = DISCOVERY_BEATS[path];
+            scheduleMessages(disc.msgs, disc.choices, disc.from || "narrator");
+          }, bridgeTime + 300));
+
+        } else if (pending.type === "shelter") {
+          shelterForcedRef.current = false;
+          setChoices([]); setIsTyping(false);
+          setGamePhase("shelter");
+          addMsg("ellie", "it's getting dark.", 600);
+          addMsg("ellie", "you need to find somewhere to stop.", 2400);
+          addMsg("narrator", "emergency shelter.", 4800);
+          addMsg("narrator", "cots still unfolded.", 6400);
+          addMsg("narrator", "names written on tape above each one.", 7900);
+          addMsg("narrator", "one of them is yours.", 9400);
+          pendingRef.current.push(setTimeout(() => setChoices([
+            "Sleep here. [-1 Food] [-1 Water]",
+            "Barricade the door first. [+1 Noise] [-1 Food] [-1 Water]",
+            "Keep moving. [danger]",
+          ]), 11000));
+
+        } else if (pending.type === "haven_final") {
+          setGamePhase("haven_final");
+          setHavenFinalIndex(0);
+          havenFinalRef.current = buildHavenFinal(currentPathRef.current); // P5 — branch-aware
+          scheduleMessages(havenFinalRef.current[0].msgs, havenFinalRef.current[0].choices, "narrator");
+
+        } else if (pending.type === "encounter") {
+          const enc = pending.enc;
+          const encBridges = {
+            hospital: ["you move deeper in.", "then something blocks the way ahead."],
+            metro:    ["you keep moving through the dark.", "then something stops you."],
+            route9:   ["the road opens ahead.", "then you see it."],
+          };
+          // During the city crossing the player is on open streets, not the original
+          // leg — use a street-level bridge instead of the path's indoor/underground one.
+          const crossingBridge = ["the street narrows ahead.", "then something blocks the way."];
+          const encBridge = gamePhaseRef.current === "p2_ai_cross"
+            ? crossingBridge
+            : (encBridges[path] || ["you move on.", "then something blocks the way ahead."]);
+          const bridgeTime = scheduleMessages(encBridge, null, "narrator");
+          pendingRef.current.push(setTimeout(() => {
+            setCurrentEncounter(enc);
+            returnToPhaseRef.current = gamePhaseRef.current;
+            setGamePhase("encounter");
+            scheduleMessages(enc.msgs, enc.choices.map(c => c.text), "narrator");
+          }, bridgeTime + 300));
         }
-        if (bad && geoRetry) {
-          console.warn("[DeadSignal] geo guard:", bad, "→ sanitize");
-          parsed = sanitizeGeo(parsed, geoPath, geoSection);
-        }
-      }
 
-      // Priority 2 — code-authoritative loot from AI *narration*. If Ellie's
-      // messages contain a resource marker (e.g. "granola bar [+1 Food]"), code
-      // applies the delta so the HUD stays in sync. `skipMsgLoot` is set when the
-      // triggering choice already applied loot, so an echoed delta isn't counted
-      // twice. Code owns the clamp; the AI only proposes the delta.
-      if (!skipMsgLoot) {
-        const md = parseResourceMarkers(parsed.messages.join(" "));
-        if (md.food || md.water || md.hp || md.battery) {
-          setResources(p => ({
-            ...p,
-            food:    Math.max(0, p.food + md.food),
-            water:   Math.max(0, p.water + md.water),
-            hp:      Math.max(0, Math.min(10, p.hp + md.hp)),
-            battery: Math.max(0, Math.min(100, p.battery + md.battery)),
-          }));
-          stingForDelta(md); // audio
-          if (md.battery > 0) pulseBattery(); // P6c
-        }
-      }
+      }, aiMsgTime + 600));
 
-      apiHistoryRef.current = [...history, { role: "assistant", content: raw }];
-      const isAiPhase = ["p2_ai", "p2_ai_cross", "haven_ai"].includes(gamePhaseRef.current);
-      const displayChoices = isAiPhase
-        ? parsed.choices.map(c => `${c} [-1% Battery]`)
-        : parsed.choices;
-
-      const pending = pendingStoryBeatRef.current;
-
-      if (effectiveBattery <= 0) {
-        scheduleMessages(parsed.messages, null);
-        pendingRef.current.push(setTimeout(() => setScreen("offline"), parsed.messages.length * 2000 + 1500)); // C2 — cancelable
-
-      } else if (pending) {
-        // Resolve the current action first — show AI response with no choices
-        pendingStoryBeatRef.current = null;
-        const aiMsgTime = scheduleMessages(parsed.messages, null);
-        const path = currentPathRef.current || "hospital"; // H4 — never index data maps with null
-
-        // After AI messages finish, bridge into the queued beat
-        pendingRef.current.push(setTimeout(() => {
-
-          if (pending.type === "memory") {
-            const bridgeTime = scheduleMessages(["you keep walking.", "then the world slips sideways."], null, "narrator");
-            pendingRef.current.push(setTimeout(() => {
-              setGamePhase("p2_memory_frag");
-              const frag = selectedFragmentRef.current || MEMORY_FRAGMENT_POOLS[path][0];
-              scheduleMessages(frag.msgs, frag.choices, "narrator");
-            }, bridgeTime + 300));
-
-          } else if (pending.type === "discovery") {
-            const discBridges = {
-              hospital: ["you move deeper into the building.", "then you find it."],
-              metro:    ["you keep moving through the tunnels.", "then something catches your eye."],
-              route9:   ["you leave it behind.", "the highway opens ahead.", "then you see the checkpoint."],
-            };
-            const bridgeTime = scheduleMessages(discBridges[path] || ["you move on.", "then you find it."], null, "narrator");
-            pendingRef.current.push(setTimeout(() => {
-              setGamePhase("p2_discovery");
-              const disc = DISCOVERY_BEATS[path];
-              scheduleMessages(disc.msgs, disc.choices, disc.from || "narrator");
-            }, bridgeTime + 300));
-
-          } else if (pending.type === "shelter") {
-            shelterForcedRef.current = false;
-            setChoices([]); setIsTyping(false);
-            setGamePhase("shelter");
-            addMsg("ellie", "it's getting dark.", 600);
-            addMsg("ellie", "you need to find somewhere to stop.", 2400);
-            addMsg("narrator", "emergency shelter.", 4800);
-            addMsg("narrator", "cots still unfolded.", 6400);
-            addMsg("narrator", "names written on tape above each one.", 7900);
-            addMsg("narrator", "one of them is yours.", 9400);
-            pendingRef.current.push(setTimeout(() => setChoices([
-              "Sleep here. [-1 Food] [-1 Water]",
-              "Barricade the door first. [+1 Noise] [-1 Food] [-1 Water]",
-              "Keep moving. [danger]",
-            ]), 11000));
-
-          } else if (pending.type === "haven_final") {
-            setGamePhase("haven_final");
-            setHavenFinalIndex(0);
-            havenFinalRef.current = buildHavenFinal(currentPathRef.current); // P5 — branch-aware
-            scheduleMessages(havenFinalRef.current[0].msgs, havenFinalRef.current[0].choices, "narrator");
-
-          } else if (pending.type === "encounter") {
-            const enc = pending.enc;
-            const encBridges = {
-              hospital: ["you move deeper in.", "then something blocks the way ahead."],
-              metro:    ["you keep moving through the dark.", "then something stops you."],
-              route9:   ["the road opens ahead.", "then you see it."],
-            };
-            // During the city crossing the player is on open streets, not the original
-            // leg — use a street-level bridge instead of the path's indoor/underground one.
-            const crossingBridge = ["the street narrows ahead.", "then something blocks the way."];
-            const encBridge = gamePhaseRef.current === "p2_ai_cross"
-              ? crossingBridge
-              : (encBridges[path] || ["you move on.", "then something blocks the way ahead."]);
-            const bridgeTime = scheduleMessages(encBridge, null, "narrator");
-            pendingRef.current.push(setTimeout(() => {
-              setCurrentEncounter(enc);
-              returnToPhaseRef.current = gamePhaseRef.current;
-              setGamePhase("encounter");
-              scheduleMessages(enc.msgs, enc.choices.map(c => c.text), "narrator");
-            }, bridgeTime + 300));
-          }
-
-        }, aiMsgTime + 600));
-
-      } else {
-        scheduleMessages(parsed.messages, displayChoices);
-      }
-    } catch (e) {
-      // C1 — surface the failure AND give the player a way to retry instead of soft-locking.
-      // Leave pendingStoryBeatRef intact: the fetch threw before the beat was consumed,
-      // so a successful retry will still bridge into it.
-      // P6b — give a reason: timeout/abort vs generic connection drop.
-      const timedOut = e?.name === "AbortError";
-      setIsTyping(false);
-      setMessages(p => [...p, { id: nextId("err"), from: "ellie",
-        text: timedOut ? "...still there? took too long to come through." : "...you there? signal's bad." }]);
-      setChoices(["Try again."]);
-    } finally {
-      clearTimeout(timeoutId);
+    } else {
+      scheduleMessages(beat.msgs, displayChoices, beat.from);
     }
   };
 
@@ -1322,7 +1286,7 @@ export default function DeadSignal() {
     const action   = encounter.choices.find(c => stripMarkers(c.text) === stripMarkers(choice))?.action || "AVOID";
     const curNoise = noiseRef.current;
     const curRes   = resourcesRef.current;
-    let dNoise = 0, dHp = 0, dFood = 0, dWater = 0, dBatt = 0;
+    let dNoise = 0, dHp = 0, dFood = 0, dWater = 0, dBatt = 0, dCharger = 0;
     let outcome = "", reactionKey = "avoid";
 
     switch (action) {
@@ -1334,6 +1298,10 @@ export default function DeadSignal() {
       }
       case "SEARCH": {
         dNoise = 1;
+        // Power source charges the bank reliably — you plug into a live generator, so
+        // the reservoir tops up even if you don't turn up loot (keeps the battery
+        // lifeline dependable for an engaged player; the risk is just noise/HP).
+        if (curRes.charger !== null && POWER_SOURCES.has(encounter.id)) dCharger = CHARGER_RECHARGE;
         if (Math.random() < 0.80) { // guaranteed search spots usually pay; risk is the noise/HP on a fail
           const lootTable = SEARCH_LOOT[encounter.id] || SEARCH_LOOT.default;
           const item = pickRandom(lootTable);
@@ -1344,12 +1312,13 @@ export default function DeadSignal() {
           // Food restores HP if injured
           if ((item === "food" || item === "water") && curRes.hp < 10) dHp = 1;
         } else {
-          outcome = "you disturbed something."; reactionKey = "search_fail"; dNoise = 2; dHp = -1;
+          outcome = dCharger > 0 ? "nothing useful, but the charger's topped up." : "you disturbed something.";
+          reactionKey = "search_fail"; dNoise = 2; dHp = -1;
         }
         break;
       }
       case "WAIT":    { outcome = "you waited. it passed."; reactionKey = "wait"; break; }
-      case "DISTRACT":{ dFood = curRes.food > 0 ? -1 : 0; outcome = "it goes for the food. you slip past."; reactionKey = "distract"; dNoise = 1; break; }
+      case "DISTRACT":{ if (curRes.food > 0) { dFood = -1; outcome = "it goes for the food. you slip past."; } else { outcome = "nothing to throw. you slip past anyway."; } reactionKey = "distract"; dNoise = 1; break; }
       case "RUN": {
         const ok = Math.random() < (curNoise <= 3 ? 0.75 : 0.48);
         if (ok) { outcome = "you ran. made it."; reactionKey = "run_success"; dNoise = 1; }
@@ -1358,11 +1327,25 @@ export default function DeadSignal() {
       }
       case "OBSERVE": { outcome = "you look. more questions than answers."; reactionKey = "observe"; break; }
       case "FORCE":   { outcome = "you forced through."; reactionKey = "force"; dHp = -2; dNoise = 2; break; }
+      case "FIGHT": {
+        // Weapon-driven combat. Damage raises the odds of a clean kill and cuts the
+        // bleed on a loss. Unarmed is desperate. Fighting is loud either way.
+        const dmg = weaponRef.current ? weaponRef.current.damage : 0;
+        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? 0.1 : 0)));
+        dNoise = dmg ? 1 : 2;
+        if (ok) { outcome = dmg ? "you put it down." : "you fight it off. barely."; reactionKey = "fight_win";  dHp = dmg ? 0  : -1; }
+        else    { outcome = dmg ? "it gets a hit in."  : "it gets to you. bad.";    reactionKey = "fight_loss"; dHp = dmg ? -1 : -3; }
+        break;
+      }
       default:        { outcome = "you kept moving."; reactionKey = "avoid"; }
     }
 
     const prevNoise = curNoise;
-    const newNoise  = Math.min(5, Math.max(0, curNoise + dNoise));
+    // A forced cornered fight breaks contact — reset noise to 0 (you lost them) so the
+    // next forced fight needs another loud streak, instead of re-triggering immediately.
+    const newNoise  = encounter.id === "cornered"
+      ? 0
+      : Math.min(5, Math.max(0, curNoise + dNoise));
     setNoise(newNoise);
     setResources(prev => ({
       ...prev,
@@ -1370,39 +1353,54 @@ export default function DeadSignal() {
       food:    Math.max(0, prev.food  + dFood),
       water:   Math.max(0, prev.water + dWater),
       battery: Math.min(100, prev.battery + dBatt),
+      charger: prev.charger === null ? null : Math.min(100, prev.charger + dCharger),
     }));
     stingForDelta({ food: dFood, water: dWater, hp: dHp, battery: dBatt }); // audio
     if (dBatt > 0) { addMsg("system", `battery pack connected · +${dBatt}%`, 300); pulseBattery(); } // P6c
+    if (dCharger > 0) { addMsg("system", `charger recharged · +${dCharger}%`, dBatt > 0 ? 1100 : 300); pulseBattery(); }
 
     addMsg("system", outcome, dBatt > 0 ? 800 : 300);
 
     const narLine = NARRATOR_ATMOSPHERE[reactionKey];
-    const useNar  = narLine && (reactionKey.includes("fail") || reactionKey === "sneak_success" || reactionKey === "wait");
+    const useNar  = narLine && (reactionKey.includes("fail") || reactionKey.startsWith("fight") || reactionKey === "sneak_success" || reactionKey === "wait");
     const reactionDelay = useNar ? 2000 : 1400;
     if (useNar) addMsg("narrator", narLine, 900);
     addMsg("ellie", pickRandom(ENCOUNTER_REACTIONS[reactionKey] || ["keep moving."]), reactionDelay);
 
+    if (prevNoise < 2 && newNoise >= 2) addMsg("ellie", "you're making noise. ease off.", reactionDelay + 700);
     if (prevNoise < 4 && newNoise >= 4) addMsg("narrator", "something answers.", reactionDelay + 700);
     if (prevNoise < 5 && newNoise >= 5) addMsg("narrator", "you hear footsteps. more than one set.", reactionDelay + 700);
 
     pendingRef.current.push(setTimeout(() => {
       const returnPhase = returnToPhaseRef.current;
-      const path = currentPathRef.current;
       lastEncounterIdRef.current = encounter.id;
       setGamePhase(returnPhase);
       setCurrentEncounter(null);
       lastEventWasEncRef.current = true;
-      const system  = buildP2System(path, returnPhase === "p2_ai" ? "path" : "crossing", resourcesRef.current, weaponRef.current, newNoise);
-      // During the crossing the player has left their starting leg — never reground
-      // them back "inside the hospital"/"in the tunnels". Path strings apply only to p2_ai.
-      const locationStr = returnPhase === "p2_ai_cross"
-        ? "the streets of Harwick (crossing the city on foot, moving north)"
-        : path === "hospital" ? "Mercy General Hospital (still inside, heading toward the admin floor)" : path === "metro" ? "the Harwick Metro tunnels (underground, heading north)" : path === "route9" ? "Route 9 highway (moving north)" : "Harwick city streets";
-      const history = [...apiHistoryRef.current, { role: "user", content: `[ENCOUNTER RESOLVED] ${outcome} Noise: ${newNoise}/5. HP: ${Math.max(0, curRes.hp + dHp)}/10. Player is in ${locationStr}. Do not reference anything from before this encounter. Do not invent new destinations. Continue forward from here.` }];
-      apiHistoryRef.current = history;
       setIsTyping(true);
-      callEllie(history, system);
+      localBeat(null, returnPhase); // resume exploration in the phase we returned to
     }, reactionDelay + 1800));
+  };
+
+  // Free action (does NOT advance a beat or drain): bleed the charger reservoir into
+  // the phone. Available on normal choice screens while charger has reserve and the
+  // phone isn't already near full — surfaced as a button beside the choices.
+  const chargerTransferAmount = () => Math.min(CHARGER_TRANSFER, resourcesRef.current.charger || 0, 100 - resourcesRef.current.battery);
+  const useCharger = () => {
+    const amt = chargerTransferAmount();
+    if (amt <= 0) return;
+    audioEngine.tapResponse();
+    setResources(p => ({ ...p, battery: Math.min(100, p.battery + amt), charger: Math.max(0, p.charger - amt) }));
+    addMsg("system", `charger → phone · +${amt}%`, 300);
+    pulseBattery();
+  };
+
+  // Equip a weapon by key — only ever an upgrade (never downgrades a better weapon).
+  const equipWeapon = (key, delay = 700) => {
+    const w = WEAPONS[key]; if (!w) return false;
+    const cur = weaponRef.current;
+    if (cur && cur.damage >= w.damage) { addMsg("system", `${w.shortName} found — your ${cur.shortName} is better`, delay); return false; }
+    setWeapon(w); addMsg("system", `${w.name} equipped · ${w.damage}dmg`, delay); return true;
   };
 
   const handleChoice = (choice) => {
@@ -1410,25 +1408,29 @@ export default function DeadSignal() {
     clearPending();
     setChoices([]);
 
-    // C1 — retry the failed request without recording "Try again." as a player line.
-    if (choice === "Try again." && lastCallRef.current) {
-      const { history, systemOverride, batteryOverride } = lastCallRef.current;
-      setIsTyping(true);
-      callEllie(history, systemOverride, batteryOverride);
-      return;
-    }
-
     setLastMessage(choice);
     const isNarContinue = choice === "·";
     const isEncounter   = gamePhaseRef.current === "encounter";
-    const aiPhases      = ["p2_ai", "p2_ai_cross", "haven_ai"];
-    const drainBatt     = aiPhases.includes(gamePhaseRef.current);
-    const newBattery    = drainBatt ? Math.max(0, resourcesRef.current.battery - 1) : resourcesRef.current.battery;
-    if (drainBatt) setResources(p => ({ ...p, battery: newBattery }));
+    // Game-wide drain: every advancing beat costs power (beatBatteryCost owns the
+    // per-phase rate). Continues ("·") are free — reading, not traversal.
+    const drainCost  = isNarContinue ? 0 : beatBatteryCost(gamePhaseRef.current);
+    const newBattery = Math.max(0, resourcesRef.current.battery - drainCost);
+    if (drainCost) setResources(p => ({ ...p, battery: Math.max(0, p.battery - drainCost) }));
     if (!isNarContinue) setMessages(p => [...p, { id: nextId("p"), from: "player", text: choice }]);
     if (!isEncounter && !isNarContinue) setIsTyping(true);
 
     if (isEncounter) { resolveEncounterChoice(choice, currentEncounterRef.current); return; }
+
+    // Offline coherence: AI phases and encounters reach `offline` through localBeat's
+    // own battery check, but these scripted phases don't pass through it — so if the
+    // drain just emptied the phone here, go dark after the tapped choice renders.
+    // (haven_approach is excluded — it checks starvation FIRST so a starving run dies
+    // of the right cause instead of offline always winning the tie; it handles offline
+    // itself after that check.)
+    if (newBattery <= 0 && ["p2_scripted", "shelter", "haven_final"].includes(gamePhaseRef.current)) {
+      pendingRef.current.push(setTimeout(() => setScreen("offline"), 1500));
+      return;
+    }
 
     if (gamePhaseRef.current === "p2_memory_frag") {
       const frag = selectedFragmentRef.current;
@@ -1447,21 +1449,17 @@ export default function DeadSignal() {
       }
       setGamePhase("p2_ai");
       lastEventWasEncRef.current = true;
-      const path   = currentPathRef.current;
-
-      // Delay API call until notification has rendered
+      // Delay until the memory notification has rendered, then reground from the
+      // flashback to the present before the next beat (no hard cut back to reality).
       pendingRef.current.push(setTimeout(() => {
-        const system  = buildP2System(path, "path", resourcesRef.current, weaponRef.current, noiseRef.current);
+        const path = currentPathRef.current || "hospital";
         const reground = {
-          hospital: "they are still in the hospital — the corridor, whatever was just in front of them.",
-          metro:    "they are still in the metro tunnels — underground, whatever was just ahead on the platform.",
-          route9:   "they are still on route 9 — the highway stretching north, whatever was just in the road.",
-        }[path] || "they are still moving through harwick — whatever was directly in front of them.";
-        const content = `[MEMORY FLASH] Player briefly experienced a past memory. Their choice was: "${stripMarkers(choice)}". React in one short line. Then immediately reground them — ${reground} If you mentioned something specific just before (a body, a sound, a blocked path, a vehicle), name it again briefly so the player knows where they are. Then give new choices that follow directly from that situation.`;
-        const history = [...apiHistoryRef.current, { role: "user", content }];
-        apiHistoryRef.current = history;
-        setIsTyping(true);
-        callEllie(history, system);
+          hospital: ["you blink.", "the corridor again."],
+          metro:    ["you blink.", "the tunnel again."],
+          route9:   ["you blink.", "the road again."],
+        }[path] || ["you blink.", "back to the present."];
+        const t = scheduleMessages(reground, null, "narrator");
+        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "p2_ai"); }, t + 300));
       }, 1400));
       return;
     }
@@ -1470,25 +1468,33 @@ export default function DeadSignal() {
       const cur  = SCRIPTED_EXCHANGES[exchangePhase];
       const next = exchangePhase + 1;
       setExchangePhase(next);
-      if (cur?.onChoice === "CHARGER")     { const ch = Math.min(100, newBattery + 35); setResources(p => ({ ...p, battery: ch, charger: 0 })); addMsg("system", `portable charger connected · battery ${ch}%`, 700); }
-      if (cur?.onChoice === "SUPPLIES")    { setResources(p => ({ ...p, food: 5, water: 5 })); addMsg("system", "supplies gathered · food 5 · water 5", 700); }
+      if (cur?.onChoice === "CHARGER")     { const ch = Math.min(100, newBattery + CHARGER_FIND); setResources(p => ({ ...p, battery: ch, charger: 0 })); addMsg("system", `portable charger drained into phone · battery ${ch}%`, 700); addMsg("system", "charger empty — recharge it at a power source", 1400); }
+      if (cur?.onChoice === "SUPPLIES")    { setResources(p => ({ ...p, food: START_SUPPLY, water: START_SUPPLY })); addMsg("system", `supplies gathered · food ${START_SUPPLY} · water ${START_SUPPLY}`, 700); }
       if (cur?.onChoice === "MAP_FOUND")   { addMsg("system", "city map found — harwick", 700); }
       let detected = null;
       if (cur?.onChoice === "BRANCH") { detected = detectPath(choice); setCurrentPath(detected); setChosenPath(choice); }
-      if (next < SCRIPTED_EXCHANGES.length) {
-        const nx = SCRIPTED_EXCHANGES[next];
-        // P6d — flip KIM→ELLIE the instant the name-reveal message actually renders,
-        // tied to the message text (not a magic 3040ms delay). Only the reveal
-        // exchange (onChoice NAME_REVEAL) gets the hook.
-        const onShown = nx.onChoice === "NAME_REVEAL"
-          ? (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); }
-          : null;
-        scheduleMessages(nx.msgs, nx.choices, nx.from || "ellie", onShown);
-      } else {
-        const path = detected || currentPathRef.current || "hospital"; // H4
-        setGamePhase("p2_scripted"); setP2BeatIndex(0);
-        scheduleMessages(PATH_BEATS[path][0].msgs, PATH_BEATS[path][0].choices, "ellie");
-      }
+      // CHARGER emits two staggered captions; hold the next exchange until both have
+      // landed so they read as a pair (the typing indicator from line 1421 bridges the
+      // gap). Other choices have at most one caption, so they start the reply at once.
+      const startNext = () => {
+        if (next < SCRIPTED_EXCHANGES.length) {
+          const nx = SCRIPTED_EXCHANGES[next];
+          // P6d — flip KIM→ELLIE the instant the name-reveal message actually renders,
+          // tied to the message text (not a magic 3040ms delay). Only the reveal
+          // exchange (onChoice NAME_REVEAL) gets the hook.
+          const onShown = nx.onChoice === "NAME_REVEAL"
+            ? (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); }
+            : null;
+          scheduleMessages(nx.msgs, nx.choices, nx.from || "ellie", onShown);
+        } else {
+          const path = detected || currentPathRef.current || "hospital"; // H4
+          setGamePhase("p2_scripted"); setP2BeatIndex(0);
+          scheduleMessages(PATH_BEATS[path][0].msgs, PATH_BEATS[path][0].choices, "ellie");
+        }
+      };
+      const nextDelay = cur?.onChoice === "CHARGER" ? 1700 : 0;
+      if (nextDelay > 0) pendingRef.current.push(setTimeout(startNext, nextDelay));
+      else startNext();
       return;
     }
 
@@ -1497,8 +1503,7 @@ export default function DeadSignal() {
       const beats = PATH_BEATS[path];
       const cur   = beats[p2BeatIndex];
       const next  = p2BeatIndex + 1;
-      const wmap  = { WEAPON_KNIFE:{ name:"worn pocket knife",shortName:"knife",damage:3 }, WEAPON_BAT:{ name:"baseball bat",shortName:"bat",damage:3 }, WEAPON_CROWBAR:{ name:"crowbar",shortName:"crowbar",damage:3 } };
-      if (wmap[cur?.onChoice]) { const w = wmap[cur.onChoice]; setWeapon(w); addMsg("system", `${w.name} equipped · ${w.damage}dmg`, 700); }
+      if (WEAPON_PICKUPS[cur?.onChoice]) equipWeapon(WEAPON_PICKUPS[cur.onChoice]);
       if (next < beats.length) {
         setP2BeatIndex(next);
         scheduleMessages(beats[next].msgs, beats[next].choices, "ellie");
@@ -1508,25 +1513,27 @@ export default function DeadSignal() {
         const chosenFrag = fragPool[Math.floor(Math.random() * fragPool.length)];
         setSelectedFragment(chosenFrag);
         applyTransitionDrain("path_start");
-        // Fixed cadence + guaranteed search spots: memory@2, discovery@6,
-        // searchable spots at ex1 & ex5, a hazard at ex3 (ex4 free, mid-leg drain).
-        setFragTarget(2); setAiExchangeTarget(6);
-        sectionPlanRef.current = { 1: "search", 3: "hazard", 5: "search" };
+        // Pacing for this leg is the declarative ROUTE.path schedule. Just reset the
+        // cursor (aiExchangeCount) and the one-shot memory guard.
         setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
-        const system  = buildP2System(path, "path", resourcesRef.current, weaponRef.current, noiseRef.current);
-        const pathContext = {
-          hospital: `[PATH CONTINUATION] The player is already inside Mercy General Hospital and moving. Knife equipped. Ellie has given them the destination: third floor, room 312, admin area. That information has been delivered — do not repeat it. The player just said they are heading there. Guide them through what they encounter on the way up: sounds, hazards, movement decisions inside the building. Start mid-action.`,
-          metro:    `[PATH CONTINUATION] The player is on the metro platform underground. Bat equipped. Ellie has already warned them about track three and mentioned service exit C as a route north. Both pieces of information have been delivered — do not repeat them. Guide the player through the tunnels and platform: sounds in the dark, hazards, movement decisions. Start mid-action.`,
-          route9:   `[PATH CONTINUATION] The player is on Route 9 moving north on foot past abandoned vehicles. Crowbar equipped. Ellie has already told them the checkpoint ahead is empty and mentioned mile marker 14. Both pieces of information have been delivered — do not repeat them. Guide them up the highway: what they see, what moves, what choices they face. Start mid-action.`,
-        };
-        const history = [{ role: "user", content: pathContext[path] || `[PATH CONTINUATION] Player is moving with a ${weaponRef.current?.name || "weapon"}. Guide them forward. Start mid-action.` }];
-        apiHistoryRef.current = history;
-        callEllie(history, system);
+        localBeat(null, "p2_ai"); // first exploration beat of the path leg
       }
       return;
     }
 
     if (gamePhaseRef.current === "shelter") {
+      // Day 2 resolution — player tapped "·" after "day two ends." Bring on Day 3 morning.
+      if (choice === "·") {
+        setChoices([]); setIsTyping(false);
+        setDayThree(true);
+        addMsg("ellie", "still there?", 1400);
+        addMsg("ellie", "morning. you made it through the night.", 3000);
+        pendingRef.current.push(setTimeout(() => {
+          setGamePhase("haven_approach"); setP2BeatIndex(0);
+          scheduleMessages(HAVEN_APPROACH_BEATS[0].msgs, HAVEN_APPROACH_BEATS[0].choices, HAVEN_APPROACH_BEATS[0].from || "ellie");
+        }, 4800));
+        return;
+      }
       setChoices([]);
       const keepMoving = choice.includes("Keep moving");
 
@@ -1560,27 +1567,24 @@ export default function DeadSignal() {
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "shelter costs · [-1 Food] [-1 Water]", barricade ? 700 : 300);
 
-      addMsg("narrator", "night presses against the walls.", 1800);
-      addMsg("narrator", "you dream of static.", 3400);
+      // Mid-game weapon upgrade — a fire axe left at the shelter (logical, guaranteed before Haven).
+      addMsg("narrator", "a fire axe by the door. left behind.", 1500);
+      equipWeapon("axe", 2200);
 
-      pendingRef.current.push(setTimeout(() => {
-        setDayThree(true);
-        setMessages(p => [...p, { id:nextId("day3"), from:"system", text:"day 3." }]);
-      }, 5200));
-
-      addMsg("ellie", "still there?", 6800);
-      addMsg("ellie", "morning. you made it through the night.", 8400);
-
-      // Start Haven approach after morning messages
-      pendingRef.current.push(setTimeout(() => {
-        setGamePhase("haven_approach");
-        setP2BeatIndex(0);
-        scheduleMessages(HAVEN_APPROACH_BEATS[0].msgs, HAVEN_APPROACH_BEATS[0].choices, HAVEN_APPROACH_BEATS[0].from || "ellie");
-      }, 10200));
+      // Day 2 resolution — mirror Day 1's "night falls. day one ends.", then wait for the tap.
+      // The morning + Haven handoff fires from the "·" guard at the top of this branch.
+      addMsg("narrator", "night falls.", 3200);
+      addMsg("narrator", "day two ends.", 4400);
+      pendingRef.current.push(setTimeout(() => { setIsTyping(false); setChoices(["·"]); }, 5600));
       return;
     }
 
     if (gamePhaseRef.current === "haven_approach") {
+      // No starvation check here: if you've reached Haven's doorstep, the cache (food,
+      // water, battery, weapon — moments away in haven_ai) is your relief. Dying of
+      // hunger at the gate felt cheap. Starvation/dehydration stays lethal in the
+      // crossing (where it's checked) for real neglect; offline still guards the approach.
+      if (newBattery <= 0) { pendingRef.current.push(setTimeout(() => setScreen("offline"), 1500)); return; }
       const next = p2BeatIndex + 1;
       setP2BeatIndex(next);
       if (next < HAVEN_APPROACH_BEATS.length) {
@@ -1591,10 +1595,20 @@ export default function DeadSignal() {
         setAiExchangeCount(0);
         const tgt = Math.floor(Math.random() * 2) + 3;
         setAiExchangeTarget(tgt);
-        const system  = buildHavenSystem(currentPathRef.current, resourcesRef.current, weaponRef.current, noiseRef.current);
-        const history = [{ role:"user", content:"[HAVEN ARRIVAL] Player entered Haven compound. Dining hall: food on tables, coffee cold, nobody home. Guide them deeper into the site. Start mid-exploration." }];
-        apiHistoryRef.current = history;
-        callEllie(history, system);
+        // Haven cache — the relief at the end of the scarcity gauntlet. A stocked
+        // compound, looted at logical rooms: ops building (power), pantry (supplies),
+        // security (weapon). Replaces the old invisible battery floor. You must SURVIVE
+        // to here to get it — neglect kills you in the crossing/approach first.
+        addMsg("narrator", "the operations building.", 800);
+        addMsg("narrator", "a rack of charged battery packs by the dead terminals.", 1900);
+        setResources(p => ({ ...p, battery: Math.min(100, p.battery + HAVEN_BATTERY_CACHE), charger: p.charger === null ? null : Math.min(100, p.charger + 40) }));
+        addMsg("system", `battery packs · +${HAVEN_BATTERY_CACHE}% · charger refilled`, 2700); pulseBattery();
+        addMsg("narrator", "the pantry off the dining hall. still stocked.", 3900);
+        setResources(p => ({ ...p, food: Math.max(p.food, HAVEN_SUPPLY_FLOOR), water: Math.max(p.water, HAVEN_SUPPLY_FLOOR) }));
+        addMsg("system", `supplies restocked · food & water to ${HAVEN_SUPPLY_FLOOR}`, 4700);
+        addMsg("narrator", "a security office. a weapon locker, forced but not emptied.", 5900);
+        equipWeapon("machete", 6700);
+        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "haven_ai"); }, 7900));
       }
       return;
     }
@@ -1605,9 +1619,8 @@ export default function DeadSignal() {
       if (newCnt >= aiTargetRef.current) {
         pendingStoryBeatRef.current = { type: "haven_final" };
       }
-      const loot = applyChoiceLoot(choice, newBattery); // Fix #5
-      const system = buildHavenSystem(currentPathRef.current, resourcesRef.current, weaponRef.current, noiseRef.current);
-      callEllie([...apiHistoryRef.current, { role:"user", content: stripMarkers(choice) + loot.truth }], system, loot.newBattery, loot.hasDelta);
+      const loot = applyChoiceLoot(choice, newBattery); // Fix #5 — choice-marker loot
+      localBeat(loot.newBattery, "haven_ai");
       return;
     }
 
@@ -1645,64 +1658,67 @@ export default function DeadSignal() {
       const newCnt  = aiCountRef.current + 1;
       setAiExchangeCount(newCnt);
 
-      // Mid-leg drain (the steady squeeze). Fires once per section on a free exchange.
-      if (gamePhaseRef.current === "p2_ai" && newCnt === 4)        applyTransitionDrain("path_mid");
-      if (gamePhaseRef.current === "p2_ai_cross" && newCnt === 4)  applyTransitionDrain("crossing_mid");
+      // Walk the route map: this choice advances into node[newCnt-1]. Past the leg's
+      // end (e.g. a restored save) clamps to the leg-ending node. The node decides
+      // whether a story beat / encounter is queued; "explore" = a free atmospheric beat.
+      const leg  = ROUTE[section];
+      const node = leg[Math.min(newCnt, leg.length) - 1];
 
-      // Determine if a beat should follow — queue it, never fire before Ellie resolves the action
+      if (node.drain) applyTransitionDrain(node.drain); // mid-leg squeeze
+
       let pendingBeat = null;
-
-      if (gamePhaseRef.current === "p2_ai" && !fragFiredRef.current && newCnt >= fragTargetRef.current) {
+      if (noiseRef.current >= 3 && (node.kind === "explore" || node.kind === "encounter")) {
+        // Loud → they found you. Forced fight, no sneak escape (never overrides a
+        // memory/discovery/shelter story beat). Noise drops after it (break contact).
+        pendingBeat = { type: "encounter", enc: CORNERED_ENCOUNTER };
+      } else if (node.kind === "memory" && !fragFiredRef.current) {
         setFragFired(true);
         pendingBeat = { type: "memory" };
-
-      } else if (gamePhaseRef.current === "p2_ai" && newCnt >= aiTargetRef.current) {
+      } else if (node.kind === "discovery") {
         pendingBeat = { type: "discovery" };
-
-      } else if (gamePhaseRef.current === "p2_ai_cross" && newCnt >= aiTargetRef.current) {
+      } else if (node.kind === "shelter") {
         pendingBeat = { type: "shelter" };
-
-      } else {
-        // Guaranteed search spots: a deterministic per-section schedule decides which
-        // exchanges host a loot-bearing (SEARCH) encounter vs a hazard. Schedule indices
-        // are spaced so consecutive encounters never collide. Code owns the loot.
-        const planned = sectionPlanRef.current[newCnt];
-        if (planned) {
-          const pool = (ENCOUNTERS[section === "path" ? path : "crossing"] || ENCOUNTERS.crossing)
-            .filter(e => (e.minNoise || 0) <= noiseRef.current && e.id !== lastEncounterIdRef.current);
-          const wantSearch = planned === "search";
-          const matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch);
-          const choicesPool = matching.length ? matching : pool;
-          // P6a — prefer encounters not yet seen this run; fall back once exhausted.
-          const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id));
-          const finalPool = unseen.length ? unseen : choicesPool;
-          if (finalPool.length) {
-            const enc = pickRandom(finalPool);
-            seenEncountersRef.current.add(enc.id);
-            pendingBeat = { type: "encounter", enc };
-          }
+      } else if (node.kind === "encounter") {
+        // Guaranteed encounter. node.plan picks the spot: "power" = a battery lifeline
+        // (POWER_SOURCES), "search" = a loot/supply spot, "hazard" = a non-search threat.
+        const pool = (ENCOUNTERS[section === "path" ? path : "crossing"] || ENCOUNTERS.crossing)
+          .filter(e => (e.minNoise || 0) <= noiseRef.current && e.id !== lastEncounterIdRef.current);
+        let matching;
+        if (node.plan === "power") {
+          matching = pool.filter(e => POWER_SOURCES.has(e.id));
+        } else {
+          const wantSearch = node.plan === "search";
+          matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch);
+        }
+        const choicesPool = matching.length ? matching : pool;
+        const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id)); // P6a
+        const finalPool = unseen.length ? unseen : choicesPool;
+        if (finalPool.length) {
+          const enc = pickRandom(finalPool);
+          seenEncountersRef.current.add(enc.id);
+          pendingBeat = { type: "encounter", enc };
         }
       }
+      // node.kind === "explore" → no story beat; localBeat renders a free atmospheric beat.
+      // Noise is a "how loud have you been" meter: only loud actions (search/force/fight)
+      // raise it; it doesn't fade per-beat (that cancelled it out before). Recovery comes
+      // from breaking contact in a forced fight (resets to 0) and the leg transition (−1),
+      // so stealth play stays near 0 while loud play climbs to the forced-fight threshold.
 
       lastEventWasEncRef.current = false;
       pendingStoryBeatRef.current = pendingBeat;
 
-      // Fix #5 — apply any loot marker before calling the AI; effBattery folds in
-      // the drain plus any [+N Battery] loot, and truth pins Ellie to real numbers.
+      // Fix #5 — apply any loot marker before the beat; effBattery folds in the
+      // drain plus any [+N Battery] loot.
       const loot = applyChoiceLoot(choice, newBattery);
       const effBattery = loot.newBattery;
 
       // Priority 1 — starvation/dehydration on the loot-adjusted vitals. If it
-      // drops HP to 0, end the run now instead of firing an orphan API call.
+      // drops HP to 0, end the run now.
       const survHp = applyStarvation({ food: loot.newFood, water: loot.newWater, hp: loot.newHp });
       if (survHp <= 0) { triggerDeath(loot.newFood <= 0 ? "starvation" : "dehydration"); return; }
 
-      let battNote = "";
-      if (effBattery <= 1)      battNote = " [BATTERY 1%]";
-      else if (effBattery <= 3) battNote = ` [BATTERY CRITICAL ${effBattery}%]`;
-      else if (effBattery <= 5) battNote = ` [BATTERY LOW ${effBattery}%]`;
-      const system = buildP2System(path, section, resourcesRef.current, weaponRef.current, noiseRef.current);
-      callEllie([...apiHistoryRef.current, { role: "user", content: stripMarkers(choice) + battNote + loot.truth }], system, effBattery, loot.hasDelta);
+      localBeat(effBattery); // gamePhaseRef is correct mid-section, no override needed
       return;
     }
 
@@ -1728,20 +1744,22 @@ export default function DeadSignal() {
       }
 
       applyTransitionDrain("crossing_start");
-      // Crossing cadence mirrors the path: shelter@6; searchable spots at ex1 & ex5,
-      // hazard at ex3 (ex2/ex4 free, mid-leg drain at ex4). Encounters stay spaced.
-      setAiExchangeTarget(6); setAiExchangeCount(0);
-      sectionPlanRef.current = { 1: "search", 3: "hazard", 5: "search" };
+      // Pacing for this leg is the declarative ROUTE.crossing schedule. Reset the cursor.
+      setAiExchangeCount(0);
       setGamePhase("p2_ai_cross");
-      setNoise(Math.max(0, noiseRef.current - 1));
+      // Noise carries into the crossing (loudness persists) so an active/searching player
+      // builds toward the forced-fight threshold instead of it resetting each leg.
 
-      // Delay API call until after all notifications have rendered
+      // Delay until notifications render, then bridge out of the starting leg into
+      // the city crossing (no hard cut from "inside the building" to "rows of houses").
       pendingRef.current.push(setTimeout(() => {
-        const system  = buildP2System(path, "crossing", resourcesRef.current, weaponRef.current, noiseRef.current);
-        const history = [{ role: "user", content: `[CROSSING START] Player has been in Harwick the entire time. They already know they're in Harwick. Do not tell them. They left the ${path === "hospital" ? "hospital" : path === "metro" ? "metro tunnels" : "highway checkpoint"} and are now moving north through the middle of the city toward the signal. Urban environment. Guide them forward.` }];
-        apiHistoryRef.current = history;
-        setIsTyping(true);
-        callEllie(history, system);
+        const exitLine = {
+          hospital: ["you slip out of mercy general.", "harwick's streets open ahead."],
+          metro:    ["you climb back up to the street.", "harwick opens ahead."],
+          route9:   ["you leave the highway behind.", "harwick's streets close in."],
+        }[path] || ["you move on.", "harwick's streets open ahead."];
+        const t = scheduleMessages(exitLine, null, "narrator");
+        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "p2_ai_cross"); }, t + 300));
       }, 2400));
       return;
     }
@@ -1750,16 +1768,17 @@ export default function DeadSignal() {
   // Pure run-state reset — no save/screen side effects (shared by restart + new run).
   const resetRunState = () => {
     clearPending();
-    chatStartedRef.current = false; apiHistoryRef.current = [];
+    chatStartedRef.current = false;
     lastEventWasEncRef.current = false; lastEncounterIdRef.current = null;
-    pendingStoryBeatRef.current = null; sectionPlanRef.current = {};
+    pendingStoryBeatRef.current = null;
     seenEncountersRef.current = new Set(); havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
+    seenBeatsRef.current = new Set(); lastStateLineRef.current = null;
     setMessages([]); setChoices([]); setIsTyping(false); setSigFlicker(false); setBattPulse(false);
     setResources({ battery: 9, water: 0, food: 0, charger: null, hp: 10 });
     setWeapon(null); setNoise(0);
     setExchangePhase(0); setContactName("KIM"); setChosenPath(null);
     setGamePhase("phase1"); setCurrentPath(null); setP2BeatIndex(0);
-    setAiExchangeCount(0); setAiExchangeTarget(7); setFragTarget(3); setFragFired(false);
+    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false);
     setCurrentEncounter(null); setSelectedFragment(null); setDayThree(false);
     setHavenFinalIndex(0); shelterForcedRef.current = false;
     // recoveredMemories intentionally NOT reset — persists across runs
@@ -1834,6 +1853,10 @@ export default function DeadSignal() {
   const injuryLbl  = resources.hp <= 2 ? "critical" : resources.hp <= 4 ? "bleeding" : resources.hp <= 6 ? "bruised" : null;
   const showRow2   = weapon !== null || noise > 0 || resources.charger !== null;
   const fragCount  = recoveredMemories.filter(m => m.type === "fragment").length;
+  // "Use charger" is a free action on normal choice screens (not encounters, not
+  // continue-only beats) while the reservoir has charge and the phone isn't near full.
+  const chargerAmt    = Math.min(CHARGER_TRANSFER, resources.charger || 0, 100 - resources.battery);
+  const canUseCharger = chargerAmt > 0 && resources.battery < 90 && gamePhase !== "encounter" && !(choices.length === 1 && choices[0] === "·");
   const clueCount  = recoveredMemories.filter(m => m.type === "discovery").length;
   const signalLevel =
     screen === "phase2_complete" || dayThree ? 5 :
@@ -2048,7 +2071,7 @@ export default function DeadSignal() {
         <div style={{ display:"flex", gap:"1rem", padding:"0.25rem 1rem", borderBottom:"1px solid #111", fontSize:"0.64rem", letterSpacing:"0.09em", flexShrink:0 }}>
           {weapon && <span style={{ color:"#8a7a58" }}>{weapon.shortName} ·{weapon.damage}dmg</span>}
           {noise > 0 && <span style={{ color:noiseColor, animation:noise>=4?flashAnim:"none" }}>noise {noise}/5</span>}
-          {resources.charger !== null && <span style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"empty"}</span>}
+          {resources.charger !== null && <span style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"needs power"}</span>}
         </div>
       )}
 
@@ -2059,13 +2082,19 @@ export default function DeadSignal() {
         <div ref={bottomRef} />
       </div>
 
-      {resources.battery<=10 && resources.battery>0 && <div style={{ padding:"0.4rem 1rem", background:"#0e0404", borderTop:"1px solid #2a0a0a", fontSize:"0.65rem", letterSpacing:"0.1em", color:"#8b2020", animation:battAnim }}>▸ battery critical — find a charger</div>}
+      {resources.battery<=10 && resources.battery>0 && <div style={{ padding:"0.4rem 1rem", background:"#0e0404", borderTop:"1px solid #2a0a0a", fontSize:"0.65rem", letterSpacing:"0.1em", color:"#8b2020", animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>}
 
       {choices.length>0 && !isTyping && (
         <div style={{ padding:"0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))", borderTop:"1px solid #111", display:"flex", flexDirection:"column", gap:"0.5rem", flexShrink:0 }}>
+          {canUseCharger && (
+            <button className="cb" onClick={useCharger}
+              style={{ background:"transparent", border:"1px solid #244a2c", color:"#3a6b40", padding:"clamp(0.5rem, 2vw, 0.65rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.72rem, 3vw, 0.78rem)", fontWeight:300, letterSpacing:"0.04em", transition:"border-color 0.15s, color 0.15s" }}>
+              ⌁&nbsp;&nbsp;Use the charger [+{chargerAmt}% Battery]
+            </button>
+          )}
           {choices.map((c,i) =>
             c==="·"
-              ? <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.5rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>
+              ? <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>
               : <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"clamp(0.6rem, 2.4vw, 0.75rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)", fontWeight:300, letterSpacing:"0.04em", lineHeight:"1.5", transition:"border-color 0.15s, color 0.15s" }}>
                   {i+1}.&nbsp;&nbsp;{parseText(c,"button")}
                 </button>

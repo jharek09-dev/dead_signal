@@ -2,7 +2,7 @@
   "name": "dead-signal",
   "version": "0.1.0",
   "private": true,
-  "description": "Dead Signal — a text-message survival narrative game driven by the Anthropic API.",
+  "description": "Dead Signal — a text-message survival narrative game.",
   "license": "MIT",
   "type": "module",
   "scripts": {

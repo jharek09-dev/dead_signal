@@ -18,15 +18,6 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-// ── API endpoint ──────────────────────────────────────────────────────────────
-// VITE_API_URL points the game at a proxied path (see vite.config.js) so the
-// Anthropic API key can be injected server-side rather than shipped to the
-// browser. If unset, the game falls back to calling api.anthropic.com directly,
-// which only works inside the Claude artifact sandbox.
-if (typeof window !== "undefined" && import.meta.env.VITE_API_URL) {
-  window.__DS_API_URL__ = import.meta.env.VITE_API_URL;
-}
-
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <DeadSignal />
