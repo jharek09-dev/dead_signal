@@ -20,6 +20,12 @@ export default defineConfig(({ mode }) => {
             proxy.on("proxyReq", (proxyReq) => {
               if (env.ANTHROPIC_API_KEY) proxyReq.setHeader("x-api-key", env.ANTHROPIC_API_KEY);
               proxyReq.setHeader("anthropic-version", "2023-06-01");
+              // This is a server-side proxy, not a real browser call. Drop the
+              // browser Origin/Referer (otherwise Anthropic treats it as a CORS
+              // request and 401s) and mark it as an allowed direct caller.
+              proxyReq.removeHeader("origin");
+              proxyReq.removeHeader("referer");
+              proxyReq.setHeader("anthropic-dangerous-direct-browser-access", "true");
             });
           },
         },
