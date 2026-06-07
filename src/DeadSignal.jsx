@@ -525,6 +525,32 @@ const parseText = (text, ctx = "button") => {
 // Shared style fragments (L2 — hoisted so the three screens don't duplicate them)
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
 const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}";
+// Responsive tweaks that can't be expressed inline (media queries). On narrow phones,
+// hide the FRAGMENTS/CLUES word labels so the HUD stays on one line (icon + count remain).
+const RESPONSIVE_CSS = "@media (max-width:480px){.statlabel{display:none}}";
+
+// Sleek iOS-style signal strength: 4 rounded ascending bars. `level` is the game's
+// signalLevel (1–5), mapped to 1–4 lit bars. `flicker` drives the unstable animation.
+// (Relies on the sigflicker/sigpulse keyframes defined in the chat screen's <style>.)
+const SignalBars = ({ level, flicker }) => {
+  const lit = Math.max(0, Math.min(4, Math.round((level / 5) * 4)));
+  const heights = [4, 6, 8, 11];
+  return (
+    <svg width="21" height="12" viewBox="0 0 21 12" style={{ display:"block" }} aria-hidden="true">
+      {heights.map((h, i) => {
+        const on = i < lit;
+        return (
+          <rect key={i} x={i * 5.2} y={12 - h} width="3.4" height={h} rx="1.2"
+            fill={on ? "#4a9e6b" : "#282828"}
+            style={{
+              filter: on ? "drop-shadow(0 0 3px rgba(74,158,107,0.6))" : "none",
+              animation: on && flicker ? "sigflicker 0.18s ease infinite" : on ? "sigpulse 3s ease infinite" : "none",
+            }} />
+        );
+      })}
+    </svg>
+  );
+};
 
 // #4 — a single chat row, memoized so the growing message list doesn't fully
 // re-render when only isTyping / choices change. Depends solely on `m`.
@@ -542,7 +568,7 @@ const MessageRow = memo(function MessageRow({ m }) {
       </div>
     );
   return (
-    <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.48rem 0.85rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"0.84rem", lineHeight:"1.7", fontWeight:300, animation:"fi 0.35s ease" }}>
+    <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.55rem 0.9rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", lineHeight:"1.7", fontWeight:300, animation:"fi 0.35s ease" }}>
       {m.from==="player" ? parseText(m.text,"sent") : parseText(m.text,"msg")}
     </div>
   );
@@ -1785,7 +1811,7 @@ export default function DeadSignal() {
   const allFull    = slots.every(Boolean); // P4 — every slot occupied (overwrite needed for a new run)
 
   if (screen === "intro") return (
-    <div style={{ background:"#070707", minHeight:"100vh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2.5rem", userSelect:"none" }}>
+    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
         {shownLines.map((l,i) => <p key={i} style={{ color:"#c8b98a", fontSize:"0.9rem", lineHeight:"2.1", letterSpacing:"0.05em", animation:"fi 0.9s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
@@ -1801,14 +1827,14 @@ export default function DeadSignal() {
 
   // ─── Main Menu — landing hub (Start / Resume / Story) ──────────────────────────
   if (screen === "menu") return (
-    <div style={{ background:"#070707", minHeight:"100vh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2.5rem", userSelect:"none" }}>
+    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
       {/* Logo: DEAD (powered-down grey) + SIGNAL (live green glow), one word */}
       <div style={{ fontSize:"2.4rem", fontWeight:700, letterSpacing:"0.12em", marginBottom:"3rem", animation:"fi 1.2s ease forwards" }}>
         <span style={{ color:"#4a4a4a" }}>DEAD</span><span style={{ color:"#4a9e6b", textShadow:"0 0 10px rgba(74,158,107,0.6), 0 0 26px rgba(74,158,107,0.25)", animation:"sigpulse 3s ease infinite" }}>SIGNAL</span>
       </div>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"stretch", gap:"0.7rem", width:"230px" }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"stretch", gap:"0.7rem", width:"min(260px, 100%)" }}>
         <button className="rb" onClick={withMenuSound(()=>{ setSlotMode("start"); setSlotConfirm(null); setScreen("slots"); })}
           style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;START
@@ -1830,13 +1856,13 @@ export default function DeadSignal() {
 
   // ─── Slot screen — 3-save picker. START picks/overwrites a slot; LOAD resumes one.
   if (screen === "slots") return (
-    <div style={{ background:"#070707", minHeight:"100vh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2.5rem", userSelect:"none" }}>
+    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.del:hover{border-color:#5a2020!important;color:#e08a8a!important}`}</style>
       {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
       <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>
         {slotMode === "load" ? "LOAD GAME" : "NEW RUN — SELECT SLOT"}
       </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"320px" }}>
+      <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(340px, 100%)" }}>
         {slots.map((m, i) => {
           const occupied   = !!m;
           const delPending = slotConfirm && slotConfirm.index === i && slotConfirm.action === "delete";
@@ -1900,7 +1926,7 @@ export default function DeadSignal() {
       ? (i) => i === 0 ? "#a83232" : "#7a1f1f"
       : () => "#c8b98a";
     return (
-      <div style={{ background:"#070707", minHeight:"100vh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2.5rem", userSelect:"none" }}>
+      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
         <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
@@ -1929,25 +1955,23 @@ export default function DeadSignal() {
   }
 
   return (
-    <div style={{ background:"#070707", height:"100vh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
+    <div style={{ background:"#070707", height:"100dvh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}${RESPONSIVE_CSS}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
 
       {/* Top utility bar: DEAD SIGNAL far left · menu button centered · fragments/battery right */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0.4rem 1rem 0.25rem", flexShrink:0 }}>
-        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", gap:"0.4rem" }}>
-          <span style={{ color:"#4a9e6b", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.22em", textShadow:"0 0 9px rgba(74,158,107,0.65), 0 0 22px rgba(74,158,107,0.3)" }}>DEAD SIGNAL</span>
-          <span style={{ fontSize:"0.72rem", lineHeight:1, letterSpacing:"0.02em" }}>
-            {["▂","▃","▄","▅","▆"].map((b,i) => <span key={i} style={{ color: i < signalLevel ? "#4a9e6b" : "#282828", textShadow: i < signalLevel ? "0 0 5px rgba(74,158,107,0.7)" : "none", animation: (sigFlicker || noise >= 4) && i < signalLevel ? "sigflicker 0.18s ease infinite" : i < signalLevel ? "sigpulse 3s ease infinite" : "none" }}>{b}</span>)}
-          </span>
+      <div style={{ display:"flex", flexWrap:"nowrap", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", padding:"calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem", flexShrink:0 }}>
+        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", gap:"0.45rem" }}>
+          <span style={{ color:"#4a9e6b", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.2em", whiteSpace:"nowrap", textShadow:"0 0 9px rgba(74,158,107,0.65), 0 0 22px rgba(74,158,107,0.3)" }}>DEAD&nbsp;SIGNAL</span>
+          <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
         </div>
         <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
-          style={{ flexShrink:0, background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.15rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
-        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"0.6rem" }}>
+          style={{ flexShrink:0, background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
+        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"0.55rem", whiteSpace:"nowrap" }}>
           <span style={{ color:"#2a7a4a", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◈ FRAGMENTS <span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
+            ◈<span className="statlabel">&nbsp;FRAGMENTS</span> <span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
           </span>
           <span style={{ color:"#2a6070", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◉ CLUES <span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
+            ◉<span className="statlabel">&nbsp;CLUES</span> <span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
           </span>
           <span style={{ display:"inline-flex", alignItems:"center", gap:"0.18rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
             <svg width="18" height="9" viewBox="0 0 18 9" style={{ display:"block", filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
@@ -1987,18 +2011,18 @@ export default function DeadSignal() {
       {/* Messages */}
       <div style={{ flex:1, overflowY:"auto", padding:"0.6rem 0.9rem", display:"flex", flexDirection:"column", gap:"0.4rem", minHeight:0 }}>
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
-        {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.48rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"0.84rem", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
+        {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
       </div>
 
-      {resources.battery<=10 && resources.battery>0 && <div style={{ padding:"0.35rem 1rem", background:"#0e0404", borderTop:"1px solid #2a0a0a", fontSize:"0.65rem", letterSpacing:"0.1em", color:"#8b2020", animation:battAnim }}>▸ battery critical — find a charger</div>}
+      {resources.battery<=10 && resources.battery>0 && <div style={{ padding:"0.4rem 1rem", background:"#0e0404", borderTop:"1px solid #2a0a0a", fontSize:"0.65rem", letterSpacing:"0.1em", color:"#8b2020", animation:battAnim }}>▸ battery critical — find a charger</div>}
 
       {choices.length>0 && !isTyping && (
-        <div style={{ padding:"0.6rem 1rem 1rem", borderTop:"1px solid #111", display:"flex", flexDirection:"column", gap:"0.4rem", flexShrink:0 }}>
+        <div style={{ padding:"0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))", borderTop:"1px solid #111", display:"flex", flexDirection:"column", gap:"0.5rem", flexShrink:0 }}>
           {choices.map((c,i) =>
             c==="·"
               ? <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.5rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>
-              : <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.78rem", fontWeight:300, letterSpacing:"0.04em", lineHeight:"1.5", transition:"border-color 0.15s, color 0.15s" }}>
+              : <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"clamp(0.6rem, 2.4vw, 0.75rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)", fontWeight:300, letterSpacing:"0.04em", lineHeight:"1.5", transition:"border-color 0.15s, color 0.15s" }}>
                   {i+1}.&nbsp;&nbsp;{parseText(c,"button")}
                 </button>
           )}
