@@ -242,12 +242,14 @@ const HAVEN_APPROACH_BEATS = [
     choices:["·"] },
 ];
 
+// Haven is the first CRACK, not the answer. The route-specific path beat (below) ties Ellie
+// to the player's own evidence — that's the crack. We deliberately do NOT spell it out with a
+// "you see her / labeled / ellie." photo dump; the player infers and carries the question into
+// Phase 3. The leg ends on the date (Haven populated before the outbreak) → the call.
 const HAVEN_FINAL_SEQUENCE = [
   { from:"narrator", msgs:["operations building.", "monitors still running.", "chairs empty."],                          choices:["·"] },
   { from:"narrator", msgs:["a corkboard.", "photographs.", "haven residents.", "everyone smiling."],                     choices:["·"] },
   { from:"narrator", msgs:["there's a date in the corner.", "three weeks before day one."],                             choices:["·"] },
-  { from:"narrator", msgs:["you see her.", "third row.", "labeled."],                                                   choices:["·"] },
-  { from:"narrator", msgs:["ellie."],                                                                                   choices:["*How is she in this photo?*"] },
 ];
 
 // Priority 5 — branch-aware ending. One extra beat that ties Ellie to the
@@ -263,6 +265,53 @@ const buildHavenFinal = (path) => {
   if (!beat) return HAVEN_FINAL_SEQUENCE;
   return [...HAVEN_FINAL_SEQUENCE.slice(0, 2), beat, ...HAVEN_FINAL_SEQUENCE.slice(2)];
 };
+
+// ─── Investigation board — the persistent case file (Phase-3 foundation). ───────────
+// Entries reveal as the matching fragment/clue is collected; People/Locations/Questions
+// are scaffolded now and deepen in Phase 3. Kept deliberately sparse — Haven cracks the
+// mystery, it doesn't answer it. reveal(clues:Set<string>, reached:boolean) → boolean.
+const ALL_FRAGMENT_NAMES = Object.values(MEMORY_FRAGMENT_POOLS).flat().map(f => f.name); // all 9
+const BOARD_CLUES = [
+  { name:"Patient File",  note:"mercy general. the name on it is yours." },
+  { name:"Broadcast Log", note:"haven was named two weeks before the signal." },
+  { name:"Project Haven", note:"personnel reassigned to project haven. before day one." },
+];
+const BOARD_PEOPLE = [
+  { name:"Ellie", note:"the voice. she says she remembers you." },
+  // Kim deepens by clue. Her full identity (Kim Alvarez — Haven comms tech, one of the 143, Ellie's
+  // closest friend who rejected the Signal) is a PHASE 3 reveal, kept out of the prologue (4a/4b).
+  { name:"Kim", note:(c) => c.has("Patient File")
+      ? "you and Kim were connected before the wipe. her phone knew your voice."
+      : "you were found on her phone. you called her, right before. who was she?" },
+  { name:"You",   note:"no memory. the evidence keeps pointing back at you." },
+];
+
+// Phase 3 = hub & spoke from Haven; each region holds one truth (STORY.md §5). The Case File
+// previews only the regions the player has *earned* in the prologue — City Hall / Research Annex
+// stay hidden until Phase 3 surfaces them (no premature "???" for places never heard of).
+// reveal(clues:Set<string>, reached:boolean, path:string) → boolean
+const REGIONS = [
+  { key:"haven",    name:"The Haven",            truth:"Ellie",         reveal:(c, reached) => reached,                                              blurb:"built for 143. you found it empty." },
+  { key:"mercy",    name:"Mercy General",        truth:"you",           reveal:(c, reached, path) => c.has("Patient File") || path === "hospital",  blurb:"a hospital. your name is in its files." },
+  { key:"comms",    name:"Communications Array", truth:"the Signal",    reveal:(c) => c.has("Broadcast Log"),                                        blurb:"the broadcast has a source. someone's still transmitting." },
+  { key:"cityhall", name:"City Hall",            truth:"Project Haven", reveal:() => false,                                                          blurb:"" },
+  { key:"annex",    name:"Research Annex",       truth:"the outbreak",  reveal:() => false,                                                          blurb:"" },
+];
+const BOARD_FACTS = [
+  { reveal:(c) => c.has("Broadcast Log"), text:"Haven existed before the outbreak." },
+  { reveal:(c) => c.has("Patient File"),  text:"You're tied to Mercy General." },
+  { reveal:(c) => c.has("Project Haven"), text:"People were reassigned to Project Haven before Day 1." },
+  { reveal:(c, reached) => reached,       text:"Haven was real, populated — then emptied." },
+];
+// OPEN QUESTIONS reveal as the story beat that raises them is reached (key → raiseQuestion()).
+// Worded to the player's *prologue* knowledge — no Phase-3 presumptions (e.g. no "self-wipe").
+const BOARD_QUESTIONS = [
+  { key:"call",   text:"Why did you call Kim before any of this?" },
+  { key:"memory", text:"Why can't you remember anything?" },
+  { key:"kim",    text:"Who was Kim?" },
+  { key:"ellie",  text:"Who — or what — is Ellie?" },
+  { key:"haven",  text:"Why is Haven empty?" },
+];
 
 // Location-specific loot when SEARCH succeeds (encounter id → possible finds)
 const SEARCH_LOOT = {
@@ -466,7 +515,6 @@ const OFFLINE_LINES = [
 const P2_COMPLETE_LINES = [
   { text: "you found haven.", delay: 0 },
   { text: "it was empty.", delay: 1800 },
-  { text: "end of phase 2.", delay: 3800 },
 ];
 
 // Death screen lines, keyed by cause. Distinct from OFFLINE_LINES (battery).
@@ -645,6 +693,7 @@ export default function DeadSignal() {
   const [optConfirm, setOptConfirm]     = useState(false); // two-tap confirm for Options "reset all data"
   const [showRestart, setShowRestart]   = useState(false);
   const [winProfile, setWinProfile]     = useState(null); // post-finish profile summary for the win screen
+  const [raisedQuestions, setRaisedQuestions] = useState([]); // case-file OPEN QUESTIONS surfaced this run
   const [lastMessage, setLastMessage]   = useState("");
   const [messages, setMessages]         = useState([]);
   const [choices, setChoices]           = useState([]);
@@ -697,6 +746,8 @@ export default function DeadSignal() {
   const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
   const activeProfileRef    = useRef(null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
+  const completeSoundRef    = useRef(false); // one-shot guard for the completion terminal sound
+  const raisedQuestionsRef  = useRef([]);    // case-file OPEN QUESTIONS raised this run (by story beat)
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
 
@@ -718,6 +769,13 @@ export default function DeadSignal() {
     dialogueRef.current.forEach(clearTimeout); dialogueRef.current = [];
   };
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
+
+  // Case file — surface an OPEN QUESTION when its story beat hits (dedupe; mirror ref→state).
+  const raiseQuestion = (key) => {
+    if (raisedQuestionsRef.current.includes(key)) return;
+    raisedQuestionsRef.current = [...raisedQuestionsRef.current, key];
+    setRaisedQuestions(raisedQuestionsRef.current);
+  };
 
   // Priority 1 — end the run on defeat. Distinct from the battery "offline" path.
   const triggerDeath = (cause) => {
@@ -763,6 +821,7 @@ export default function DeadSignal() {
     aiExchangeCount, aiExchangeTarget, fragFired,
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
     recoveredMemories, // this run's cumulative collection (profile + new this run)
+    raisedQuestions: raisedQuestionsRef.current, // case-file OPEN QUESTIONS surfaced so far
     pendingStoryBeat: pendingStoryBeatRef.current,
     returnToPhase: returnToPhaseRef.current,
     lastEncounterId: lastEncounterIdRef.current,
@@ -872,6 +931,7 @@ export default function DeadSignal() {
     setHavenFinalIndex(run.havenFinalIndex || 0);
     // memories: prefer the run's own cumulative set; else committed profile; else legacy global
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
+    raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
     setScreen("chat");
   };
@@ -951,9 +1011,13 @@ export default function DeadSignal() {
     };
   }, []);
 
-  // Terminal-screen audio (once unlocked). Only completion has a sound.
+  // Terminal-screen audio (once unlocked). Only completion has a sound. Guarded so it
+  // fires exactly once per entry — never replays on a re-render / audioReady flip.
   useEffect(() => {
-    if (audioReady && screen === "phase2_complete") audioEngine.terminal("complete");
+    if (screen !== "phase2_complete") { completeSoundRef.current = false; return; }
+    if (completeSoundRef.current || !audioReady) return;
+    completeSoundRef.current = true;
+    audioEngine.terminal("complete");
   }, [screen, audioReady]);
 
   useEffect(() => {
@@ -988,6 +1052,7 @@ export default function DeadSignal() {
 
   useEffect(() => {
     if (screen !== "offline") return;
+    setOfflineLines([]); // reset on entry so a re-trigger can't stack duplicate lines
     const ids = [];
     OFFLINE_LINES.forEach(({ text, delay }) => ids.push(setTimeout(() => setOfflineLines(p => [...p, text]), delay)));
     ids.push(setTimeout(() => setShowRestart(true), 5200));
@@ -1006,6 +1071,7 @@ export default function DeadSignal() {
   // Priority 1 — death screen reveal (mirrors the offline effect).
   useEffect(() => {
     if (screen !== "dead") return;
+    setDeathLines([]); // reset on entry so a re-trigger can't stack duplicate lines
     const lines = DEATH_LINES[deathCause] || DEATH_LINES.injury;
     const ids = [];
     lines.forEach(({ text, delay }) => ids.push(setTimeout(() => setDeathLines(p => [...p, text]), delay)));
@@ -1016,6 +1082,7 @@ export default function DeadSignal() {
 
   useEffect(() => {
     if (screen !== "phase2_complete") return;
+    setCompleteLines([]); // reset on entry so a re-trigger can't stack duplicate lines
     const ids = [];
     P2_COMPLETE_LINES.forEach(({ text, delay }) => ids.push(setTimeout(() => setCompleteLines(p => [...p, text]), delay)));
     ids.push(setTimeout(() => setShowRestart(true), 6000));
@@ -1525,6 +1592,9 @@ export default function DeadSignal() {
       const cur  = SCRIPTED_EXCHANGES[exchangePhase];
       const next = exchangePhase + 1;
       setExchangePhase(next);
+      // Case-file questions surface as their beat is reached.
+      if (exchangePhase === 1) raiseQuestion("memory");                          // the amnesia beat
+      if (cur?.onChoice === "NAME_REVEAL") { raiseQuestion("kim"); raiseQuestion("ellie"); raiseQuestion("call"); } // "she was already gone" + "i called her"
       if (cur?.onChoice === "CHARGER")     { const ch = Math.min(100, newBattery + CHARGER_FIND); setResources(p => ({ ...p, battery: ch, charger: 0 })); addMsg("system", `portable charger drained into phone · battery ${ch}%`, 700); addMsg("system", "charger empty — recharge it at a power source", 1400); }
       if (cur?.onChoice === "SUPPLIES")    { setResources(p => ({ ...p, food: START_SUPPLY, water: START_SUPPLY })); addMsg("system", `supplies gathered · food ${START_SUPPLY} · water ${START_SUPPLY}`, 700); }
       if (cur?.onChoice === "MAP_FOUND")   { addMsg("system", "city map found — harwick", 700); }
@@ -1648,6 +1718,7 @@ export default function DeadSignal() {
         const nx = HAVEN_APPROACH_BEATS[next];
         scheduleMessages(nx.msgs, nx.choices, nx.from || "narrator");
       } else {
+        raiseQuestion("haven"); // arrived — Haven is empty
         setGamePhase("haven_ai");
         setAiExchangeCount(0);
         const tgt = Math.floor(Math.random() * 2) + 3;
@@ -1704,7 +1775,10 @@ export default function DeadSignal() {
           setIsTyping(false);
           setMessages(p => [...p, { id:nextId("e"), from:"ellie", text:"i remember you." }]);
         }, 9800));
-        pendingRef.current.push(setTimeout(() => setScreen("phase2_complete"), 12500));
+        // First crack, not the answer: the call drops on the player. No explanation.
+        addMsg("narrator", "the line goes dead.", 11400);
+        addMsg("narrator", "click.", 12800);
+        pendingRef.current.push(setTimeout(() => setScreen("phase2_complete"), 15200));
       }
       return;
     }
@@ -1830,6 +1904,7 @@ export default function DeadSignal() {
     pendingStoryBeatRef.current = null;
     seenEncountersRef.current = new Set(); havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null;
+    raisedQuestionsRef.current = []; setRaisedQuestions([]);
     setMessages([]); setChoices([]); setIsTyping(false); setSigFlicker(false); setBattPulse(false);
     setResources({ battery: 9, water: 0, food: 0, charger: null, hp: 10 });
     setWeapon(null); setNoise(0);
@@ -1895,6 +1970,7 @@ export default function DeadSignal() {
     activeSlotRef.current = i;       // this run auto-saves into slot i
     activeProfileRef.current = profile;
     setRecoveredMemories(memsFromProfile(profile)); // HUD starts from committed progress
+    raisedQuestionsRef.current = []; setRaisedQuestions([]); // questions re-surface as beats replay
     setSlotConfirm(null);
     setScreen("intro");
   };
@@ -2012,6 +2088,79 @@ export default function DeadSignal() {
       </div>
     </div>
   );
+
+  // ─── Investigation board / Case file — the persistent detective notebook. Opened from
+  // the pause menu mid-run; reflects the active slot's collected memories/clues. BACK → chat.
+  if (screen === "board") {
+    const cFrags = new Set(recoveredMemories.filter(m => m.type === "fragment").map(m => m.name));
+    const cClues = new Set(recoveredMemories.filter(m => m.type === "discovery").map(m => m.name));
+    const reached = dayThree || gamePhase.startsWith("haven");
+    const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached));
+    const sec = (label, count) => (
+      <div style={{ color:"#5a7a64", fontSize:"0.6rem", letterSpacing:"0.2em", marginTop:"1.1rem", marginBottom:"0.45rem" }}>{label}{count != null ? `  ${count}` : ""}</div>
+    );
+    return (
+      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", padding:"clamp(1.25rem,5vw,2.5rem) clamp(1rem,4vw,2rem)", userSelect:"none", overflowY:"auto" }}>
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <button className="rb" onClick={withMenuSound(()=>{ setScreen("chat"); })}
+          style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
+          ◂ BACK
+        </button>
+        <div style={{ width:"min(380px,100%)", animation:"fi 0.8s ease forwards" }}>
+          <div style={{ fontSize:"0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem" }}>CASE FILE</div>
+          <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em" }}>what you've pieced together</div>
+
+          {sec("MEMORIES", `${cFrags.size}/9`)}
+          <div style={{ display:"flex", flexWrap:"wrap", gap:"0.35rem" }}>
+            {ALL_FRAGMENT_NAMES.map((n, i) => cFrags.has(n)
+              ? <span key={i} style={{ border:"1px solid #1d3a22", color:"#9aba9a", fontSize:"0.56rem", letterSpacing:"0.03em", padding:"0.3rem 0.45rem" }}>{n}</span>
+              : <span key={i} style={{ border:"1px solid #161616", color:"#2a2a2a", fontSize:"0.56rem", padding:"0.3rem 0.55rem" }}>▦</span>
+            )}
+          </div>
+
+          {sec("CLUES", `${cClues.size}/3`)}
+          {BOARD_CLUES.map((cl, i) => cClues.has(cl.name)
+            ? <div key={i} style={{ marginBottom:"0.4rem" }}><span style={{ color:"#7accd4", fontSize:"0.62rem", letterSpacing:"0.06em" }}>◉ {cl.name}</span><div style={{ color:"#5a6a6e", fontSize:"0.55rem", letterSpacing:"0.03em", marginLeft:"0.9rem" }}>{cl.note}</div></div>
+            : <div key={i} style={{ color:"#2d4a52", fontSize:"0.62rem", letterSpacing:"0.06em", marginBottom:"0.4rem" }}>◉ ???</div>
+          )}
+
+          {sec("PEOPLE")}
+          {BOARD_PEOPLE.map((p, i) => (
+            <div key={i} style={{ marginBottom:"0.4rem" }}><span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{p.name}</span><div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{typeof p.note === "function" ? p.note(cClues, reached) : p.note}</div></div>
+          ))}
+
+          {sec("LOCATIONS")}
+          {(() => {
+            const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath));
+            return (<>
+              {shown.length === 0 && <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no leads yet.</div>}
+              {shown.map((r, i) => (
+                <div key={i} style={{ marginBottom:"0.4rem" }}>
+                  <span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{r.name}</span>
+                  <span style={{ color:"#4a6a54", fontSize:"0.54rem", letterSpacing:"0.04em" }}>{`  · the truth about ${r.truth}`}</span>
+                  {r.blurb && <div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{r.blurb}</div>}
+                </div>
+              ))}
+              {shown.length < REGIONS.length && <div style={{ color:"#3a3a3a", fontSize:"0.55rem", fontStyle:"italic", marginTop:"0.2rem" }}>more to find.</div>}
+            </>);
+          })()}
+
+          {sec("KNOWN FACTS")}
+          {facts.length ? facts.map((f, i) => <div key={i} style={{ color:"#8aaa90", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem" }}>› {f.text}</div>)
+            : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>nothing proven yet.</div>}
+
+          {sec("OPEN QUESTIONS")}
+          {(() => {
+            const asked = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
+            return asked.length
+              ? asked.map((q, i) => <div key={i} style={{ color:"#7a6a5a", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", fontStyle:"italic" }}>? {q.text}</div>)
+              : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no questions yet.</div>;
+          })()}
+          <div style={{ height:"1rem" }} />
+        </div>
+      </div>
+    );
+  }
 
   // ─── Slot screen — 3 save profiles. Each tracks playthroughs + fragments/clues.
   if (screen === "slots") return (
@@ -2156,8 +2305,12 @@ export default function DeadSignal() {
           <span style={{ color:"#4a9e6b", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.2em", whiteSpace:"nowrap", textShadow:"0 0 9px rgba(74,158,107,0.65), 0 0 22px rgba(74,158,107,0.3)" }}>DEAD&nbsp;SIGNAL</span>
           <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
         </div>
-        <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
-          style={{ flexShrink:0, background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
+        <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:"0.4rem" }}>
+          <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
+            style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
+          <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
+            style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
+        </div>
         <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"0.55rem", whiteSpace:"nowrap" }}>
           <span style={{ color:"#2a7a4a", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
             ◈<span className="statlabel">&nbsp;FRAGMENTS</span> <span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
