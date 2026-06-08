@@ -219,9 +219,14 @@ const HAVEN_APPROACH_BEATS = [
   { from:"ellie",
     msgs:["follow the road north.", "there should be a fence line before the compound."],
     choices:["How do you know that?", "Following it north."] },
+  // Ellie crack — she volunteers unease about her own knowledge (STORY.md §3/§4: slow,
+  // sparse, no exposition). The first time the player has reason to doubt her.
+  { from:"ellie",
+    msgs:["...", "i don't know how i know that.", "i don't know how i know any of this."],
+    choices:["Ellie?", "Keep moving."] },
   { from:"narrator",
     msgs:["the phone buzzes in your hand.", "not a message.", "just pressure behind the screen."],
-    choices:["The Signal?", "Ignore it. Keep walking."] },
+    choices:["The Signal?", "Ignore it. Keep walking."], effect:"signal" },
   { from:"ellie",
     msgs:["don't stop now.", "please."],
     choices:["Ellie?", "I'm still moving."] },
@@ -250,6 +255,10 @@ const HAVEN_FINAL_SEQUENCE = [
   { from:"narrator", msgs:["operations building.", "monitors still running.", "chairs empty."],                          choices:["·"] },
   { from:"narrator", msgs:["a corkboard.", "photographs.", "haven residents.", "everyone smiling."],                     choices:["·"] },
   { from:"narrator", msgs:["there's a date in the corner.", "three weeks before day one."],                             choices:["·"] },
+  // The impossible record (STORY.md §3 — the 143 paid off as a contradiction, not an
+  // explanation). The count reads as fully present while the player stands alone. No
+  // lore dump — just "what?". Drives the question evolution + the Signal distortion.
+  { from:"narrator", msgs:["a status board on the wall. still lit.", "RESIDENTS  143", "PRESENT  143", "you're the only one here."], choices:["·"], effect:"record143" },
 ];
 
 // Priority 5 — branch-aware ending. One extra beat that ties Ellie to the
@@ -278,10 +287,12 @@ const BOARD_CLUES = [
 ];
 const BOARD_PEOPLE = [
   { name:"Ellie", note:"the voice. she says she remembers you." },
-  // Kim deepens by clue. Her full identity (Kim Alvarez — Haven comms tech, one of the 143, Ellie's
-  // closest friend who rejected the Signal) is a PHASE 3 reveal, kept out of the prologue (4a/4b).
-  { name:"Kim", note:(c) => c.has("Patient File")
-      ? "you and Kim were connected before the wipe. her phone knew your voice."
+  // Kim deepens by progress but stays a QUESTION. Her full identity (Kim Alvarez — Haven comms
+  // tech, one of the 143, Ellie's closest friend who rejected the Signal) is a PHASE 3 reveal,
+  // kept out of the prologue (STORY.md §3). The `reached` tier ties her to the 143 as a question.
+  { name:"Kim", note:(c, reached) =>
+      reached ? "her phone is the one you carry. you called her the night it began. and the 143 at haven — was she one of them? you don't know."
+      : c.has("Patient File") ? "you and Kim were connected before the wipe. her phone knew your voice."
       : "you were found on her phone. you called her, right before. who was she?" },
   { name:"You",   note:"no memory. the evidence keeps pointing back at you." },
 ];
@@ -297,20 +308,25 @@ const REGIONS = [
   { key:"cityhall", name:"City Hall",            truth:"Project Haven", reveal:() => false,                                                          blurb:"" },
   { key:"annex",    name:"Research Annex",       truth:"the outbreak",  reveal:() => false,                                                          blurb:"" },
 ];
+// reveal(clues:Set<string>, reached:boolean, raised:string[]) → boolean
 const BOARD_FACTS = [
   { reveal:(c) => c.has("Broadcast Log"), text:"Haven existed before the outbreak." },
   { reveal:(c) => c.has("Patient File"),  text:"You're tied to Mercy General." },
   { reveal:(c) => c.has("Project Haven"), text:"People were reassigned to Project Haven before Day 1." },
   { reveal:(c, reached) => reached,       text:"Haven was real, populated — then emptied." },
+  // The contradiction — surfaces only once the player has *seen* the 143 record (haven143 raised).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("haven143"), text:"The board counts 143 residents — all present. You haven't seen a soul." },
 ];
 // OPEN QUESTIONS reveal as the story beat that raises them is reached (key → raiseQuestion()).
 // Worded to the player's *prologue* knowledge — no Phase-3 presumptions (e.g. no "self-wipe").
+// `evolved` is a later, sharper form of the question, shown once its key is raised (at the 143
+// record) — the moment a fact becomes a contradiction and the player starts theorizing.
 const BOARD_QUESTIONS = [
   { key:"call",   text:"Why did you call Kim before any of this?" },
   { key:"memory", text:"Why can't you remember anything?" },
-  { key:"kim",    text:"Who was Kim?" },
+  { key:"kim",    text:"Who was Kim?",          evolved:{ key:"kim143",   text:"Was Kim one of the 143?" } },
   { key:"ellie",  text:"Who — or what — is Ellie?" },
-  { key:"haven",  text:"Why is Haven empty?" },
+  { key:"haven",  text:"Why is Haven empty?",   evolved:{ key:"haven143", text:"Where are the 143?" } },
 ];
 
 // Location-specific loot when SEARCH succeeds (encounter id → possible finds)
@@ -663,6 +679,15 @@ const MessageRow = memo(function MessageRow({ m }) {
         {m.kind==="fragment" && <div style={{ color:"#2a6a3a", fontSize:"0.58rem", letterSpacing:"0.1em" }}>{m.count} of 9 recovered</div>}
       </div>
     );
+  if (m.from === "question_note")
+    return (
+      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.8s ease" }}>
+        <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>QUESTION UPDATED</div>
+        <div style={{ color:"#5a5246", fontSize:"0.72rem", fontStyle:"italic", margin:"0.3rem 0 0", textDecoration:"line-through" }}>{m.oldText}</div>
+        <div style={{ color:"#6a5a48", fontSize:"0.74rem", lineHeight:1.1 }}>↓</div>
+        <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.05rem" }}>{m.newText}</div>
+      </div>
+    );
   return (
     <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.55rem 0.9rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", lineHeight:"1.7", fontWeight:300, animation:"fi 0.35s ease" }}>
       {m.from==="player" ? parseText(m.text,"sent") : parseText(m.text,"msg")}
@@ -775,6 +800,24 @@ export default function DeadSignal() {
     if (raisedQuestionsRef.current.includes(key)) return;
     raisedQuestionsRef.current = [...raisedQuestionsRef.current, key];
     setRaisedQuestions(raisedQuestionsRef.current);
+  };
+
+  // Story-beat side effects, tagged on Haven beats via `effect`. Called just after a
+  // tagged beat finishes rendering. "signal" = the Signal makes itself heard (distortion +
+  // HUD glitch). "record143" = the impossible count: that, plus the question evolutions
+  // (haven143/kim143) and a sparse in-chat QUESTION UPDATED card for the headline one.
+  const fireBeatEffect = (effect) => {
+    if (effect !== "signal" && effect !== "record143") return;
+    audioEngine.signal();
+    setSigFlicker(true);
+    pendingRef.current.push(setTimeout(() => setSigFlicker(false), 1100));
+    if (effect === "record143") {
+      raiseQuestion("haven143");
+      raiseQuestion("kim143");
+      pendingRef.current.push(setTimeout(() => {
+        setMessages(p => [...p, { id: nextId("q"), from: "question_note", oldText: "Why is Haven empty?", newText: "Where are the 143?" }]);
+      }, 700));
+    }
   };
 
   // Priority 1 — end the run on defeat. Distinct from the battery "offline" path.
@@ -1593,6 +1636,7 @@ export default function DeadSignal() {
       }
       const newCount = recoveredMemoriesRef.current.filter(m => m.type === "fragment").length + (isNewFrag ? 1 : 0);
       setSigFlicker(true);
+      audioEngine.signal(); // a memory surfacing through the Signal — distortion artifact
       pendingRef.current.push(setTimeout(() => setSigFlicker(false), 900));
       if (isNewFrag) {
         pendingRef.current.push(setTimeout(() => {
@@ -1745,7 +1789,8 @@ export default function DeadSignal() {
       setP2BeatIndex(next);
       if (next < HAVEN_APPROACH_BEATS.length) {
         const nx = HAVEN_APPROACH_BEATS[next];
-        scheduleMessages(nx.msgs, nx.choices, nx.from || "narrator");
+        const t = scheduleMessages(nx.msgs, nx.choices, nx.from || "narrator");
+        if (nx.effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(nx.effect), t + 200));
       } else {
         raiseQuestion("haven"); // arrived — Haven is empty
         setGamePhase("haven_ai");
@@ -1786,7 +1831,8 @@ export default function DeadSignal() {
       const next = havenFinalIndex + 1;
       setHavenFinalIndex(next);
       if (next < seq.length) {
-        scheduleMessages(seq[next].msgs, seq[next].choices, "narrator");
+        const t = scheduleMessages(seq[next].msgs, seq[next].choices, "narrator");
+        if (seq[next].effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(seq[next].effect), t + 200));
       } else {
         // Incoming call
         setChoices([]); setIsTyping(false);
@@ -1802,7 +1848,10 @@ export default function DeadSignal() {
         pendingRef.current.push(setTimeout(() => setIsTyping(true), 8200));
         pendingRef.current.push(setTimeout(() => {
           setIsTyping(false);
+          setSigFlicker(true);
+          audioEngine.signal(); // the Signal, right up against the words — that sound = Ellie/the Signal
           setMessages(p => [...p, { id:nextId("e"), from:"ellie", text:"i remember you." }]);
+          pendingRef.current.push(setTimeout(() => setSigFlicker(false), 1000));
         }, 9800));
         // First crack, not the answer: the call drops on the player. No explanation.
         addMsg("narrator", "the line goes dead.", 11400);
@@ -2166,7 +2215,7 @@ export default function DeadSignal() {
     const cFrags = new Set(recoveredMemories.filter(m => m.type === "fragment").map(m => m.name));
     const cClues = new Set(recoveredMemories.filter(m => m.type === "discovery").map(m => m.name));
     const reached = dayThree || gamePhase.startsWith("haven");
-    const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached));
+    const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached, raisedQuestions));
     const sec = (label, count) => (
       <div style={{ color:"#5a7a64", fontSize:"0.6rem", letterSpacing:"0.2em", marginTop:"1.1rem", marginBottom:"0.45rem" }}>{label}{count != null ? `  ${count}` : ""}</div>
     );
@@ -2224,7 +2273,16 @@ export default function DeadSignal() {
           {(() => {
             const asked = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
             return asked.length
-              ? asked.map((q, i) => <div key={i} style={{ color:"#7a6a5a", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", fontStyle:"italic" }}>? {q.text}</div>)
+              ? asked.map((q, i) => {
+                  const evolved = q.evolved && raisedQuestions.includes(q.evolved.key);
+                  return (
+                    <div key={i} style={{ color:"#7a6a5a", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", fontStyle:"italic" }}>
+                      {evolved
+                        ? <><span style={{ color:"#4a463e", textDecoration:"line-through" }}>? {q.text}</span><br/><span style={{ color:"#c8a878" }}>↳ {q.evolved.text}</span></>
+                        : <>? {q.text}</>}
+                    </div>
+                  );
+                })
               : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no questions yet.</div>;
           })()}
           <div style={{ height:"1rem" }} />
