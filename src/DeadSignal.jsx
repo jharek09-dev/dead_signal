@@ -2134,7 +2134,7 @@ export default function DeadSignal() {
             ▸&nbsp;&nbsp;LOAD
           </button>
         )}
-        <button className="rb" onClick={withMenuSound(()=>{ setMenuNote("story mode — coming soon"); })}
+        <button className="rb" onClick={withMenuSound(()=>{ setMenuNote(""); setScreen("story"); })}
           style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;STORY
         </button>
@@ -2146,6 +2146,45 @@ export default function DeadSignal() {
       </div>
     </div>
   );
+
+  // ─── Story — static pre-game lore page (no spoilers; the guide stays unnamed). Reached
+  // from the main menu's STORY button; BACK → menu. Scrollable like the Case File. ──────────
+  if (screen === "story") {
+    const ssec = (label) => (
+      <div style={{ color:"#4a9e6b", fontSize:"0.6rem", letterSpacing:"0.2em", marginTop:"1.4rem", marginBottom:"0.5rem" }}>{label}</div>
+    );
+    const body = { color:"#c8b98a", fontSize:"0.74rem", lineHeight:1.75, fontWeight:300, letterSpacing:"0.01em", margin:0, opacity:0.92 };
+    return (
+      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", padding:"clamp(1.25rem,5vw,2.5rem) clamp(1rem,4vw,2rem)", userSelect:"none", overflowY:"auto" }}>
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <button className="rb" onClick={withMenuSound(()=>{ setScreen("menu"); })}
+          style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
+          ◂ BACK
+        </button>
+        <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards", paddingTop:"1.6rem", paddingBottom:"1.5rem" }}>
+          {/* Transmission header — styled like a recovered signal log */}
+          <div style={{ border:"1px solid #1d3a22", background:"#010a04", padding:"0.85rem 1rem", textAlign:"center" }}>
+            <div style={{ color:"#4a9e6b", fontSize:"0.62rem", letterSpacing:"0.22em", textShadow:"0 0 8px rgba(74,158,107,0.35)" }}>— SIGNAL RECOVERED —</div>
+            <div style={{ color:"#6aba8a", fontSize:"0.66rem", letterSpacing:"0.16em", marginTop:"0.35rem" }}>GREATER HARWICK</div>
+            <div style={{ color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>status: dark · 72h</div>
+          </div>
+
+          {ssec("THE SITUATION")}
+          <p style={body}>Harwick went dark three days ago. Power gone, streets emptied, and whatever moves out there now isn't what it used to be. Your phone is almost dead.</p>
+
+          {ssec("THE VOICE")}
+          <p style={body}>You woke with no memory of how you got here. A stranger texts the phone beside you — no name, just a way out, if you keep moving and keep the line alive.</p>
+
+          {ssec("THE GOAL")}
+          <p style={body}>A broadcast loops the same coordinates: somewhere still standing. Haven. Cross the city, keep the battery alive, reach it.</p>
+
+          <div style={{ marginTop:"2rem", textAlign:"center", color:"#3a3a3a", fontSize:"0.58rem", letterSpacing:"0.14em", fontStyle:"italic" }}>
+            …carrier lost…&nbsp;&nbsp;·&nbsp;&nbsp;keep the signal alive.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ─── Options — the single settings hub (audio, run reset, full wipe). Reachable from
   // the main menu and the in-game pause menu; `optionsFrom` decides where BACK returns. ──
