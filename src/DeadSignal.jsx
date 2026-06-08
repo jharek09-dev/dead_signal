@@ -120,7 +120,7 @@ const DISCOVERY_BEATS = {
   route9: {
     from: "narrator",
     msgs: ["a checkpoint barrier. guard booth empty.", "a patrol truck stopped at the gate. coffee cold on the dash.", "clipboard face-down on the seat."],
-    choices: ["Deployment order. *Personnel reassigned to Project Haven.* Same week I was admitted. [examine deployment order]"],
+    choices: ["Deployment order. *Personnel reassigned to Project Haven.* Dated the week before any of this. [examine deployment order]"],
     onChoice: "DISCOVERY_ROUTE9",
   },
 };
@@ -763,7 +763,6 @@ export default function DeadSignal() {
   const lastEncounterIdRef   = useRef(null);
   const shelterForcedRef     = useRef(false);
   const pendingStoryBeatRef  = useRef(null);
-  const lastEventWasEncRef  = useRef(false);
   const returnToPhaseRef    = useRef("p2_ai");
   const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
@@ -871,7 +870,6 @@ export default function DeadSignal() {
     havenFinal: havenFinalRef.current,
     seenEncounters: [...seenEncountersRef.current],
     shelterForced: shelterForcedRef.current,
-    lastEventWasEnc: lastEventWasEncRef.current,
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
   // The full per-slot record written to storage.
@@ -959,7 +957,6 @@ export default function DeadSignal() {
     seenEncountersRef.current = new Set(run.seenEncounters || []);
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
     shelterForcedRef.current  = !!run.shelterForced;
-    lastEventWasEncRef.current = !!run.lastEventWasEnc;
     chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
     // state
     setMessages(run.messages || []); setChoices(run.choices || []); setLastMessage(run.lastMessage || "");
@@ -1251,20 +1248,29 @@ export default function DeadSignal() {
 
   // Resource drain at section transitions and mid-legs. The steady squeeze that
   // makes searching matter (supply economy). Code owns every number.
+  // Returns the {food, water} deltas it applied so a same-tick caller can fold them
+  // into its starvation snapshot — setResources is async, so resourcesRef won't reflect
+  // this drain until the next render (otherwise a mid-leg drain that zeroes a vital
+  // wouldn't cost HP until the *following* choice).
   const applyTransitionDrain = (type) => {
+    let dFood = 0, dWater = 0;
     if (type === "path_start") {
+      dFood = -1; dWater = -1;
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "moving out · [-1 Food] [-1 Water]", 500);
     }
     if (type === "path_mid") {
+      dWater = -1;
       setResources(p => ({ ...p, water: Math.max(0, p.water - 1) }));
       addMsg("system", "the climb wears on you · [-1 Water]", 500);
     }
     if (type === "crossing_start") {
+      dFood = -1; dWater = -1;
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "crossing harwick · [-1 Food] [-1 Water]", 500);
     }
     if (type === "crossing_mid") {
+      dFood = -1; dWater = -1;
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "the miles add up · [-1 Food] [-1 Water]", 500);
     }
@@ -1280,6 +1286,7 @@ export default function DeadSignal() {
     const cur = resourcesRef.current;
     const willDrop = type === "path_mid" ? cur.water > 0 : (cur.food > 0 || cur.water > 0);
     if (willDrop) audioEngine.loss();
+    return { food: dFood, water: dWater };
   };
 
   // Fix #5 — apply code-authoritative loot parsed from an AI-phase choice marker.
@@ -1571,7 +1578,6 @@ export default function DeadSignal() {
       lastEncounterIdRef.current = encounter.id;
       setGamePhase(returnPhase);
       setCurrentEncounter(null);
-      lastEventWasEncRef.current = true;
       setIsTyping(true);
       localBeat(null, returnPhase); // resume exploration in the phase we returned to
     }, reactionDelay + 1800));
@@ -1619,9 +1625,10 @@ export default function DeadSignal() {
     // Offline coherence: AI phases and encounters reach `offline` through localBeat's
     // own battery check, but these scripted phases don't pass through it — so if the
     // drain just emptied the phone here, go dark after the tapped choice renders.
-    // (haven_approach is excluded — it checks starvation FIRST so a starving run dies
-    // of the right cause instead of offline always winning the tie; it handles offline
-    // itself after that check.)
+    // (haven_approach is deliberately excluded and has NO offline/starvation check: by
+    // design the approach can't strand you — the Haven cache moments away is the relief,
+    // so the battery may visibly hit 0% here without going dark. Neglect stays lethal
+    // earlier, in the crossing/legs. See the haven_approach handler.)
     if (newBattery <= 0 && ["p2_scripted", "shelter", "haven_final"].includes(gamePhaseRef.current)) {
       pendingRef.current.push(setTimeout(() => setScreen("offline"), 1500));
       return;
@@ -1644,7 +1651,6 @@ export default function DeadSignal() {
         }, 600));
       }
       setGamePhase("p2_ai");
-      lastEventWasEncRef.current = true;
       // Delay until the memory notification has rendered, then reground from the
       // flashback to the present before the next beat (no hard cut back to reality).
       pendingRef.current.push(setTimeout(() => {
@@ -1703,19 +1709,42 @@ export default function DeadSignal() {
       const cur   = beats[p2BeatIndex];
       const next  = p2BeatIndex + 1;
       if (WEAPON_PICKUPS[cur?.onChoice]) equipWeapon(WEAPON_PICKUPS[cur.onChoice]);
+      // When the player presses Ellie on her route knowledge ("How do you know …"),
+      // she deflects rather than ignoring it — a terse dodge keeps the scared-survivor
+      // voice and makes the silence feel chosen. It is NOT a crack/admission: the real
+      // crack ("i don't know how i know any of this") is reserved for the Haven approach.
+      const askedHow = /^how do you know/i.test(stripMarkers(choice));
       if (next < beats.length) {
         setP2BeatIndex(next);
-        scheduleMessages(beats[next].msgs, beats[next].choices, "ellie");
+        const nb = beats[next];
+        const msgs = askedHow ? ["not now.", ...nb.msgs] : nb.msgs;
+        scheduleMessages(msgs, nb.choices, "ellie");
       } else {
-        // Path scripted complete — pick random fragment for this run, drain water, start AI
+        // Path scripted complete — pick this run's fragment, drain water, start AI.
+        // Prefer a fragment this slot hasn't collected yet (like the seen-encounter /
+        // seen-beat "prefer unseen" pattern), so replaying a route makes progress toward
+        // 100% instead of re-rolling an owned fragment and showing a flashback that
+        // doesn't count. Falls back to the full pool once all three are collected.
         const fragPool = MEMORY_FRAGMENT_POOLS[path] || MEMORY_FRAGMENT_POOLS.hospital;
-        const chosenFrag = fragPool[Math.floor(Math.random() * fragPool.length)];
+        const ownedFrags = new Set(recoveredMemoriesRef.current.filter(m => m.type === "fragment").map(m => m.name));
+        const freshFrags = fragPool.filter(f => !ownedFrags.has(f.name));
+        const chosenFrag = pickRandom(freshFrags.length ? freshFrags : fragPool);
         setSelectedFragment(chosenFrag);
-        applyTransitionDrain("path_start");
         // Pacing for this leg is the declarative ROUTE.path schedule. Just reset the
         // cursor (aiExchangeCount) and the one-shot memory guard.
-        setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
-        localBeat(null, "p2_ai"); // first exploration beat of the path leg
+        const startLeg = () => {
+          applyTransitionDrain("path_start");
+          setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
+          localBeat(null, "p2_ai"); // first exploration beat of the path leg
+        };
+        if (askedHow) {
+          // Dodge the final "how do you know" before moving out, then start the leg.
+          setIsTyping(true);
+          const t = scheduleMessages(["later. keep moving."], null, "ellie");
+          pendingRef.current.push(setTimeout(startLeg, t + 300));
+        } else {
+          startLeg();
+        }
       }
       return;
     }
@@ -1873,7 +1902,7 @@ export default function DeadSignal() {
       const leg  = ROUTE[section];
       const node = leg[Math.min(newCnt, leg.length) - 1];
 
-      if (node.drain) applyTransitionDrain(node.drain); // mid-leg squeeze
+      const drain = node.drain ? applyTransitionDrain(node.drain) : { food: 0, water: 0 }; // mid-leg squeeze
 
       let pendingBeat = null;
       if (noiseRef.current >= 3 && (node.kind === "explore" || node.kind === "encounter")) {
@@ -1914,7 +1943,6 @@ export default function DeadSignal() {
       // from breaking contact in a forced fight (resets to 0) and the leg transition (−1),
       // so stealth play stays near 0 while loud play climbs to the forced-fight threshold.
 
-      lastEventWasEncRef.current = false;
       pendingStoryBeatRef.current = pendingBeat;
 
       // Fix #5 — apply any loot marker before the beat; effBattery folds in the
@@ -1922,10 +1950,14 @@ export default function DeadSignal() {
       const loot = applyChoiceLoot(choice, newBattery);
       const effBattery = loot.newBattery;
 
-      // Priority 1 — starvation/dehydration on the loot-adjusted vitals. If it
-      // drops HP to 0, end the run now.
-      const survHp = applyStarvation({ food: loot.newFood, water: loot.newWater, hp: loot.newHp });
-      if (survHp <= 0) { triggerDeath(loot.newFood <= 0 ? "starvation" : "dehydration"); return; }
+      // Priority 1 — starvation/dehydration on the loot-adjusted vitals, with the
+      // mid-leg transition drain (above) folded in — applyTransitionDrain's setResources
+      // is async, so it isn't in resourcesRef/loot yet this tick. Without this, a drain
+      // that zeroes a vital wouldn't cost HP until the following choice.
+      const snapFood  = Math.max(0, loot.newFood  + drain.food);
+      const snapWater = Math.max(0, loot.newWater + drain.water);
+      const survHp = applyStarvation({ food: snapFood, water: snapWater, hp: loot.newHp });
+      if (survHp <= 0) { triggerDeath(snapFood <= 0 ? "starvation" : "dehydration"); return; }
 
       localBeat(effBattery); // gamePhaseRef is correct mid-section, no override needed
       return;
@@ -1979,7 +2011,7 @@ export default function DeadSignal() {
   const resetRunState = () => {
     clearPending();
     chatStartedRef.current = false;
-    lastEventWasEncRef.current = false; lastEncounterIdRef.current = null;
+    lastEncounterIdRef.current = null;
     pendingStoryBeatRef.current = null;
     seenEncountersRef.current = new Set(); havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null;
