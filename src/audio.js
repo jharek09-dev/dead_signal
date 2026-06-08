@@ -55,7 +55,19 @@ function build() {
   resolve.volume.value = -13;
   resolve.connect(reverb); resolve.connect(master);
 
-  nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve };
+  // ── Signal-distortion artifact ───────────────────────────────────────────────
+  // A corrupted-Signal sound reserved for rare story beats (approaching Haven,
+  // recovering a memory, the impossible 143 record, the call). Pink-noise crackle
+  // through a band-pass + a brief detuned chirp ("voice artifact"). Quiet; routes to
+  // master so mute/volume apply. Players come to read it as "that sound = the Signal".
+  const sigFilter = new Tone.Filter({ type: "bandpass", frequency: 1400, Q: 1.6 });
+  sigFilter.connect(master);
+  const sigNoise  = new Tone.NoiseSynth({ noise: { type: "pink" }, envelope: { attack: 0.004, decay: 0.2, sustain: 0, release: 0.06 } });
+  sigNoise.volume.value = -20;
+  sigNoise.connect(sigFilter);
+  const sigChirp  = mk({ oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.05 } }, -22);
+
+  nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve, sigNoise, sigChirp };
 }
 
 const audioEngine = {
@@ -126,6 +138,18 @@ const audioEngine = {
   loss() {
     if (!unlocked || muted) return;
     try { nodes.sting.triggerAttackRelease("C4", 0.22); } catch (e) {}
+  },
+
+  // Signal distortion — rare, story-gated only (never on routine actions). A noise
+  // crackle plus a brief detuned two-note chirp that reads as a corrupted artifact.
+  signal() {
+    if (!unlocked || muted) return;
+    const t = Tone.now();
+    try {
+      nodes.sigNoise.triggerAttackRelease(0.18, t);
+      nodes.sigChirp.triggerAttackRelease("B5", 0.05, t + 0.02);
+      nodes.sigChirp.triggerAttackRelease("F#5", 0.06, t + 0.14);
+    } catch (e) {}
   },
 
   // ── Terminal-screen audio ────────────────────────────────────────────────
