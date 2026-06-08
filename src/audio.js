@@ -16,7 +16,14 @@ const MASTER_DB = -4; // overall headroom; one-shots are mixed below this (the -
 
 let unlocked = false;
 let muted    = false;
+let volume   = 1;      // 0..1 user level, layered on top of the MASTER_DB headroom
 let nodes    = null;   // populated by build()
+
+// Ramp the master gain to the current mute/volume state. No-op until unlocked.
+function applyMasterGain(ramp = 0.12) {
+  if (!unlocked) return;
+  nodes.master.gain.rampTo(muted ? 0 : volume * Tone.dbToGain(MASTER_DB), ramp);
+}
 
 function build() {
   if (nodes) return;
@@ -72,8 +79,8 @@ const audioEngine = {
       if (state && state !== "running") return;
       build();
       unlocked = true;
-      // Apply whatever mute state was restored before the first gesture.
-      nodes.master.gain.rampTo(muted ? 0 : Tone.dbToGain(MASTER_DB), 0.1);
+      // Apply whatever mute/volume state was restored before the first gesture.
+      applyMasterGain(0.1);
     } catch (e) { /* leave unlocked false; methods stay no-ops */ }
   },
 
@@ -83,13 +90,18 @@ const audioEngine = {
   status() {
     let state = "n/a";
     try { state = Tone.getContext().state; } catch (e) {}
-    return { unlocked, muted, state, hasNodes: !!nodes };
+    return { unlocked, muted, volume, state, hasNodes: !!nodes };
   },
 
   setMuted(m) {
     muted = !!m;
-    if (!unlocked) return;
-    nodes.master.gain.rampTo(muted ? 0 : Tone.dbToGain(MASTER_DB), 0.12);
+    applyMasterGain();
+  },
+
+  // User volume level, 0..1. Layered on top of MASTER_DB; muting still wins.
+  setVolume(v) {
+    volume = Math.max(0, Math.min(1, v));
+    applyMasterGain();
   },
 
   // Resume the (single) context after the tab is backgrounded. Called on return-to-foreground
