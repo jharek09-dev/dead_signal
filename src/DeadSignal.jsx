@@ -606,9 +606,6 @@ const parseText = (text, ctx = "button") => {
 // Shared style fragments (L2 — hoisted so the three screens don't duplicate them)
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
 const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}";
-// Responsive tweaks that can't be expressed inline (media queries). On narrow phones,
-// hide the FRAGMENTS/CLUES word labels so the HUD stays on one line (icon + count remain).
-const RESPONSIVE_CSS = "@media (max-width:480px){.statlabel{display:none}}";
 
 // Diagnostic overlay — only renders when the URL has ?debug. Shows the live audio-context
 // state so iOS audio interruptions can be diagnosed without a Mac/remote inspector.
@@ -682,6 +679,9 @@ export default function DeadSignal() {
   const [deathLines, setDeathLines]     = useState([]);   // Priority 1 — death screen
   const [deathCause, setDeathCause]     = useState(null); // "injury" | "starvation" | "dehydration"
   const [muted, setMuted]               = useState(false); // audio — user mute preference (persisted)
+  const [volume, setVolume]             = useState(70);    // audio — user volume 0–100 (persisted)
+  const [optionsFrom, setOptionsFrom]   = useState("menu"); // where Options was opened from: "menu" | "chat"
+  const [slotsFrom, setSlotsFrom]       = useState("menu"); // where the slots screen was opened from: "menu" | "chat"
   const [audioReady, setAudioReady]     = useState(false); // audio — true once unlocked by a user gesture
   const [slots, setSlots]               = useState([null, null, null]); // P4 — 3 save slots (meta or null)
   const [slotMode, setSlotMode]         = useState("start"); // slot screen mode: "start" | "load"
@@ -800,7 +800,7 @@ export default function DeadSignal() {
     if (gamePhase === "p2_ai_cross") return "Crossing Harwick";
     if (currentPath === "hospital")  return "Hospital";
     if (currentPath === "metro")     return "Metro tunnels";
-    if (currentPath === "highway")   return "Highway checkpoint";
+    if (currentPath === "route9")    return "Highway checkpoint";
     return "Harwick";
   };
   const snapshotDay = () =>
@@ -942,10 +942,6 @@ export default function DeadSignal() {
     setMenuMsg(ok ? "game saved." : "nothing to save yet.");
     pendingRef.current.push(setTimeout(() => setMenuMsg(""), 1800));
   };
-  const menuLoad = async () => {
-    setMenuMsg("");
-    if (activeSlotRef.current != null) await resumeSlot(activeSlotRef.current); // reload this run's slot
-  };
   const menuSaveExit = async () => {
     await saveRun();
     setMenuOpen(false); setMenuMsg("");
@@ -962,13 +958,29 @@ export default function DeadSignal() {
     (async () => { try { await window.storage.set("ds_muted", JSON.stringify(next)); } catch (e) {} })();
   };
 
-  // Restore the mute preference on mount.
+  // Set the user volume (0–100), apply it to the engine, and persist it.
+  const setVol = (v) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(v)));
+    setVolume(clamped);
+    audioEngine.setVolume(clamped / 100);
+    (async () => { try { await window.storage.set("ds_volume", JSON.stringify(clamped)); } catch (e) {} })();
+  };
+
+  // Restore the mute + volume preferences on mount, applying the (possibly default)
+  // volume to the engine so the slider and the actual loudness start in sync.
   useEffect(() => {
     (async () => {
       try {
         const r = await window.storage.get("ds_muted");
         if (r?.value) { const m = JSON.parse(r.value); setMuted(!!m); mutedRef.current = !!m; audioEngine.setMuted(!!m); }
       } catch (e) {}
+      let v = 70;
+      try {
+        const rv = await window.storage.get("ds_volume");
+        if (rv?.value) { const parsed = JSON.parse(rv.value); if (typeof parsed === "number") v = Math.max(0, Math.min(100, parsed)); }
+      } catch (e) {}
+      setVolume(v);
+      audioEngine.setVolume(v / 100);
     })();
   }, []);
 
@@ -1213,6 +1225,14 @@ export default function DeadSignal() {
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "the miles add up · [-1 Food] [-1 Water]", 500);
     }
+    // Per-leg noise relief — loud play softens by 1 at each new leg (it never resets, and
+    // the clamp makes this a no-op for a quiet run already at 0). This is the recovery the
+    // noise model leans on alongside the forced-fight reset, so loudness ebbs between legs
+    // instead of ratcheting up for the whole run.
+    if ((type === "path_start" || type === "crossing_start") && noiseRef.current > 0) {
+      setNoise(n => Math.max(0, n - 1));
+      addMsg("system", "the noise dies down · noise -1", 900);
+    }
     // Only sound the loss if a resource actually drops (not already at 0).
     const cur = resourcesRef.current;
     const willDrop = type === "path_mid" ? cur.water > 0 : (cur.food > 0 || cur.water > 0);
@@ -1429,12 +1449,20 @@ export default function DeadSignal() {
         if (Math.random() < 0.80) { // guaranteed search spots usually pay; risk is the noise/HP on a fail
           const lootTable = SEARCH_LOOT[encounter.id] || SEARCH_LOOT.default;
           const item = pickRandom(lootTable);
-          if (item === "food")    { dFood = 1; outcome = "you found food."; }
-          else if (item === "water")   { dWater = 1; outcome = "you found water."; }
-          else if (item === "battery") { dBatt = 10; outcome = "you found a battery pack."; }
+          if (item === "battery") { dBatt = 10; outcome = "you found a battery pack."; }
+          else {
+            // A consumable find (food/water) is redirected to whichever vital you're shorter
+            // on, so a good run can't starve/dehydrate purely because the RNG kept handing
+            // back the resource you didn't need. Ties keep the table's own roll; battery
+            // finds are untouched. The table still governs how often a spot pays consumable
+            // vs battery vs nothing — this only steers which consumable.
+            const give = curRes.food < curRes.water ? "food" : curRes.water < curRes.food ? "water" : item;
+            if (give === "food") { dFood = 1; outcome = "you found food."; }
+            else                 { dWater = 1; outcome = "you found water."; }
+            // Food/water restores HP if injured
+            if (curRes.hp < 10) dHp = 1;
+          }
           reactionKey = "search_found";
-          // Food restores HP if injured
-          if ((item === "food" || item === "water") && curRes.hp < 10) dHp = 1;
         } else {
           outcome = dCharger > 0 ? "nothing useful, but the charger's topped up." : "you disturbed something.";
           reactionKey = "search_fail"; dNoise = 2; dHp = -1;
@@ -1707,11 +1735,12 @@ export default function DeadSignal() {
     }
 
     if (gamePhaseRef.current === "haven_approach") {
-      // No starvation check here: if you've reached Haven's doorstep, the cache (food,
-      // water, battery, weapon — moments away in haven_ai) is your relief. Dying of
-      // hunger at the gate felt cheap. Starvation/dehydration stays lethal in the
-      // crossing (where it's checked) for real neglect; offline still guards the approach.
-      if (newBattery <= 0) { pendingRef.current.push(setTimeout(() => setScreen("offline"), 1500)); return; }
+      // No death check here — not starvation, not offline. If you've reached Haven's
+      // doorstep, the cache (food, water, battery, weapon — moments away in haven_ai) is
+      // your relief; dying of hunger OR a dead battery at the gate felt cheap. The battery
+      // can still visibly bottom out (the HUD shows it on the edge), but the approach can't
+      // strand you — the cache restocks it. Neglect stays lethal earlier, in the crossing/
+      // legs (starvation is checked there; offline guards the AI legs via localBeat).
       const next = p2BeatIndex + 1;
       setP2BeatIndex(next);
       if (next < HAVEN_APPROACH_BEATS.length) {
@@ -1878,8 +1907,9 @@ export default function DeadSignal() {
       // Pacing for this leg is the declarative ROUTE.crossing schedule. Reset the cursor.
       setAiExchangeCount(0);
       setGamePhase("p2_ai_cross");
-      // Noise carries into the crossing (loudness persists) so an active/searching player
-      // builds toward the forced-fight threshold instead of it resetting each leg.
+      // Noise carries into the crossing (loudness persists, only softened by the per-leg
+      // −1 in applyTransitionDrain) so an active/searching player keeps building toward the
+      // forced-fight threshold instead of it resetting to 0 each leg.
 
       // Delay until notifications render, then bridge out of the starting leg into
       // the city crossing (no hard cut from "inside the building" to "rows of houses").
@@ -1940,15 +1970,6 @@ export default function DeadSignal() {
         </g>
       )}
     </svg>
-  );
-
-  // audio — compact icon-only mute toggle (used on the title / slot / terminal screens).
-  const muteBtn = (extra = {}) => (
-    <button onClick={toggleMute} title={muted ? "unmute" : "mute"} aria-label={muted ? "unmute" : "mute"}
-      style={{ background:"transparent", border:"1px solid #1c1c1c", display:"inline-flex", alignItems:"center", justifyContent:"center",
-        padding:"0.25rem 0.45rem", cursor:"pointer", transition:"border-color 0.15s", ...extra }}>
-      {speakerIcon(muted ? "#5a5a5a" : "#4a9e6b")}
-    </button>
   );
 
   // Return to the title (terminal screens already resolved the slot's profile).
@@ -2018,12 +2039,24 @@ export default function DeadSignal() {
   const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
   const hasAnySave = slots.some(Boolean); // P4 — at least one occupied slot
 
+  // Intro cinematic skip: cancel the pending line timers and jump straight to the
+  // NEW MESSAGE prompt. Helps the replay loop (the intro plays on every new run).
+  const skipIntro = () => {
+    if (showNotif) return;
+    clearPending();
+    setShownLines(INTRO_LINES.map(l => l.text));
+    setShowNotif(true);
+  };
   if (screen === "intro") return (
-    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div onClick={skipIntro}
+      style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", cursor: showNotif ? "default" : "pointer" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
         {shownLines.map((l,i) => <p key={i} style={{ color:"#c8b98a", fontSize:"0.9rem", lineHeight:"2.1", letterSpacing:"0.05em", animation:"fi 0.9s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
       </div>
+      {!showNotif && (
+        <p style={{ position:"fixed", bottom:"calc(1.2rem + env(safe-area-inset-bottom))", color:"#2e2e2e", fontSize:"0.58rem", letterSpacing:"0.18em", margin:0 }}>tap to skip</p>
+      )}
       {showNotif && (
         <button onClick={(e)=>{ e.stopPropagation(); if(screenRef.current!=="intro")return; audioEngine.tapResponse(); clearPending(); setScreen("chat"); }}
           style={{ marginTop:"2.8rem", padding:"0.7rem 1.5rem", border:"1px solid #1d3a22", color:"#4a9e6b", fontSize:"0.7rem", letterSpacing:"0.16em", animation:"pu 1.3s ease infinite", background:"transparent", cursor:"pointer", fontFamily:"inherit" }}>
@@ -2037,18 +2070,17 @@ export default function DeadSignal() {
   if (screen === "menu") return (
     <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-      {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
       {/* Logo: DEAD (powered-down grey) + SIGNAL (live green glow), one word */}
       <div style={{ fontSize:"2.4rem", fontWeight:700, letterSpacing:"0.12em", marginBottom:"3rem", animation:"fi 1.2s ease forwards" }}>
         <span style={{ color:"#4a4a4a" }}>DEAD</span><span style={{ color:"#4a9e6b", textShadow:"0 0 10px rgba(74,158,107,0.6), 0 0 26px rgba(74,158,107,0.25)", animation:"sigpulse 3s ease infinite" }}>SIGNAL</span>
       </div>
       <div style={{ display:"flex", flexDirection:"column", alignItems:"stretch", gap:"0.7rem", width:"min(260px, 100%)" }}>
-        <button className="rb" onClick={withMenuSound(()=>{ setSlotMode("start"); setSlotConfirm(null); setScreen("slots"); })}
+        <button className="rb" onClick={withMenuSound(()=>{ setSlotMode("start"); setSlotConfirm(null); setSlotsFrom("menu"); setScreen("slots"); })}
           style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;START
         </button>
         {hasAnySave && (
-          <button className="rb" onClick={withMenuSound(()=>{ setSlotMode("load"); setSlotConfirm(null); setScreen("slots"); })}
+          <button className="rb" onClick={withMenuSound(()=>{ setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("menu"); setScreen("slots"); })}
             style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#9a9a9a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
             ▸&nbsp;&nbsp;LOAD
           </button>
@@ -2057,7 +2089,7 @@ export default function DeadSignal() {
           style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;STORY
         </button>
-        <button className="rb" onClick={withMenuSound(()=>{ setMenuNote(""); setOptConfirm(false); setScreen("options"); })}
+        <button className="rb" onClick={withMenuSound(()=>{ setMenuNote(""); setOptConfirm(false); setConfirmReset(false); setOptionsFrom("menu"); setScreen("options"); })}
           style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;OPTIONS
         </button>
@@ -2066,13 +2098,51 @@ export default function DeadSignal() {
     </div>
   );
 
-  // ─── Options — settings hub. Today: the only full "reset all data" lives here. ──────
-  if (screen === "options") return (
+  // ─── Options — the single settings hub (audio, run reset, full wipe). Reachable from
+  // the main menu and the in-game pause menu; `optionsFrom` decides where BACK returns. ──
+  if (screen === "options") {
+    const fromChat   = optionsFrom === "chat";
+    const showRunReset = fromChat && activeSlotRef.current != null;
+    const optBack = withMenuSound(() => {
+      setOptConfirm(false); setConfirmReset(false);
+      if (fromChat) { setScreen("chat"); setMenuOpen(true); } // back to the pause overlay
+      else setScreen("menu");
+    });
+    return (
     <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.dz:hover{border-color:#7a2424!important;color:#ff8a8a!important}`}</style>
-      {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
       <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>OPTIONS</div>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(300px, 100%)" }}>
+
+        {/* AUDIO — volume slider + mute, the single home for sound control. */}
+        <div style={{ border:"1px solid #1d3a22", padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.7rem", animation:"fi 0.8s ease forwards" }}>
+          <span style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.18em" }}>AUDIO</span>
+          <div style={{ display:"flex", alignItems:"center", gap:"0.7rem" }}>
+            <button onClick={toggleMute} title={muted ? "unmute" : "mute"} aria-label={muted ? "unmute" : "mute"}
+              style={{ background:"transparent", border:"1px solid #1c1c1c", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0.3rem 0.45rem", cursor:"pointer", flexShrink:0 }}>
+              {speakerIcon(muted ? "#5a5a5a" : "#4a9e6b")}
+            </button>
+            <input type="range" min="0" max="100" value={volume} disabled={muted}
+              onChange={(e)=>setVol(Number(e.target.value))}
+              aria-label="volume"
+              style={{ flex:1, accentColor:"#4a9e6b", cursor: muted ? "default" : "pointer", opacity: muted ? 0.35 : 1 }} />
+            <span style={{ color: muted ? "#5a5a5a" : "#3a6b40", fontSize:"0.6rem", letterSpacing:"0.06em", width:"2.6rem", textAlign:"right" }}>{muted ? "muted" : `${volume}%`}</span>
+          </div>
+        </div>
+
+        {/* Reset THIS run — only mid-run (opened from the pause menu). Two-tap confirm;
+            wipes only the active slot (run + its fragments/clues). */}
+        {showRunReset && (
+          <div style={{ border:`1px solid ${confirmReset ? "#5a2020" : "#3a2020"}`, padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.55rem", animation:"fi 0.8s ease forwards" }}>
+            <span style={{ color:"#a87a7a", fontSize:"0.58rem", letterSpacing:"0.18em" }}>RESET THIS RUN</span>
+            <span style={{ color:"#7a6a6a", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Wipes this run's save and the fragments and clues collected in this slot. Other slots are untouched.</span>
+            <button onClick={withMenuSound(async ()=>{ if (confirmReset) { const i = activeSlotRef.current; if (i != null) await deleteSlot(i); resetRunState(); setConfirmReset(false); setOptConfirm(false); setScreen("menu"); } else setConfirmReset(true); })}
+              style={{ background:"transparent", border:`1px solid ${confirmReset ? "#5a2020" : "#3a2020"}`, color: confirmReset ? "#e08a8a" : "#a87a7a", padding:"0.6rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
+              {confirmReset ? "⚠ TAP AGAIN — RESET THIS RUN" : "RESET THIS RUN"}
+            </button>
+          </div>
+        )}
+
         <div style={{ border:"1px solid #3a1414", padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.55rem", animation:"fi 0.8s ease forwards" }}>
           <span style={{ color:"#8b3030", fontSize:"0.58rem", letterSpacing:"0.18em" }}>DANGER ZONE</span>
           <span style={{ color:"#7a6a6a", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Erases all three save slots and every collected fragment and clue. This cannot be undone.</span>
@@ -2081,13 +2151,14 @@ export default function DeadSignal() {
             {optConfirm ? "⚠ TAP AGAIN — ERASE EVERYTHING" : "RESET ALL DATA"}
           </button>
         </div>
-        <button className="rb" onClick={withMenuSound(()=>{ setOptConfirm(false); setScreen("menu"); })}
+        <button className="rb" onClick={optBack}
           style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
       </div>
     </div>
-  );
+    );
+  }
 
   // ─── Investigation board / Case file — the persistent detective notebook. Opened from
   // the pause menu mid-run; reflects the active slot's collected memories/clues. BACK → chat.
@@ -2166,7 +2237,6 @@ export default function DeadSignal() {
   if (screen === "slots") return (
     <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.del:hover{border-color:#5a2020!important;color:#e08a8a!important}`}</style>
-      {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
       <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>
         {slotMode === "load" ? "LOAD GAME" : "NEW RUN — SELECT SLOT"}
       </div>
@@ -2246,7 +2316,7 @@ export default function DeadSignal() {
             </div>
           );
         })}
-        <button className="rb" onClick={withMenuSound(()=>{ setSlotConfirm(null); setScreen("menu"); })}
+        <button className="rb" onClick={withMenuSound(()=>{ setSlotConfirm(null); if (slotsFrom === "chat") { setScreen("chat"); setMenuOpen(true); } else setScreen("menu"); })}
           style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
@@ -2264,7 +2334,6 @@ export default function DeadSignal() {
     return (
       <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-        {muteBtn({ position:"fixed", top:"1rem", right:"1rem" })}
         <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
           {lines.map((l,i) => <p key={i} style={{ color:colors(i), fontSize:"0.9rem", lineHeight:"2.2", letterSpacing:"0.06em", animation:"fi 1s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
           {screen === "phase2_complete" && showRestart && (
@@ -2296,7 +2365,7 @@ export default function DeadSignal() {
 
   return (
     <div style={{ background:"#070707", height:"100dvh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}${RESPONSIVE_CSS}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
       <AudioDebug />
 
       {/* Top utility bar: DEAD SIGNAL far left · menu button centered · fragments/battery right */}
@@ -2313,10 +2382,10 @@ export default function DeadSignal() {
         </div>
         <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"0.55rem", whiteSpace:"nowrap" }}>
           <span style={{ color:"#2a7a4a", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◈<span className="statlabel">&nbsp;FRAGMENTS</span> <span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
+            ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
           </span>
           <span style={{ color:"#2a6070", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◉<span className="statlabel">&nbsp;CLUES</span> <span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
+            ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
           </span>
           <span style={{ display:"inline-flex", alignItems:"center", gap:"0.18rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
             <svg width="18" height="9" viewBox="0 0 18 9" style={{ display:"block", filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
@@ -2331,7 +2400,7 @@ export default function DeadSignal() {
 
       {/* Contact header: iPhone-style, centered */}
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"0.4rem 1rem 0.5rem", borderBottom:"1px solid #111", flexShrink:0 }}>
-        <div style={{ width:26, height:26, borderRadius:"50%", border:`1px solid ${contactName==="ELLIE"?"#2f8a58":"#2f8a58"}`, display:"flex", alignItems:"center", justifyContent:"center", background:"#0a0f0a", color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", fontSize:"0.78rem", marginBottom:"0.2rem", transition:"border-color 0.8s, color 0.8s", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
+        <div style={{ width:26, height:26, borderRadius:"50%", border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, display:"flex", alignItems:"center", justifyContent:"center", background:"#0a0f0a", color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", fontSize:"0.78rem", marginBottom:"0.2rem", transition:"border-color 0.8s, color 0.8s", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
         <span style={{ color:"#c8b896", fontSize:"0.7rem", letterSpacing:"0.16em", transition:"color 0.8s, text-shadow 0.8s", textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
         <span style={{ color:"#6a6a6a", fontSize:"0.56rem", letterSpacing:"0.07em", marginTop:"0.1rem" }}>{contactStatus}</span>
       </div>
@@ -2388,18 +2457,13 @@ export default function DeadSignal() {
             style={{ background:"#080a08", border:"1px solid #1d3a22", padding:"1.4rem 1.3rem", width:"260px", display:"flex", flexDirection:"column", gap:"0.55rem", boxShadow:"0 0 40px rgba(0,0,0,0.8)" }}>
             <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); })} style={menuBtn}>Resume</button>
-            <button className="cb" onClick={withMenuSound(toggleMute)} style={{ ...menuBtn, display:"flex", alignItems:"center", gap:"0.55rem" }}>
-              {speakerIcon(muted ? "#5a5a5a" : "#4a9e6b")}<span>Sound · {muted ? "off" : "on"}</span>
-            </button>
+            {/* Load — opens the save-slots screen in load mode, same as the main-menu LOAD.
+                The run is autosaved at every decision point, so leaving to it is safe. */}
+            <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>
             <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>
-            {slots[activeSlotRef.current] && <button className="cb" onClick={withMenuSound(menuLoad)} style={menuBtn}>Load last save</button>}
             <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>
-            {/* Reset THIS run — two-tap confirm. Wipes only the active slot (run + its
-                fragments/clues); other slots are untouched. Full wipe lives in Options. */}
-            <button onClick={withMenuSound(async ()=>{ if (confirmReset) { const i = activeSlotRef.current; if (i != null) await deleteSlot(i); resetRunState(); setMenuOpen(false); setConfirmReset(false); setMenuMsg(""); setScreen("menu"); } else { setConfirmReset(true); setMenuMsg("tap again — wipes this run's save & memories"); } })}
-              style={{ ...menuBtn, color: confirmReset ? "#e08a8a" : "#a87a7a", border:`1px solid ${confirmReset ? "#5a2020" : "#3a2020"}` }}>
-              {confirmReset ? "Confirm — reset this run?" : "Reset this run"}
-            </button>
+            {/* Options — audio (volume + mute) and "reset this run" live here now. */}
+            <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setOptConfirm(false); setConfirmReset(false); setOptionsFrom("chat"); setScreen("options"); })} style={menuBtn}>Options</button>
             <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>{menuMsg}</div>
           </div>
         </div>
