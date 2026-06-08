@@ -2036,6 +2036,13 @@ export default function DeadSignal() {
               <span style={{ color: m.clues > 0 ? "#4ab5c8" : "#2d4a52" }}>◉ {m.clues}/3</span>
             </div>
           );
+          // DELETE is available on any occupied slot (two-tap), wiping the run + profile.
+          const delBtn = (
+            <button className="del" onClick={withMenuSound(()=>{ if (delPending) deleteSlot(i); else setSlotConfirm({ index:i, action:"delete" }); })}
+              style={{ background:"transparent", border:`1px solid ${delPending ? "#5a2020" : "#2a2a2a"}`, color: delPending ? "#e08a8a" : "#7a5a5a", padding:"0.45rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
+              {delPending ? "DELETE?" : "DELETE"}
+            </button>
+          );
           return (
             <div key={i} style={{ border:`1px solid ${complete ? "#2a4a32" : "#1c1c1c"}`, padding:"0.7rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.5rem", animation:"fi 0.8s ease forwards" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
@@ -2053,10 +2060,7 @@ export default function DeadSignal() {
                       style={{ flex:1, background:"transparent", border:`1px solid ${resPending ? "#5a4a20" : "#2a2a2a"}`, color: resPending ? "#c8a840" : "#7a7050", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
                       {resPending ? "RESET?" : "RESET"}
                     </button>
-                    <button className="del" onClick={withMenuSound(()=>{ if (delPending) deleteSlot(i); else setSlotConfirm({ index:i, action:"delete" }); })}
-                      style={{ background:"transparent", border:`1px solid ${delPending ? "#5a2020" : "#2a2a2a"}`, color: delPending ? "#e08a8a" : "#7a5a5a", padding:"0.45rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.1em", cursor:"pointer", transition:"all 0.2s" }}>
-                      {delPending ? "DELETE?" : "DELETE"}
-                    </button>
+                    {delBtn}
                   </div>
                 </>
               ) : inProgress ? (
@@ -2064,16 +2068,22 @@ export default function DeadSignal() {
                   <div style={{ display:"flex", gap:"1.2rem", fontSize:"0.6rem", letterSpacing:"0.06em", color:"#6a6a6a" }}>
                     <span>HP {m.hp}/10</span><span>BATT {m.battery}</span>
                   </div>
-                  <button className="rb" onClick={withMenuSound(()=>{ clearPending(); resumeSlot(i); })}
-                    style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
-                    ▸ CONTINUE
-                  </button>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <button className="rb" onClick={withMenuSound(()=>{ clearPending(); resumeSlot(i); })}
+                      style={{ flex:1, background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
+                      ▸ CONTINUE
+                    </button>
+                    {delBtn}
+                  </div>
                 </>
               ) : between ? (
-                <button className="rb" onClick={withMenuSound(()=>{ clearPending(); beginRun(i, { fresh:false }); })}
-                  style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
-                  ▸ PLAY AGAIN
-                </button>
+                <div style={{ display:"flex", gap:"0.5rem" }}>
+                  <button className="rb" onClick={withMenuSound(()=>{ clearPending(); beginRun(i, { fresh:false }); })}
+                    style={{ flex:1, background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.45rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
+                    ▸ PLAY AGAIN
+                  </button>
+                  {delBtn}
+                </div>
               ) : (
                 slotMode === "start" ? (
                   <button className="rb" onClick={withMenuSound(()=>{ beginRun(i, { fresh:true }); })}
