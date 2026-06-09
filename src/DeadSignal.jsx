@@ -744,13 +744,13 @@ const AudioDebug = () => {
 // (Relies on the sigflicker/sigpulse keyframes defined in the chat screen's <style>.)
 const SignalBars = ({ level, flicker }) => {
   const lit = Math.max(0, Math.min(4, Math.round((level / 5) * 4)));
-  const heights = [7, 11, 15, 20];
+  const heights = [5, 8, 12, 16];
   return (
-    <svg width="34" height="20" viewBox="0 0 34 20" style={{ display:"block", flexShrink:0 }} aria-hidden="true">
+    <svg width="28" height="16" viewBox="0 0 28 16" style={{ display:"block", flexShrink:0 }} aria-hidden="true">
       {heights.map((h, i) => {
         const on = i < lit;
         return (
-          <rect key={i} x={i * 8.4} y={20 - h} width="5.6" height={h} rx="2"
+          <rect key={i} x={i * 6.8} y={16 - h} width="4.6" height={h} rx="1.6"
             fill={on ? "#4a9e6b" : "#282828"}
             style={{
               filter: on ? "drop-shadow(0 0 4px rgba(74,158,107,0.6))" : "none",
@@ -2732,31 +2732,32 @@ export default function DeadSignal() {
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
       <AudioDebug />
 
-      {/* Top utility bar: signal bar + fragment/clue counters far left · FILE/menu centered · battery right */}
-      <div style={{ display:"flex", flexWrap:"nowrap", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", padding:"calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"0.7rem", whiteSpace:"nowrap" }}>
+      {/* Top utility bar — 3-col grid (minmax 1fr · auto · minmax 1fr) so FILE/menu stays dead-
+          centered regardless of the side clusters: signal+counters far left, battery far right */}
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)", alignItems:"center", gap:"0.5rem", padding:"calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", whiteSpace:"nowrap", minWidth:0 }}>
           <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
-          <span style={{ color:"#2a7a4a", fontSize:"0.76rem", letterSpacing:"0.07em" }}>
+          <span style={{ color:"#2a7a4a", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
             ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
           </span>
-          <span style={{ color:"#2a6070", fontSize:"0.76rem", letterSpacing:"0.07em" }}>
+          <span style={{ color:"#2a6070", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
             ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
           </span>
         </div>
-        <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:"0.4rem" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
           <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
             style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
           <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
             style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
         </div>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", whiteSpace:"nowrap" }}>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.3rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
-            <svg width="30" height="15" viewBox="0 0 30 15" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 6px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 4px rgba(180,40,40,0.6))" : "none" }}>
-              <rect x="0.8" y="0.8" width="23" height="13.4" rx="2.4" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.3"/>
-              <rect x="24.3" y="3.5" width="3.4" height="8" rx="0.9" fill={battPulse ? "#7fffa0" : battColor}/>
-              <rect x="2.4" y="2.4" width={Math.max(0,Math.round((resources.battery/100)*20))} height="10.2" rx="1" fill={battPulse ? "#7fffa0" : battColor}/>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", whiteSpace:"nowrap", minWidth:0 }}>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
+            <svg width="24" height="12" viewBox="0 0 24 12" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
+              <rect x="0.7" y="0.7" width="18.6" height="10.6" rx="2" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.1"/>
+              <rect x="19.6" y="3" width="2.8" height="6" rx="0.7" fill={battPulse ? "#7fffa0" : battColor}/>
+              <rect x="2" y="2" width={Math.max(0,Math.round((resources.battery/100)*15.5))} height="8" rx="0.8" fill={battPulse ? "#7fffa0" : battColor}/>
             </svg>
-            <span style={{ color: battPulse ? "#7fffa0" : battColor, fontSize:"0.82rem", letterSpacing:"0.03em", textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
+            <span style={{ color: battPulse ? "#7fffa0" : battColor, fontSize:"0.7rem", letterSpacing:"0.03em", textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
           </span>
         </div>
       </div>
