@@ -247,33 +247,35 @@ const HAVEN_APPROACH_BEATS = [
     choices:["·"] },
 ];
 
-// Haven is the first CRACK, not the answer. The route-specific path beat (below) ties Ellie
-// to the player's own evidence — that's the crack. We deliberately do NOT spell it out with a
-// "you see her / labeled / ellie." photo dump; the player infers and carries the question into
-// Phase 3. The leg ends on the date (Haven populated before the outbreak) → the call.
-const HAVEN_FINAL_SEQUENCE = [
-  { from:"narrator", msgs:["operations building.", "monitors still running.", "chairs empty."],                          choices:["·"] },
-  { from:"narrator", msgs:["a corkboard.", "photographs.", "haven residents.", "everyone smiling."],                     choices:["·"] },
-  { from:"narrator", msgs:["there's a date in the corner.", "three weeks before day one."],                             choices:["·"] },
-  // The impossible record (STORY.md §3 — the 143 paid off as a contradiction, not an
-  // explanation). The count reads as fully present while the player stands alone. No
-  // lore dump — just "what?". Drives the question evolution + the Signal distortion.
-  { from:"narrator", msgs:["a status board on the wall. still lit.", "RESIDENTS  143", "PRESENT  143", "you're the only one here."], choices:["·"], effect:"record143" },
+// Haven is the first CRACK, not the answer — and an explorable HUB (Phase-3 foundation).
+// You navigate a small compound of named destinations, each holding one reveal. These are
+// OPTIONAL (full-freedom exploring); the route-specific `records` beat ties Ellie to the
+// player's own evidence — the personal hook of the crack. We deliberately do NOT spell it out
+// with a "you see her / labeled" dump; the player infers and carries the question into Phase 3.
+// `path:true` swaps in the route-specific reveal at render time.
+const HAVEN_DESTINATIONS = [
+  { id:"operations",  label:"Operations building",
+    msgs:["monitors still running. chairs empty.", "a loop plays on every screen.", "the haven broadcast. the one that brought you here.", "it was transmitting from inside."] },
+  { id:"dormitories", label:"The dormitories",
+    msgs:["rows of bunks. all made.", "numbers stenciled by hand above each one.", "the last one reads 143."] },
+  { id:"photos",      label:"The photo wall",
+    msgs:["a corkboard. photographs.", "haven residents. everyone smiling.", "a date in the corner.", "three weeks before day one."] },
+  { id:"records",     label:"Records office", path:true },
 ];
+// The route-specific reveal shown at the Records office — ties Ellie to the evidence the
+// player surfaced on their leg. (Was inserted into the old linear finale; now a destination.)
+const HAVEN_RECORDS_BEAT = {
+  hospital: ["a patient file, pulled from mercy general.", "her face is in it too.", "same building. before any of this."],
+  metro:    ["the broadcast log from the metro.", "her voice logged it.", "two weeks before the signal."],
+  route9:   ["a deployment order from the checkpoint.", "her name is on the roster.", "assigned here. before day one."],
+};
 
-// Priority 5 — branch-aware ending. One extra beat that ties Ellie to the
-// evidence the player surfaced on their route (the discovery clue). Inserted
-// after the photos, before the date. Deepens the mystery; reveals no Phase 3 twist.
-const HAVEN_FINAL_PATH_BEAT = {
-  hospital: { from:"narrator", msgs:["the patient file from mercy general.", "her face is in it too.", "same building. before any of this."], choices:["·"] },
-  metro:    { from:"narrator", msgs:["the broadcast log from the metro.", "her voice logged it.", "two weeks before the signal."],          choices:["·"] },
-  route9:   { from:"narrator", msgs:["the deployment order from the checkpoint.", "her name is on the roster.", "assigned here. before day one."], choices:["·"] },
-};
-const buildHavenFinal = (path) => {
-  const beat = HAVEN_FINAL_PATH_BEAT[path];
-  if (!beat) return HAVEN_FINAL_SEQUENCE;
-  return [...HAVEN_FINAL_SEQUENCE.slice(0, 2), beat, ...HAVEN_FINAL_SEQUENCE.slice(2)];
-};
+// The CRACK + the call. Reached only via "Move on — to the heart of it" (gated ending), so the
+// impossible record always lands (STORY.md §3 — paid off as a contradiction, not an explanation).
+const HAVEN_FINAL_SEQUENCE = [
+  { from:"narrator", msgs:["a control room, deeper in.", "a status board on the wall. still lit.", "RESIDENTS  143", "PRESENT  143", "you're the only one here."], choices:["·"], effect:"record143" },
+];
+const HEART_LABEL = "Move on — to the heart of it.";
 
 // ─── Investigation board — the persistent case file (Phase-3 foundation). ───────────
 // Entries reveal as the matching fragment/clue is collected; People/Locations/Questions
@@ -374,39 +376,107 @@ const WEAPON_PICKUPS = { WEAPON_KNIFE:"knife", WEAPON_BAT:"bat", WEAPON_CROWBAR:
 const HAVEN_BATTERY_CACHE = 45; // battery packs in the ops building add this much
 const HAVEN_SUPPLY_FLOOR  = 5;  // pantry tops food/water up to at least this
 
-// ─── ROUTE MAP — the "invisible map" the pacing walks ─────────────────────────
-// Each leg is an ordered list of beat-nodes; a cursor (aiExchangeCount) advances one
-// node per player choice, so node[newCnt-1] is what THIS choice leads into. The first
-// atmospheric beat of a leg is rendered on entry (cursor 0); the final node ends the
-// leg (its story beat is the transition). This replaces the old scattered counters
-// (memory@fragTarget, discovery@aiTarget, sectionPlan{1,3,5}) with one declarative
-// schedule the system can read top-to-bottom.
-//   kind "explore"   → a free atmospheric beat (no story beat queued)
-//        "encounter" → a guaranteed encounter; plan "power" (a POWER_SOURCES spot —
-//                      the battery lifeline) | "search" (food/water/loot) | "hazard"
-//        "memory" | "discovery" | "shelter" → queue that scripted story beat
-//   drain (optional) → applyTransitionDrain key fired as the node is reached
-// One guaranteed power-source per leg keeps battery survivable for an ENGAGED player
-// (search it → charger reserve) while neglect (skip/avoid it) still leads to offline.
-// (The Haven leg stays on its own variable-length 3-5 explore threshold — no encounters
-// or story branches there, so it isn't route-driven.)
-const ROUTE = {
-  path: [
-    { kind: "encounter", plan: "power" },         // 1 — guaranteed power source
-    { kind: "memory" },                            // 2
-    { kind: "encounter", plan: "hazard" },        // 3
-    { kind: "explore", drain: "path_mid" },        // 4 — mid-leg squeeze
-    { kind: "encounter", plan: "search" },        // 5
-    { kind: "discovery" },                         // 6 — ends the path leg
+// ─── EXPLORATION as a player-paced "lead queue" ───────────────────────────────
+// Each area (leg) holds an ordered list of LEADS the player works through at their own
+// pace. Every exploration screen offers two choices: an "explore" option (reveal the next
+// lead) and a "move on" option (leave the area now). Full freedom: a player who moves on
+// early skips the optional encounters / memory fragment / discovery clue (they become
+// rewards for thorough play, not guarantees). When the queue is picked clean, only "move
+// on" remains (forced). The lead descriptors are plain serializable objects (save/resume).
+//   kind "atmo"      → a free atmospheric beat (drain? = applyTransitionDrain key fired)
+//        "encounter" → an encounter; plan "power" (POWER_SOURCES) | "search" | "hazard"
+//        "memory" | "discovery" → that scripted story beat (path legs only)
+const buildLeadQueue = (section) => {
+  if (section === "crossing") return [
+    { kind: "atmo" },
+    { kind: "encounter", plan: "power" },
+    { kind: "atmo", drain: "crossing_mid" },
+    { kind: "encounter", plan: "hazard" },
+    { kind: "encounter", plan: "search" },
+    { kind: "atmo" },
+  ];
+  if (section === "haven") return [
+    { kind: "atmo" }, { kind: "atmo" }, { kind: "atmo" }, { kind: "atmo" },
+  ];
+  return [ // path leg (hospital / metro / route9) — discovery last (the climax)
+    { kind: "atmo" },
+    { kind: "encounter", plan: "power" },
+    { kind: "atmo" },
+    { kind: "memory" },
+    { kind: "encounter", plan: "hazard" },
+    { kind: "atmo", drain: "path_mid" },
+    { kind: "encounter", plan: "search" },
+    { kind: "discovery" },
+  ];
+};
+
+// Encounter-bridge pools (the short narrator lead-in before an encounter). Picked at
+// random + deduped per run (seenBridgesRef) — replaces the single fixed pair per path
+// that made "then something blocks the way ahead." repeat every encounter.
+const BRIDGES = {
+  hospital: [
+    ["you move deeper into the building.", "then something stops you."],
+    ["a set of fire doors.", "you push through — and freeze."],
+    ["the corridor bends.", "you're not alone."],
+    ["another ward, lights still on.", "something's wrong here."],
+    ["past an empty nurses' station.", "then movement ahead."],
+    ["the hall narrows.", "something blocks the way."],
+    ["a stairwell door, propped open.", "a sound on the other side."],
+  ],
+  metro: [
+    ["you follow the tunnel down.", "then something stops you."],
+    ["the tracks curve into the dark.", "and something's there."],
+    ["past a dead train car.", "then movement ahead."],
+    ["the platform opens up.", "you're not alone."],
+    ["deeper under the city.", "something blocks the way."],
+    ["your light catches the far wall.", "then you hear it."],
+    ["a maintenance hatch hangs open.", "something shifts inside."],
+  ],
+  route9: [
+    ["the road opens ahead.", "then you see it."],
+    ["past a wall of stalled cars.", "something moves."],
+    ["the highway stretches on.", "then it stops you cold."],
+    ["over the rise.", "you're not alone."],
+    ["the shoulder narrows.", "something's up ahead."],
+    ["wind drags across the asphalt.", "then movement."],
+    ["a jackknifed trailer blocks two lanes.", "and something behind it."],
   ],
   crossing: [
-    { kind: "encounter", plan: "power" },         // 1 — guaranteed power source
-    { kind: "explore" },                           // 2
-    { kind: "encounter", plan: "hazard" },        // 3
-    { kind: "explore", drain: "crossing_mid" },    // 4 — mid-leg squeeze
-    { kind: "encounter", plan: "search" },        // 5
-    { kind: "shelter" },                           // 6 — ends the crossing leg
+    ["the street narrows ahead.", "then something blocks the way."],
+    ["around the next corner.", "and you're not alone."],
+    ["between two dead buildings.", "something moves."],
+    ["across an empty intersection.", "then it stops you."],
+    ["down a side street.", "something's there."],
+    ["past a row of dark windows.", "then movement."],
+    ["a collapsed storefront.", "a shape in the rubble."],
   ],
+  haven: [ // haven has no encounters in the queue; kept for safety
+    ["deeper into the compound.", "still nothing moves."],
+    ["another quiet building.", "the lights stay on."],
+  ],
+};
+
+// Explore-choice labels — varied, area-flavored wording, one function: reveal the next
+// lead. Keyed by path for path legs, else by section. Picked at random for variety.
+const EXPLORE_LABELS = {
+  hospital: ["Search the next room.", "Push down the corridor.", "Check the ward ahead.", "Look for another way through.", "Keep searching."],
+  metro:    ["Follow the tunnel further.", "Check the next platform.", "Push into the dark.", "Search along the tracks.", "Keep searching."],
+  route9:   ["Keep up the highway.", "Check the next wreck.", "Push up the road.", "Search the shoulder.", "Keep searching."],
+  crossing: ["Cut down the next street.", "Check the next block.", "Push on through the city.", "Search the buildings.", "Keep searching."],
+  haven:    ["Look around.", "Into the next building.", "Check the next room.", "Keep searching."],
+};
+// Move-on label per section. Detected in handleChoice via /^move on/ (no other choice
+// starts that way). Leaving = transition to the next area.
+const MOVE_ON_LABEL = {
+  path:     "Move on — head for the streets.",
+  crossing: "Move on — find shelter before dark.",
+  haven:    "Move on — go deeper.",
+};
+// "Nothing left here" lines for the forced-move-on screen (queue exhausted).
+const EXPLORE_DONE = {
+  path:     ["you've been through all of it.", "nothing else here."],
+  crossing: ["you've covered the area.", "no reason to stay."],
+  haven:    ["you've walked all of it.", "haven holds nothing else."],
 };
 
 // ─── ENCOUNTER POOLS (8 per path, 9 crossing) ─────────────────────────────────
@@ -765,8 +835,12 @@ export default function DeadSignal() {
   const pendingStoryBeatRef  = useRef(null);
   const returnToPhaseRef    = useRef("p2_ai");
   const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
+  const havenVisitedRef     = useRef([]); // Haven hub — destination ids already investigated this run
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
   const seenBeatsRef        = useRef(new Set()); // exploration beats shown this run (prefer unseen)
+  const seenBridgesRef      = useRef(new Set()); // encounter-bridge variants shown this run (prefer unseen)
+  const leadQueueRef        = useRef([]);        // current area's ordered lead descriptors (player-paced exploration)
+  const leadCursorRef       = useRef(0);         // how many leads consumed in the current area (synchronous cursor)
   const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
   const activeProfileRef    = useRef(null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
@@ -845,6 +919,17 @@ export default function DeadSignal() {
     if (currentPath === "route9")    return "Highway checkpoint";
     return "Harwick";
   };
+  // Uppercase current-area name for the in-chat location strip (null = don't show the
+  // strip, e.g. the apartment in phase1). Encounters borrow their leg's label via returnToPhase.
+  const areaLabel = () => {
+    const gp = gamePhase;
+    if (dayThree || gp.startsWith("haven")) return "THE HAVEN";
+    if (gp === "shelter") return "SHELTER";
+    if (gp === "p2_ai_cross" || (gp === "encounter" && returnToPhaseRef.current === "p2_ai_cross")) return "CROSSING HARWICK";
+    if (["p2_scripted", "p2_ai", "p2_memory_frag", "p2_discovery", "encounter"].includes(gp))
+      return currentPath === "metro" ? "METRO TUNNELS" : currentPath === "route9" ? "HIGHWAY" : "HOSPITAL";
+    return null; // phase1 (the apartment) and anything else → no strip
+  };
   const snapshotDay = () =>
     (dayThree || gamePhase.startsWith("haven")) ? 3
     : (gamePhase.startsWith("p2") || gamePhase === "encounter" || gamePhase === "shelter" || exchangePhase >= 10) ? 2 : 1;
@@ -868,8 +953,10 @@ export default function DeadSignal() {
     returnToPhase: returnToPhaseRef.current,
     lastEncounterId: lastEncounterIdRef.current,
     havenFinal: havenFinalRef.current,
+    havenVisited: havenVisitedRef.current, // Haven hub — rooms investigated
     seenEncounters: [...seenEncountersRef.current],
     shelterForced: shelterForcedRef.current,
+    leadQueue: leadQueueRef.current, leadCursor: leadCursorRef.current, // player-paced exploration position
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
   // The full per-slot record written to storage.
@@ -954,9 +1041,18 @@ export default function DeadSignal() {
     returnToPhaseRef.current  = run.returnToPhase || "p2_ai";
     lastEncounterIdRef.current = run.lastEncounterId || null;
     havenFinalRef.current     = run.havenFinal || HAVEN_FINAL_SEQUENCE;
+    havenVisitedRef.current   = Array.isArray(run.havenVisited) ? run.havenVisited : [];
     seenEncountersRef.current = new Set(run.seenEncounters || []);
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
     shelterForcedRef.current  = !!run.shelterForced;
+    // Player-paced exploration position. Rebuild for the current section if a legacy
+    // (pre-redesign) save lacks it, so old mid-exploration saves don't soft-lock.
+    {
+      const gp = run.gamePhase || "phase1";
+      const sec = gp === "p2_ai_cross" ? "crossing" : gp.startsWith("haven") ? "haven" : "path";
+      leadQueueRef.current = Array.isArray(run.leadQueue) ? run.leadQueue : buildLeadQueue(sec);
+      leadCursorRef.current = typeof run.leadCursor === "number" ? run.leadCursor : 0;
+    }
     chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
     // state
     setMessages(run.messages || []); setChoices(run.choices || []); setLastMessage(run.lastMessage || "");
@@ -1376,18 +1472,31 @@ export default function DeadSignal() {
   // phaseOverride: localBeat is synchronous, so at call sites that setGamePhase(X)
   // then invoke it in the SAME tick, gamePhaseRef.current is still the old phase
   // (the ref only updates on re-render). Those sites pass the target phase explicitly.
+  // Encounter-bridge picker — random + deduped (seenBridgesRef), replacing the fixed
+  // per-path pair that made the lead-in line repeat. `bridgeKey` is a BRIDGES key
+  // (hospital/metro/route9/crossing/haven).
+  const pickBridge = (bridgeKey) => {
+    const pool = BRIDGES[bridgeKey] || BRIDGES.crossing;
+    const seen = seenBridgesRef.current;
+    let fresh  = pool.filter(b => !seen.has(b));
+    if (!fresh.length) { seen.clear(); fresh = pool; }
+    const b = pickRandom(fresh);
+    seen.add(b);
+    return b;
+  };
+  // The explore-label key (path legs flavor by path; crossing/haven by section).
+  const exploreLabelKey = (section, path) => section === "crossing" ? "crossing" : section === "haven" ? "haven" : path;
+
   const localBeat = (batteryOverride = null, phaseOverride = null) => {
     const res     = resourcesRef.current;
     const path    = currentPathRef.current || "hospital";
     const phase   = phaseOverride || gamePhaseRef.current;
     const section = phase === "p2_ai" ? "path"
                   : phase === "p2_ai_cross" ? "crossing" : "haven";
+    const bridgeKey = section === "crossing" ? "crossing" : section === "haven" ? "haven" : path;
+    const moveOnKey = section === "haven" ? "haven" : section === "crossing" ? "crossing" : "path";
     const beat    = pickExploreBeat(path, section, res);
     const effectiveBattery = batteryOverride !== null ? batteryOverride : res.battery;
-
-    // No per-choice battery marker: drain is now universal/passive (beatBatteryCost),
-    // so a per-choice "cost" tag would be misleading. The HUD battery shows the drain.
-    const displayChoices = beat.choices;
 
     const pending = pendingStoryBeatRef.current;
 
@@ -1444,22 +1553,14 @@ export default function DeadSignal() {
         } else if (pending.type === "haven_final") {
           setGamePhase("haven_final");
           setHavenFinalIndex(0);
-          havenFinalRef.current = buildHavenFinal(currentPathRef.current); // P5 — branch-aware
-          scheduleMessages(havenFinalRef.current[0].msgs, havenFinalRef.current[0].choices, "narrator");
+          havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
+          const ft = scheduleMessages(HAVEN_FINAL_SEQUENCE[0].msgs, HAVEN_FINAL_SEQUENCE[0].choices, "narrator");
+          if (HAVEN_FINAL_SEQUENCE[0].effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(HAVEN_FINAL_SEQUENCE[0].effect), ft + 200));
 
         } else if (pending.type === "encounter") {
           const enc = pending.enc;
-          const encBridges = {
-            hospital: ["you move deeper in.", "then something blocks the way ahead."],
-            metro:    ["you keep moving through the dark.", "then something stops you."],
-            route9:   ["the road opens ahead.", "then you see it."],
-          };
-          // During the city crossing the player is on open streets, not the original
-          // leg — use a street-level bridge instead of the path's indoor/underground one.
-          const crossingBridge = ["the street narrows ahead.", "then something blocks the way."];
-          const encBridge = gamePhaseRef.current === "p2_ai_cross"
-            ? crossingBridge
-            : (encBridges[path] || ["you move on.", "then something blocks the way ahead."]);
+          // Random, deduped bridge for this area (no more single fixed pair per path).
+          const encBridge = pickBridge(bridgeKey);
           const bridgeTime = scheduleMessages(encBridge, null, "narrator");
           pendingRef.current.push(setTimeout(() => {
             setCurrentEncounter(enc);
@@ -1472,7 +1573,17 @@ export default function DeadSignal() {
       }, aiMsgTime + 600));
 
     } else {
-      scheduleMessages(beat.msgs, displayChoices, beat.from);
+      // Nav screen — atmosphere + the two player-paced choices (explore further / move on).
+      // When the area's lead queue is picked clean, only "move on" remains (forced).
+      const queue     = leadQueueRef.current || [];
+      const exhausted = leadCursorRef.current >= queue.length;
+      const moveOn    = MOVE_ON_LABEL[moveOnKey];
+      if (exhausted) {
+        scheduleMessages(EXPLORE_DONE[moveOnKey] || ["nothing else here."], [moveOn], "narrator");
+      } else {
+        const exploreLabel = pickRandom(EXPLORE_LABELS[exploreLabelKey(section, path)] || EXPLORE_LABELS.crossing);
+        scheduleMessages(beat.msgs, [exploreLabel, moveOn], beat.from);
+      }
     }
   };
 
@@ -1604,6 +1715,65 @@ export default function DeadSignal() {
     setWeapon(w); addMsg("system", `${w.name} equipped · ${w.damage}dmg`, delay); return true;
   };
 
+  // Pick the encounter for a revealed "encounter" lead (plan = power/search/hazard).
+  // Reuses the pool-filter + seen-dedupe logic; returns a pendingStoryBeat or null.
+  const pickEncounterBeat = (section, path, plan) => {
+    const pool = (ENCOUNTERS[section === "path" ? path : "crossing"] || ENCOUNTERS.crossing)
+      .filter(e => (e.minNoise || 0) <= noiseRef.current && e.id !== lastEncounterIdRef.current);
+    let matching;
+    if (plan === "power") matching = pool.filter(e => POWER_SOURCES.has(e.id));
+    else { const wantSearch = plan === "search"; matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch); }
+    const choicesPool = matching.length ? matching : pool;
+    const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id)); // P6a
+    const finalPool = unseen.length ? unseen : choicesPool;
+    if (!finalPool.length) return null;
+    const enc = pickRandom(finalPool);
+    seenEncountersRef.current.add(enc.id);
+    return { type: "encounter", enc };
+  };
+
+  // Leave the current area (player tapped "Move on", or the queue was forced empty).
+  // Each section transitions to the next: path → crossing, crossing → shelter, haven → finale.
+  const moveOnFrom = (section) => {
+    if (section === "path") {
+      const path = currentPathRef.current || "hospital";
+      applyTransitionDrain("crossing_start");
+      setGamePhase("p2_ai_cross");
+      leadQueueRef.current = buildLeadQueue("crossing"); leadCursorRef.current = 0;
+      setAiExchangeCount(0);
+      pendingRef.current.push(setTimeout(() => {
+        const exitLine = {
+          hospital: ["you slip out of mercy general.", "harwick's streets open ahead."],
+          metro:    ["you climb back up to the street.", "harwick opens ahead."],
+          route9:   ["you leave the highway behind.", "harwick's streets close in."],
+        }[path] || ["you move on.", "harwick's streets open ahead."];
+        const t = scheduleMessages(exitLine, null, "narrator");
+        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "p2_ai_cross"); }, t + 300));
+      }, 600));
+    } else if (section === "crossing") {
+      pendingStoryBeatRef.current = { type: "shelter" };
+      setIsTyping(true);
+      localBeat(null, "p2_ai_cross"); // bridges into the shelter set-piece
+    } else if (section === "haven") {
+      pendingStoryBeatRef.current = { type: "haven_final" };
+      setIsTyping(true);
+      localBeat(null, "haven_ai"); // bridges into the finale
+    }
+  };
+
+  // ─── Haven hub — named-destination navigation (Phase-3 foundation) ─────────────
+  // Renders the destination menu: the rooms not yet investigated + the always-present
+  // "to the heart of it" (the gated crack/ending). Reusing the chat choice list, so it
+  // autosaves and resumes like any other decision point.
+  const showHavenMenu = (delay = 600) => {
+    const remaining = HAVEN_DESTINATIONS.filter(d => !havenVisitedRef.current.includes(d.id));
+    const prompt = remaining.length
+      ? ["the compound spreads out around you.", "where do you look?"]
+      : ["you've walked all of it.", "only one place left."];
+    const t = scheduleMessages(prompt, [...remaining.map(d => d.label), HEART_LABEL], "narrator");
+    return t + delay;
+  };
+
   const handleChoice = (choice) => {
     audioEngine.tapResponse(); // audio — response/choice tap
     clearPending();
@@ -1730,12 +1900,13 @@ export default function DeadSignal() {
         const freshFrags = fragPool.filter(f => !ownedFrags.has(f.name));
         const chosenFrag = pickRandom(freshFrags.length ? freshFrags : fragPool);
         setSelectedFragment(chosenFrag);
-        // Pacing for this leg is the declarative ROUTE.path schedule. Just reset the
-        // cursor (aiExchangeCount) and the one-shot memory guard.
+        // The path leg is now a player-paced lead queue (buildLeadQueue). Reset the
+        // exploration cursor and the one-shot memory guard, then show the first nav screen.
         const startLeg = () => {
           applyTransitionDrain("path_start");
           setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
-          localBeat(null, "p2_ai"); // first exploration beat of the path leg
+          leadQueueRef.current = buildLeadQueue("path"); leadCursorRef.current = 0; // explore at your pace
+          localBeat(null, "p2_ai"); // first nav screen of the path leg
         };
         if (askedHow) {
           // Dodge the final "how do you know" before moving out, then start the leg.
@@ -1823,14 +1994,11 @@ export default function DeadSignal() {
       } else {
         raiseQuestion("haven"); // arrived — Haven is empty
         setGamePhase("haven_ai");
-        setAiExchangeCount(0);
-        const tgt = Math.floor(Math.random() * 2) + 3;
-        setAiExchangeTarget(tgt);
+        havenVisitedRef.current = []; // Haven hub — nothing investigated yet
         // Haven cache — the relief at the end of the scarcity gauntlet. A stocked
-        // compound, looted at logical rooms: ops building (power), pantry (supplies),
-        // security (weapon). Replaces the old invisible battery floor. You must SURVIVE
-        // to here to get it — neglect kills you in the crossing/approach first.
-        addMsg("narrator", "the operations building.", 800);
+        // compound, looted on the way in: a charging station (power), the pantry
+        // (supplies), security (weapon). You must SURVIVE to here to get it.
+        addMsg("narrator", "a charging station inside the gate.", 800);
         addMsg("narrator", "a rack of charged battery packs by the dead terminals.", 1900);
         setResources(p => ({ ...p, battery: Math.min(100, p.battery + HAVEN_BATTERY_CACHE), charger: p.charger === null ? null : Math.min(100, p.charger + 40) }));
         addMsg("system", `battery packs · +${HAVEN_BATTERY_CACHE}% · charger refilled`, 2700); pulseBattery();
@@ -1839,19 +2007,32 @@ export default function DeadSignal() {
         addMsg("system", `supplies restocked · food & water to ${HAVEN_SUPPLY_FLOOR}`, 4700);
         addMsg("narrator", "a security office. a weapon locker, forced but not emptied.", 5900);
         equipWeapon("machete", 6700);
-        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "haven_ai"); }, 7900));
+        // Hand off to the hub menu (named destinations) once the cache lines have landed.
+        pendingRef.current.push(setTimeout(() => { setIsTyping(true); showHavenMenu(); }, 7900));
       }
       return;
     }
 
     if (gamePhaseRef.current === "haven_ai") {
-      const newCnt = aiCountRef.current + 1;
-      setAiExchangeCount(newCnt);
-      if (newCnt >= aiTargetRef.current) {
-        pendingStoryBeatRef.current = { type: "haven_final" };
+      // Haven hub — pick a destination to investigate, or head to the heart of it (the crack).
+      if (/heart of it/i.test(choice)) {
+        // Gated ending: the only way out. Render the 143 board crack, fire record143, then
+        // the haven_final handler runs the incoming-call sequence on the next tap.
+        setGamePhase("haven_final"); setHavenFinalIndex(0);
+        havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
+        const t = scheduleMessages(HAVEN_FINAL_SEQUENCE[0].msgs, HAVEN_FINAL_SEQUENCE[0].choices, "narrator");
+        if (HAVEN_FINAL_SEQUENCE[0].effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(HAVEN_FINAL_SEQUENCE[0].effect), t + 200));
+        return;
       }
-      const loot = applyChoiceLoot(choice, newBattery); // Fix #5 — choice-marker loot
-      localBeat(loot.newBattery, "haven_ai");
+      // A destination — show its reveal, mark visited, then re-show the (shrunken) menu.
+      const dest = HAVEN_DESTINATIONS.find(d => stripMarkers(d.label) === stripMarkers(choice));
+      if (!dest) { showHavenMenu(); return; } // defensive — re-show the menu
+      if (!havenVisitedRef.current.includes(dest.id)) havenVisitedRef.current = [...havenVisitedRef.current, dest.id];
+      const path = currentPathRef.current || "hospital";
+      const msgs = dest.path ? (HAVEN_RECORDS_BEAT[path] || HAVEN_RECORDS_BEAT.hospital) : dest.msgs;
+      const t = scheduleMessages(msgs, null, dest.from || "narrator");
+      if (dest.effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(dest.effect), t + 200));
+      pendingRef.current.push(setTimeout(() => { setIsTyping(true); showHavenMenu(); }, t + 700));
       return;
     }
 
@@ -1893,55 +2074,34 @@ export default function DeadSignal() {
     if (gamePhaseRef.current === "p2_ai" || gamePhaseRef.current === "p2_ai_cross") {
       const path    = currentPathRef.current;
       const section = gamePhaseRef.current === "p2_ai" ? "path" : "crossing";
-      const newCnt  = aiCountRef.current + 1;
-      setAiExchangeCount(newCnt);
 
-      // Walk the route map: this choice advances into node[newCnt-1]. Past the leg's
-      // end (e.g. a restored save) clamps to the leg-ending node. The node decides
-      // whether a story beat / encounter is queued; "explore" = a free atmospheric beat.
-      const leg  = ROUTE[section];
-      const node = leg[Math.min(newCnt, leg.length) - 1];
+      // "Move on" → leave the area now (player-paced). No other choice starts with "Move on".
+      if (/^move on\b/i.test(stripMarkers(choice))) { moveOnFrom(section); return; }
 
-      const drain = node.drain ? applyTransitionDrain(node.drain) : { food: 0, water: 0 }; // mid-leg squeeze
+      // "Explore" → reveal the next lead from this area's queue (advance the cursor).
+      const queue = leadQueueRef.current || [];
+      const idx   = leadCursorRef.current;
+      leadCursorRef.current = idx + 1;
+      setAiExchangeCount(leadCursorRef.current); // mirror to state for save snapshots
+      const lead  = queue[idx]; // undefined only if somehow past the end
+
+      const drain = lead?.drain ? applyTransitionDrain(lead.drain) : { food: 0, water: 0 }; // mid-leg squeeze
 
       let pendingBeat = null;
-      if (noiseRef.current >= 3 && (node.kind === "explore" || node.kind === "encounter")) {
-        // Loud → they found you. Forced fight, no sneak escape (never overrides a
-        // memory/discovery/shelter story beat). Noise drops after it (break contact).
+      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "encounter")) {
+        // Loud → they found you. Forced fight (never overrides a memory/discovery beat).
         pendingBeat = { type: "encounter", enc: CORNERED_ENCOUNTER };
-      } else if (node.kind === "memory" && !fragFiredRef.current) {
+      } else if (lead?.kind === "memory" && !fragFiredRef.current) {
         setFragFired(true);
         pendingBeat = { type: "memory" };
-      } else if (node.kind === "discovery") {
+      } else if (lead?.kind === "discovery") {
         pendingBeat = { type: "discovery" };
-      } else if (node.kind === "shelter") {
-        pendingBeat = { type: "shelter" };
-      } else if (node.kind === "encounter") {
-        // Guaranteed encounter. node.plan picks the spot: "power" = a battery lifeline
-        // (POWER_SOURCES), "search" = a loot/supply spot, "hazard" = a non-search threat.
-        const pool = (ENCOUNTERS[section === "path" ? path : "crossing"] || ENCOUNTERS.crossing)
-          .filter(e => (e.minNoise || 0) <= noiseRef.current && e.id !== lastEncounterIdRef.current);
-        let matching;
-        if (node.plan === "power") {
-          matching = pool.filter(e => POWER_SOURCES.has(e.id));
-        } else {
-          const wantSearch = node.plan === "search";
-          matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch);
-        }
-        const choicesPool = matching.length ? matching : pool;
-        const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id)); // P6a
-        const finalPool = unseen.length ? unseen : choicesPool;
-        if (finalPool.length) {
-          const enc = pickRandom(finalPool);
-          seenEncountersRef.current.add(enc.id);
-          pendingBeat = { type: "encounter", enc };
-        }
+      } else if (lead?.kind === "encounter") {
+        pendingBeat = pickEncounterBeat(section, path, lead.plan);
       }
-      // node.kind === "explore" → no story beat; localBeat renders a free atmospheric beat.
+      // lead.kind === "atmo" (or null) → no story beat; localBeat renders the next nav screen.
       // Noise is a "how loud have you been" meter: only loud actions (search/force/fight)
-      // raise it; it doesn't fade per-beat (that cancelled it out before). Recovery comes
-      // from breaking contact in a forced fight (resets to 0) and the leg transition (−1),
-      // so stealth play stays near 0 while loud play climbs to the forced-fight threshold.
+      // raise it; recovery comes from a forced fight (resets to 0) and the leg transition (−1).
 
       pendingStoryBeatRef.current = pendingBeat;
 
@@ -1952,8 +2112,7 @@ export default function DeadSignal() {
 
       // Priority 1 — starvation/dehydration on the loot-adjusted vitals, with the
       // mid-leg transition drain (above) folded in — applyTransitionDrain's setResources
-      // is async, so it isn't in resourcesRef/loot yet this tick. Without this, a drain
-      // that zeroes a vital wouldn't cost HP until the following choice.
+      // is async, so it isn't in resourcesRef/loot yet this tick.
       const snapFood  = Math.max(0, loot.newFood  + drain.food);
       const snapWater = Math.max(0, loot.newWater + drain.water);
       const survHp = applyStarvation({ food: snapFood, water: snapWater, hp: loot.newHp });
@@ -1976,7 +2135,7 @@ export default function DeadSignal() {
       setSigFlicker(true);
       pendingRef.current.push(setTimeout(() => setSigFlicker(false), 900));
 
-      // System message and notification — let these land visually before API call
+      // System message and notification — let these land visually before returning.
       addMsg("system", smsgs[DISCOVERY_BEATS[path].onChoice], 600);
       if (isNewClue) {
         pendingRef.current.push(setTimeout(() => {
@@ -1984,24 +2143,14 @@ export default function DeadSignal() {
         }, 1400));
       }
 
-      applyTransitionDrain("crossing_start");
-      // Pacing for this leg is the declarative ROUTE.crossing schedule. Reset the cursor.
-      setAiExchangeCount(0);
-      setGamePhase("p2_ai_cross");
-      // Noise carries into the crossing (loudness persists, only softened by the per-leg
-      // −1 in applyTransitionDrain) so an active/searching player keeps building toward the
-      // forced-fight threshold instead of it resetting to 0 each leg.
-
-      // Delay until notifications render, then bridge out of the starting leg into
-      // the city crossing (no hard cut from "inside the building" to "rows of houses").
+      // The discovery is the path leg's last lead. Recording it returns the player to the
+      // exploration nav screen — the cursor is already at the end, so the next screen is
+      // the forced "move on" (which runs the crossing transition via moveOnFrom). The leg
+      // transition is no longer tied to the discovery: a player can leave without it.
       pendingRef.current.push(setTimeout(() => {
-        const exitLine = {
-          hospital: ["you slip out of mercy general.", "harwick's streets open ahead."],
-          metro:    ["you climb back up to the street.", "harwick opens ahead."],
-          route9:   ["you leave the highway behind.", "harwick's streets close in."],
-        }[path] || ["you move on.", "harwick's streets open ahead."];
-        const t = scheduleMessages(exitLine, null, "narrator");
-        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "p2_ai_cross"); }, t + 300));
+        setGamePhase("p2_ai");
+        setIsTyping(true);
+        localBeat(null, "p2_ai");
       }, 2400));
       return;
     }
@@ -2014,7 +2163,9 @@ export default function DeadSignal() {
     lastEncounterIdRef.current = null;
     pendingStoryBeatRef.current = null;
     seenEncountersRef.current = new Set(); havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
+    havenVisitedRef.current = [];
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null;
+    seenBridgesRef.current = new Set(); leadQueueRef.current = []; leadCursorRef.current = 0;
     raisedQuestionsRef.current = []; setRaisedQuestions([]);
     setMessages([]); setChoices([]); setIsTyping(false); setSigFlicker(false); setBattPulse(false);
     setResources({ battery: 9, water: 0, food: 0, charger: null, hp: 10 });
@@ -2097,6 +2248,7 @@ export default function DeadSignal() {
   const noiseColor = noise >= 4 ? "#8b2020" : noise >= 2 ? "#7a6020" : "#3a7a52";
   const injuryLbl  = resources.hp <= 2 ? "critical" : resources.hp <= 4 ? "bleeding" : resources.hp <= 6 ? "bruised" : null;
   const showRow2   = weapon !== null || noise > 0 || resources.charger !== null;
+  const area       = areaLabel(); // current-area name for the location strip (null = hide)
   const fragCount  = recoveredMemories.filter(m => m.type === "fragment").length;
   // "Use charger" is a free action on normal choice screens (not encounters, not
   // continue-only beats) while the reservoir has charge and the phone isn't near full.
@@ -2548,6 +2700,15 @@ export default function DeadSignal() {
           {weapon && <span style={{ color:"#8a7a58" }}>{weapon.shortName} ·{weapon.damage}dmg</span>}
           {noise > 0 && <span style={{ color:noiseColor, animation:noise>=4?flashAnim:"none" }}>noise {noise}/5</span>}
           {resources.charger !== null && <span style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"needs power"}</span>}
+        </div>
+      )}
+
+      {/* Location strip — current area (hidden in the phase-1 apartment) */}
+      {area && (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:"0.6rem", padding:"0.3rem 1rem", borderBottom:"1px solid #111", flexShrink:0 }}>
+          <span style={{ flex:1, height:"1px", background:"linear-gradient(90deg, transparent, #1d3a22)" }} />
+          <span style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.22em", whiteSpace:"nowrap", textShadow:"0 0 7px rgba(74,158,107,0.3)" }}>◇&nbsp;{area}</span>
+          <span style={{ flex:1, height:"1px", background:"linear-gradient(90deg, #1d3a22, transparent)" }} />
         </div>
       )}
 
