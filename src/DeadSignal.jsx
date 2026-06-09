@@ -744,16 +744,16 @@ const AudioDebug = () => {
 // (Relies on the sigflicker/sigpulse keyframes defined in the chat screen's <style>.)
 const SignalBars = ({ level, flicker }) => {
   const lit = Math.max(0, Math.min(4, Math.round((level / 5) * 4)));
-  const heights = [4, 6, 8, 11];
+  const heights = [7, 11, 15, 20];
   return (
-    <svg width="21" height="12" viewBox="0 0 21 12" style={{ display:"block" }} aria-hidden="true">
+    <svg width="34" height="20" viewBox="0 0 34 20" style={{ display:"block", flexShrink:0 }} aria-hidden="true">
       {heights.map((h, i) => {
         const on = i < lit;
         return (
-          <rect key={i} x={i * 5.2} y={12 - h} width="3.4" height={h} rx="1.2"
+          <rect key={i} x={i * 8.4} y={20 - h} width="5.6" height={h} rx="2"
             fill={on ? "#4a9e6b" : "#282828"}
             style={{
-              filter: on ? "drop-shadow(0 0 3px rgba(74,158,107,0.6))" : "none",
+              filter: on ? "drop-shadow(0 0 4px rgba(74,158,107,0.6))" : "none",
               animation: on && flicker ? "sigflicker 0.18s ease infinite" : on ? "sigpulse 3s ease infinite" : "none",
             }} />
         );
@@ -2732,11 +2732,16 @@ export default function DeadSignal() {
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
       <AudioDebug />
 
-      {/* Top utility bar: DEAD SIGNAL far left · menu button centered · fragments/battery right */}
+      {/* Top utility bar: signal bar + fragment/clue counters far left · FILE/menu centered · battery right */}
       <div style={{ display:"flex", flexWrap:"nowrap", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", padding:"calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem", flexShrink:0 }}>
-        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", gap:"0.45rem" }}>
-          <span style={{ color:"#4a9e6b", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.2em", whiteSpace:"nowrap", textShadow:"0 0 9px rgba(74,158,107,0.65), 0 0 22px rgba(74,158,107,0.3)" }}>DEAD&nbsp;SIGNAL</span>
+        <div style={{ display:"flex", alignItems:"center", gap:"0.7rem", whiteSpace:"nowrap" }}>
           <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
+          <span style={{ color:"#2a7a4a", fontSize:"0.76rem", letterSpacing:"0.07em" }}>
+            ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
+          </span>
+          <span style={{ color:"#2a6070", fontSize:"0.76rem", letterSpacing:"0.07em" }}>
+            ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
+          </span>
         </div>
         <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:"0.4rem" }}>
           <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
@@ -2744,20 +2749,14 @@ export default function DeadSignal() {
           <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
             style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
         </div>
-        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"0.55rem", whiteSpace:"nowrap" }}>
-          <span style={{ color:"#2a7a4a", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
-          </span>
-          <span style={{ color:"#2a6070", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
-          </span>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.18rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
-            <svg width="18" height="9" viewBox="0 0 18 9" style={{ display:"block", filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
-              <rect x="0.5" y="0.5" width="14" height="8" rx="1.5" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1"/>
-              <rect x="14.5" y="2" width="2.5" height="5" rx="0.5" fill={battPulse ? "#7fffa0" : battColor}/>
-              <rect x="1.5" y="1.5" width={Math.max(0,Math.round((resources.battery/100)*12))} height="5" rx="0.5" fill={battPulse ? "#7fffa0" : battColor}/>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", whiteSpace:"nowrap" }}>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.3rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
+            <svg width="30" height="15" viewBox="0 0 30 15" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 6px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 4px rgba(180,40,40,0.6))" : "none" }}>
+              <rect x="0.8" y="0.8" width="23" height="13.4" rx="2.4" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.3"/>
+              <rect x="24.3" y="3.5" width="3.4" height="8" rx="0.9" fill={battPulse ? "#7fffa0" : battColor}/>
+              <rect x="2.4" y="2.4" width={Math.max(0,Math.round((resources.battery/100)*20))} height="10.2" rx="1" fill={battPulse ? "#7fffa0" : battColor}/>
             </svg>
-            <span style={{ color: battPulse ? "#7fffa0" : battColor, fontSize:"0.58rem", textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
+            <span style={{ color: battPulse ? "#7fffa0" : battColor, fontSize:"0.82rem", letterSpacing:"0.03em", textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
           </span>
         </div>
       </div>
