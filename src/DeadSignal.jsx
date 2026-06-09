@@ -738,16 +738,13 @@ const HUD_CSS = `
 .ds-vitals{display:flex;gap:1rem;padding:0.38rem 1rem;align-items:center;flex-wrap:wrap;font-size:0.66rem;letter-spacing:0.09em;flex-shrink:0}
 .ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
 .ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
-.lbl-abbr{display:none}
 @media(max-width:480px){
 .ds-hud{padding-left:0.6rem;padding-right:0.6rem;gap:0.35rem}
 .ds-contact{padding:0.3rem 0.75rem 0.35rem;gap:0.05rem}
 .ds-contact-id{flex-direction:row;gap:0.45rem}
 .ds-avatar{width:20px;height:20px;font-size:0.62rem}
-.ds-vitals{gap:0.55rem;font-size:0.62rem;padding:0.34rem 0.6rem;flex-wrap:nowrap}
+.ds-vitals{gap:0.55rem;font-size:0.62rem;padding:0.34rem 0.6rem;flex-wrap:wrap}
 .ds-equip{gap:0.6rem;font-size:0.56rem;padding:0.22rem 0.75rem}
-.lbl-full{display:none}
-.lbl-abbr{display:inline}
 .ds-battwarn{font-size:0.6rem;padding:0.32rem 0.75rem}
 .ds-battwarn:not(.ds-crit){display:none}
 .choice-btn{padding:0.65rem 0.75rem!important;font-size:0.78rem!important;line-height:1.45!important}
@@ -2805,8 +2802,8 @@ export default function DeadSignal() {
     <div className="ds-vitals" style={{ borderBottom: showRow2 ? "none" : "1px solid #111" }}>
       <span style={{ color:"#4a9e6b" }}>DAY {displayDay}</span>
       <span style={{ color:hpColor, animation:resources.hp<=2?flashAnim:"none" }}>HP {resources.hp}/10{injuryLbl ? ` · ${injuryLbl}` : ""}</span>
-      <span style={{ color:watColor }}><span className="lbl-full">WATER </span><span className="lbl-abbr">W </span>{resources.water}</span>
-      <span style={{ color:fooColor }}><span className="lbl-full">FOOD </span><span className="lbl-abbr">F </span>{resources.food}</span>
+      <span style={{ color:watColor }}>WATER {resources.water}</span>
+      <span style={{ color:fooColor }}>FOOD {resources.food}</span>
     </div>
   );
 
