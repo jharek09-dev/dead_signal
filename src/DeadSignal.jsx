@@ -729,7 +729,6 @@ const HUD_CSS = `
 .ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
 .ds-hud-right{justify-content:flex-end}
 .ds-hud-mid{display:flex;align-items:center;gap:0.4rem}
-.ds-count{font-size:0.58rem;letter-spacing:0.07em}
 .ds-batt-pct{font-size:0.7rem;letter-spacing:0.03em}
 .ds-contact{display:flex;flex-direction:column;align-items:center;gap:0.1rem;padding:0.4rem 1rem 0.5rem;border-bottom:1px solid #111;flex-shrink:0}
 .ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
@@ -1939,7 +1938,16 @@ export default function DeadSignal() {
       const next = exchangePhase + 1;
       setExchangePhase(next);
       // Case-file questions surface as their beat is reached.
-      if (exchangePhase === 1) raiseQuestion("memory");                          // the amnesia beat
+      if (exchangePhase === 1) {
+        raiseQuestion("memory");                                                // the amnesia beat
+        // Discoverability nudge — point the player at the Case File the first time a slot logs
+        // a question. Once per slot: the flag rides on the persisted profile (committed at the
+        // first save after phase1), so it never nags on replays of that slot.
+        if (activeProfileRef.current && !activeProfileRef.current.caseFileHintSeen) {
+          activeProfileRef.current.caseFileHintSeen = true;
+          addMsg("system", "▤ new in your case file — tap FILE to review", 1500);
+        }
+      }
       if (cur?.onChoice === "NAME_REVEAL") { raiseQuestion("kim"); raiseQuestion("ellie"); raiseQuestion("call"); } // "she was already gone" + "i called her"
       if (cur?.onChoice === "CHARGER")     { const ch = Math.min(100, newBattery + CHARGER_FIND); setResources(p => ({ ...p, battery: ch, charger: 0 })); addMsg("system", `portable charger drained into phone · battery ${ch}%`, 700); addMsg("system", "charger empty — recharge it at a power source", 1400); }
       if (cur?.onChoice === "SUPPLIES")    { setResources(p => ({ ...p, food: START_SUPPLY, water: START_SUPPLY })); addMsg("system", `supplies gathered · food ${START_SUPPLY} · water ${START_SUPPLY}`, 700); }
@@ -2348,12 +2356,10 @@ export default function DeadSignal() {
   const injuryLbl  = resources.hp <= 2 ? "critical" : resources.hp <= 4 ? "bleeding" : resources.hp <= 6 ? "bruised" : null;
   const showRow2   = weapon !== null || noise > 0 || resources.charger !== null;
   const area       = areaLabel(); // current-area name for the location strip (null = hide)
-  const fragCount  = recoveredMemories.filter(m => m.type === "fragment").length;
   // "Use charger" is a free action on normal choice screens (not encounters, not
   // continue-only beats) while the reservoir has charge and the phone isn't near full.
   const chargerAmt    = Math.min(CHARGER_TRANSFER, resources.charger || 0, 100 - resources.battery);
   const canUseCharger = chargerAmt > 0 && resources.battery < 90 && gamePhase !== "encounter" && !(choices.length === 1 && choices[0] === "·");
-  const clueCount  = recoveredMemories.filter(m => m.type === "discovery").length;
   const signalLevel =
     screen === "phase2_complete" || dayThree ? 5 :
     ["p2_ai_cross","shelter","haven_approach","haven_ai","haven_final"].includes(gamePhase) ? 4 :
@@ -2765,12 +2771,6 @@ export default function DeadSignal() {
     <div className="ds-hud">
       <div className="ds-hud-side">
         <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
-        <span className="ds-count" style={{ color:"#2a7a4a" }}>
-          ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
-        </span>
-        <span className="ds-count" style={{ color:"#2a6070" }}>
-          ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
-        </span>
       </div>
       <div className="ds-hud-mid">
         <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
