@@ -199,12 +199,15 @@ const EXPLORE_BEATS = {
 // State-bucketed reaction lines. pickExploreBeat() checks these first; the highest-
 // priority matching condition wins, else a normal atmospheric beat fires. Choices stay
 // movement/directive — never "look for a charger" (the player owns one; they need power).
+// Battery warnings stay Ellie's voice (the phone is her line to you). Body/survival warnings
+// (injury/food/water) are the game's voice — narrator (centered, diegetic), never Ellie, since
+// she can't know your physical state.
 const STATE_LINES = {
-  battery_critical: { from:"ellie", msgs:["your battery.", "find power or i lose you."], choices:["Keep moving.","Find power."] },
-  battery_low:      { from:"ellie", msgs:["battery's getting low.", "watch it."],         choices:["Keep moving.","Watch it."] },
-  injured_bad:      { from:"ellie", msgs:["you're hurt bad.", "slow down."],              choices:["Push on.","Slow down."] },
-  low_food:         { from:"ellie", msgs:["when did you last eat?", "find something."],   choices:["Keep moving.","Push on."] },
-  low_water:        { from:"ellie", msgs:["you need water.", "soon."],                     choices:["Keep moving.","Press on."] },
+  battery_critical: { from:"ellie",    msgs:["your battery.", "find power or i lose you."], choices:["Keep moving.","Find power."] },
+  battery_low:      { from:"ellie",    msgs:["battery's getting low.", "watch it."],         choices:["Keep moving.","Watch it."] },
+  injured_bad:      { from:"narrator", msgs:["the bleeding hasn't stopped.", "you're slowing down."], choices:["Push on."] },
+  low_food:         { from:"narrator", msgs:["your stomach is hollow.", "it's been too long since you ate."], choices:["Keep moving."] },
+  low_water:        { from:"narrator", msgs:["your mouth is dry.", "you need water soon."],   choices:["Keep moving."] },
 };
 
 // ─── HAVEN PHASE 2C ───────────────────────────────────────────────────────────
@@ -329,7 +332,12 @@ const BOARD_QUESTIONS = [
   { key:"kim",    text:"Who was Kim?",          evolved:{ key:"kim143",   text:"Was Kim one of the 143?" } },
   { key:"ellie",  text:"Who — or what — is Ellie?" },
   { key:"haven",  text:"Why is Haven empty?",   evolved:{ key:"haven143", text:"Where are the 143?" } },
+  // World thread — raised by studying route-9's environmental clues (OBSERVE).
+  { key:"harwick", text:"What actually happened to Harwick?" },
 ];
+// Base question keys (top-level) — used to decide whether a raiseQuestion() announces a "NEW
+// QUESTION" card. Evolution keys (kim143/haven143) aren't here, so they don't double-announce.
+const BASE_QUESTION_TEXT = Object.fromEntries(BOARD_QUESTIONS.map(q => [q.key, q.text]));
 
 // Location-specific loot when SEARCH succeeds (encounter id → possible finds)
 const SEARCH_LOOT = {
@@ -752,10 +760,19 @@ const MessageRow = memo(function MessageRow({ m }) {
   if (m.from === "question_note")
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.8s ease" }}>
-        <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>QUESTION UPDATED</div>
-        <div style={{ color:"#5a5246", fontSize:"0.72rem", fontStyle:"italic", margin:"0.3rem 0 0", textDecoration:"line-through" }}>{m.oldText}</div>
-        <div style={{ color:"#6a5a48", fontSize:"0.74rem", lineHeight:1.1 }}>↓</div>
-        <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.05rem" }}>{m.newText}</div>
+        {m.kind === "new" ? (
+          <>
+            <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>NEW QUESTION</div>
+            <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.25rem" }}>{m.newText}</div>
+          </>
+        ) : (
+          <>
+            <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>QUESTION UPDATED</div>
+            <div style={{ color:"#5a5246", fontSize:"0.72rem", fontStyle:"italic", margin:"0.3rem 0 0", textDecoration:"line-through" }}>{m.oldText}</div>
+            <div style={{ color:"#6a5a48", fontSize:"0.74rem", lineHeight:1.1 }}>↓</div>
+            <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.05rem" }}>{m.newText}</div>
+          </>
+        )}
       </div>
     );
   return (
@@ -836,6 +853,7 @@ export default function DeadSignal() {
   const returnToPhaseRef    = useRef("p2_ai");
   const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
   const havenVisitedRef     = useRef([]); // Haven hub — destination ids already investigated this run
+  const qQueueRef           = useRef(0);  // pending QUESTION cards (stagger so simultaneous raises don't stack)
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
   const seenBeatsRef        = useRef(new Set()); // exploration beats shown this run (prefer unseen)
   const seenBridgesRef      = useRef(new Set()); // encounter-bridge variants shown this run (prefer unseen)
@@ -865,14 +883,30 @@ export default function DeadSignal() {
   const clearPending = () => {
     pendingRef.current.forEach(clearTimeout); pendingRef.current = [];
     dialogueRef.current.forEach(clearTimeout); dialogueRef.current = [];
+    qQueueRef.current = 0; // cleared question-card timers won't decrement; reset the stagger baseline
   };
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
 
-  // Case file — surface an OPEN QUESTION when its story beat hits (dedupe; mirror ref→state).
+  // Drop a QUESTION card into the chat, staggered so simultaneous raises (e.g. the name
+  // reveal opening three threads) appear ~1.4s apart instead of stacking in one frame.
+  const announceQuestion = (card) => {
+    const delay = 500 + Math.min(qQueueRef.current, 4) * 800;
+    qQueueRef.current += 1;
+    pendingRef.current.push(setTimeout(() => {
+      setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...card }]);
+      qQueueRef.current = Math.max(0, qQueueRef.current - 1);
+    }, delay));
+  };
+
+  // Case file — surface an OPEN QUESTION when its story beat hits (dedupe; mirror ref→state)
+  // and announce it in-chat as a NEW QUESTION card so the player follows the mystery as it
+  // builds. Evolution keys (kim143/haven143) aren't base questions → no NEW card (the UPDATED
+  // card is emitted at the 143 record instead).
   const raiseQuestion = (key) => {
     if (raisedQuestionsRef.current.includes(key)) return;
     raisedQuestionsRef.current = [...raisedQuestionsRef.current, key];
     setRaisedQuestions(raisedQuestionsRef.current);
+    if (BASE_QUESTION_TEXT[key]) announceQuestion({ kind: "new", newText: BASE_QUESTION_TEXT[key] });
   };
 
   // Story-beat side effects, tagged on Haven beats via `effect`. Called just after a
@@ -887,9 +921,9 @@ export default function DeadSignal() {
     if (effect === "record143") {
       raiseQuestion("haven143");
       raiseQuestion("kim143");
-      pendingRef.current.push(setTimeout(() => {
-        setMessages(p => [...p, { id: nextId("q"), from: "question_note", oldText: "Why is Haven empty?", newText: "Where are the 143?" }]);
-      }, 700));
+      // Both evolutions get an in-chat UPDATED card (kim→143 was previously silent), staggered.
+      announceQuestion({ oldText: "Why is Haven empty?", newText: "Where are the 143?" });
+      announceQuestion({ oldText: "Who was Kim?", newText: "Was Kim one of the 143?" });
     }
   };
 
@@ -1638,7 +1672,7 @@ export default function DeadSignal() {
         else    { outcome = "you got away. dropped something."; reactionKey = "run_fail"; dFood = -1; dWater = -1; dNoise = 2; }
         break;
       }
-      case "OBSERVE": { outcome = "you look. more questions than answers."; reactionKey = "observe"; break; }
+      case "OBSERVE": { outcome = "you look. more questions than answers."; reactionKey = "observe"; raiseQuestion("harwick"); break; }
       case "FORCE":   { outcome = "you forced through."; reactionKey = "force"; dHp = -2; dNoise = 2; break; }
       case "FIGHT": {
         // Weapon-driven combat. Damage raises the odds of a clean kill and cuts the
