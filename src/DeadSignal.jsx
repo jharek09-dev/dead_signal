@@ -930,11 +930,54 @@ export default function DeadSignal() {
   selectedFragmentRef.current  = selectedFragment;
   recoveredMemoriesRef.current = recoveredMemories;
 
+  // ── Pausable timers ────────────────────────────────────────────────────────────
+  // Every gameplay timer goes through setT() instead of raw setTimeout, so the dialogue
+  // can be frozen (and resumed mid-beat) when the player opens the pause menu / leaves
+  // the chat. Each record tracks its remaining time; pause clears the OS timer and banks
+  // the remainder, resume re-arms it. clearT is robust to a raw id (screen-cinematic
+  // effects still use plain setTimeout) so clearPending can clear a mixed bag.
+  const timersRef = useRef(new Set());
+  const pausedRef = useRef(false);
+  const setT = (fn, delay) => {
+    const rec = { fn, remaining: delay, fireAt: Date.now() + delay, id: 0 };
+    if (!pausedRef.current) rec.id = setTimeout(() => { timersRef.current.delete(rec); fn(); }, delay);
+    timersRef.current.add(rec);
+    return rec;
+  };
+  const clearT = (rec) => {
+    if (rec == null) return;
+    if (typeof rec === "number") { clearTimeout(rec); return; } // legacy raw id
+    clearTimeout(rec.id); timersRef.current.delete(rec);
+  };
+  const pauseTimers = () => {
+    if (pausedRef.current) return;
+    pausedRef.current = true;
+    const now = Date.now();
+    timersRef.current.forEach(rec => { clearTimeout(rec.id); rec.remaining = Math.max(0, rec.fireAt - now); });
+  };
+  const resumeTimers = () => {
+    if (!pausedRef.current) return;
+    pausedRef.current = false;
+    const now = Date.now();
+    timersRef.current.forEach(rec => {
+      rec.fireAt = now + rec.remaining;
+      rec.id = setTimeout(() => { timersRef.current.delete(rec); rec.fn(); }, rec.remaining);
+    });
+  };
+
   const clearPending = () => {
-    pendingRef.current.forEach(clearTimeout); pendingRef.current = [];
-    dialogueRef.current.forEach(clearTimeout); dialogueRef.current = [];
+    pendingRef.current.forEach(clearT); pendingRef.current = [];
+    dialogueRef.current.forEach(clearT); dialogueRef.current = [];
     qQueueRef.current = 0; // cleared question-card timers won't decrement; reset the stagger baseline
   };
+
+  // Freeze the dialogue whenever the bare chat isn't the foreground — the pause menu, or a
+  // detour to Options / Load / Case File — and continue mid-beat on return. Game-driven
+  // screens (offline/dead/complete) are reached by a timer firing, so their chat timers are
+  // already spent or cleared; pauseTimers only touches live tracked timers, so it's a no-op there.
+  useEffect(() => {
+    if (screen === "chat" && !menuOpen) resumeTimers(); else pauseTimers();
+  }, [screen, menuOpen]);
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
 
   // Drop a QUESTION card into the chat, staggered so simultaneous raises (e.g. the name
@@ -942,7 +985,7 @@ export default function DeadSignal() {
   const announceQuestion = (card) => {
     const delay = 500 + Math.min(qQueueRef.current, 4) * 800;
     qQueueRef.current += 1;
-    pendingRef.current.push(setTimeout(() => {
+    pendingRef.current.push(setT(() => {
       setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...card }]);
       qQueueRef.current = Math.max(0, qQueueRef.current - 1);
     }, delay));
@@ -967,7 +1010,7 @@ export default function DeadSignal() {
     if (effect !== "signal" && effect !== "record143") return;
     audioEngine.signal();
     setSigFlicker(true);
-    pendingRef.current.push(setTimeout(() => setSigFlicker(false), 1100));
+    pendingRef.current.push(setT(() => setSigFlicker(false), 1100));
     if (effect === "record143") {
       raiseQuestion("haven143");
       raiseQuestion("kim143");
@@ -1162,7 +1205,7 @@ export default function DeadSignal() {
   const menuSave = async () => {
     const ok = await saveRun();
     setMenuMsg(ok ? "game saved." : "nothing to save yet.");
-    pendingRef.current.push(setTimeout(() => setMenuMsg(""), 1800));
+    pendingRef.current.push(setT(() => setMenuMsg(""), 1800));
   };
   const menuSaveExit = async () => {
     await saveRun();
@@ -1387,19 +1430,19 @@ export default function DeadSignal() {
   // callers hook an event to a message render instead of a magic delay (P6d).
   const scheduleMessages = (msgs, choiceList, msgType = "ellie", onShown = null) => {
     // C3 — clear only this queue's own timers, leaving addMsg/bridge timers (pendingRef) intact.
-    dialogueRef.current.forEach(clearTimeout); dialogueRef.current = [];
+    dialogueRef.current.forEach(clearT); dialogueRef.current = [];
     let t = 350;
 
     if (msgs.length === 0) {
       // No messages — still need to clear typing indicator
-      dialogueRef.current.push(setTimeout(() => setIsTyping(false), t));
+      dialogueRef.current.push(setT(() => setIsTyping(false), t));
       t += 50;
     }
 
     msgs.forEach((text, i) => {
-      dialogueRef.current.push(setTimeout(() => setIsTyping(msgType !== "narrator"), t));
+      dialogueRef.current.push(setT(() => setIsTyping(msgType !== "narrator"), t));
       t += msgType === "narrator" ? 1800 : Math.min(500 + text.length * 22, 1800);
-      dialogueRef.current.push(setTimeout(() => {
+      dialogueRef.current.push(setT(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
         audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
@@ -1407,18 +1450,18 @@ export default function DeadSignal() {
       }, t));
       t += msgType === "narrator" ? 600 : 280;
     });
-    if (choiceList?.length) dialogueRef.current.push(setTimeout(() => setChoices(choiceList), t + 80));
+    if (choiceList?.length) dialogueRef.current.push(setT(() => setChoices(choiceList), t + 80));
     return t;
   };
 
   // P6c — brief battery-pickup HUD flourish.
   const pulseBattery = () => {
     setBattPulse(true);
-    pendingRef.current.push(setTimeout(() => setBattPulse(false), 1400));
+    pendingRef.current.push(setT(() => setBattPulse(false), 1400));
   };
 
   const addMsg = (from, text, delay = 0) => {
-    pendingRef.current.push(setTimeout(() => setMessages(p => [...p, { id: nextId(from), from, text }]), delay));
+    pendingRef.current.push(setT(() => setMessages(p => [...p, { id: nextId(from), from, text }]), delay));
   };
 
   // audio — soft confirm on a net gain, duller thud on a loss, from a resource delta.
@@ -1588,7 +1631,7 @@ export default function DeadSignal() {
 
     if (effectiveBattery <= 0) {
       scheduleMessages(beat.msgs, null, beat.from);
-      pendingRef.current.push(setTimeout(() => setScreen("offline"), beat.msgs.length * 2000 + 1500)); // C2 — cancelable
+      pendingRef.current.push(setT(() => setScreen("offline"), beat.msgs.length * 2000 + 1500)); // C2 — cancelable
 
     } else if (pending) {
       // Resolve the current action first — show the beat with no choices
@@ -1597,11 +1640,11 @@ export default function DeadSignal() {
       const path = currentPathRef.current || "hospital"; // H4 — never index data maps with null
 
       // After the beat finishes, bridge into the queued story beat
-      pendingRef.current.push(setTimeout(() => {
+      pendingRef.current.push(setT(() => {
 
         if (pending.type === "memory") {
           const bridgeTime = scheduleMessages(["you keep walking.", "then the world slips sideways."], null, "narrator");
-          pendingRef.current.push(setTimeout(() => {
+          pendingRef.current.push(setT(() => {
             setGamePhase("p2_memory_frag");
             const frag = selectedFragmentRef.current || MEMORY_FRAGMENT_POOLS[path][0];
             scheduleMessages(frag.msgs, frag.choices, "narrator");
@@ -1614,7 +1657,7 @@ export default function DeadSignal() {
             route9:   ["you leave it behind.", "the highway opens ahead.", "then you see the checkpoint."],
           };
           const bridgeTime = scheduleMessages(discBridges[path] || ["you move on.", "then you find it."], null, "narrator");
-          pendingRef.current.push(setTimeout(() => {
+          pendingRef.current.push(setT(() => {
             setGamePhase("p2_discovery");
             const disc = DISCOVERY_BEATS[path];
             scheduleMessages(disc.msgs, disc.choices, disc.from || "narrator");
@@ -1630,7 +1673,7 @@ export default function DeadSignal() {
           addMsg("narrator", "cots still unfolded.", 6400);
           addMsg("narrator", "names written on tape above each one.", 7900);
           addMsg("narrator", "one of them is yours.", 9400);
-          pendingRef.current.push(setTimeout(() => setChoices([
+          pendingRef.current.push(setT(() => setChoices([
             "Sleep here. [-1 Food] [-1 Water]",
             "Barricade the door first. [+1 Noise] [-1 Food] [-1 Water]",
             "Keep moving. [danger]",
@@ -1641,14 +1684,14 @@ export default function DeadSignal() {
           setHavenFinalIndex(0);
           havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
           const ft = scheduleMessages(HAVEN_FINAL_SEQUENCE[0].msgs, HAVEN_FINAL_SEQUENCE[0].choices, "narrator");
-          if (HAVEN_FINAL_SEQUENCE[0].effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(HAVEN_FINAL_SEQUENCE[0].effect), ft + 200));
+          if (HAVEN_FINAL_SEQUENCE[0].effect) pendingRef.current.push(setT(() => fireBeatEffect(HAVEN_FINAL_SEQUENCE[0].effect), ft + 200));
 
         } else if (pending.type === "encounter") {
           const enc = pending.enc;
           // Random, deduped bridge for this area (no more single fixed pair per path).
           const encBridge = pickBridge(bridgeKey);
           const bridgeTime = scheduleMessages(encBridge, null, "narrator");
-          pendingRef.current.push(setTimeout(() => {
+          pendingRef.current.push(setT(() => {
             setCurrentEncounter(enc);
             returnToPhaseRef.current = gamePhaseRef.current;
             setGamePhase("encounter");
@@ -1778,7 +1821,7 @@ export default function DeadSignal() {
     if (prevNoise < 4 && newNoise >= 4) addMsg("narrator", "something answers.", reactionDelay + 700);
     if (prevNoise < 5 && newNoise >= 5) addMsg("narrator", "you hear footsteps. more than one set.", reactionDelay + 700);
 
-    pendingRef.current.push(setTimeout(() => {
+    pendingRef.current.push(setT(() => {
       const returnPhase = returnToPhaseRef.current;
       lastEncounterIdRef.current = encounter.id;
       setGamePhase(returnPhase);
@@ -1835,14 +1878,14 @@ export default function DeadSignal() {
       setGamePhase("p2_ai_cross");
       leadQueueRef.current = buildLeadQueue("crossing"); leadCursorRef.current = 0;
       setAiExchangeCount(0);
-      pendingRef.current.push(setTimeout(() => {
+      pendingRef.current.push(setT(() => {
         const exitLine = {
           hospital: ["you slip out of mercy general.", "harwick's streets open ahead."],
           metro:    ["you climb back up to the street.", "harwick opens ahead."],
           route9:   ["you leave the highway behind.", "harwick's streets close in."],
         }[path] || ["you move on.", "harwick's streets open ahead."];
         const t = scheduleMessages(exitLine, null, "narrator");
-        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "p2_ai_cross"); }, t + 300));
+        pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(null, "p2_ai_cross"); }, t + 300));
       }, 600));
     } else if (section === "crossing") {
       pendingStoryBeatRef.current = { type: "shelter" };
@@ -1894,7 +1937,7 @@ export default function DeadSignal() {
     // so the battery may visibly hit 0% here without going dark. Neglect stays lethal
     // earlier, in the crossing/legs. See the haven_approach handler.)
     if (newBattery <= 0 && ["p2_scripted", "shelter", "haven_final"].includes(gamePhaseRef.current)) {
-      pendingRef.current.push(setTimeout(() => setScreen("offline"), 1500));
+      pendingRef.current.push(setT(() => setScreen("offline"), 1500));
       return;
     }
 
@@ -1908,16 +1951,16 @@ export default function DeadSignal() {
       const newCount = recoveredMemoriesRef.current.filter(m => m.type === "fragment").length + (isNewFrag ? 1 : 0);
       setSigFlicker(true);
       audioEngine.signal(); // a memory surfacing through the Signal — distortion artifact
-      pendingRef.current.push(setTimeout(() => setSigFlicker(false), 900));
+      pendingRef.current.push(setT(() => setSigFlicker(false), 900));
       if (isNewFrag) {
-        pendingRef.current.push(setTimeout(() => {
+        pendingRef.current.push(setT(() => {
           setMessages(p => [...p, { id:nextId("mem"), from:"memory_note", name:fragName, count:newCount, kind:"fragment" }]);
         }, 600));
       }
       setGamePhase("p2_ai");
       // Delay until the memory notification has rendered, then reground from the
       // flashback to the present before the next beat (no hard cut back to reality).
-      pendingRef.current.push(setTimeout(() => {
+      pendingRef.current.push(setT(() => {
         const path = currentPathRef.current || "hospital";
         const reground = {
           hospital: ["you blink.", "the corridor again."],
@@ -1925,7 +1968,7 @@ export default function DeadSignal() {
           route9:   ["you blink.", "the road again."],
         }[path] || ["you blink.", "back to the present."];
         const t = scheduleMessages(reground, null, "narrator");
-        pendingRef.current.push(setTimeout(() => { setIsTyping(true); localBeat(null, "p2_ai"); }, t + 300));
+        pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(null, "p2_ai"); }, t + 300));
       }, 1400));
       return;
     }
@@ -1971,7 +2014,7 @@ export default function DeadSignal() {
         }
       };
       const nextDelay = cur?.onChoice === "CHARGER" ? 1700 : 0;
-      if (nextDelay > 0) pendingRef.current.push(setTimeout(startNext, nextDelay));
+      if (nextDelay > 0) pendingRef.current.push(setT(startNext, nextDelay));
       else startNext();
       return;
     }
@@ -2015,7 +2058,7 @@ export default function DeadSignal() {
           // Dodge the final "how do you know" before moving out, then start the leg.
           setIsTyping(true);
           const t = scheduleMessages(["later. keep moving."], null, "ellie");
-          pendingRef.current.push(setTimeout(startLeg, t + 300));
+          pendingRef.current.push(setT(startLeg, t + 300));
         } else {
           startLeg();
         }
@@ -2030,7 +2073,7 @@ export default function DeadSignal() {
         setDayThree(true);
         addMsg("ellie", "still there?", 1400);
         addMsg("ellie", "morning. you made it through the night.", 3000);
-        pendingRef.current.push(setTimeout(() => {
+        pendingRef.current.push(setT(() => {
           setGamePhase("haven_approach"); setP2BeatIndex(0);
           scheduleMessages(HAVEN_APPROACH_BEATS[0].msgs, HAVEN_APPROACH_BEATS[0].choices, HAVEN_APPROACH_BEATS[0].from || "ellie");
         }, 4800));
@@ -2049,10 +2092,10 @@ export default function DeadSignal() {
         addMsg("ellie", "stop.", 5600);
         addMsg("ellie", "you have to stop. right now.", 7100);
         shelterForcedRef.current = true;
-        pendingRef.current.push(setTimeout(() => {
+        pendingRef.current.push(setT(() => {
           addMsg("narrator", "a doorway.", 200);
           addMsg("narrator", "dark inside. but quiet.", 1600);
-          pendingRef.current.push(setTimeout(() => setChoices([
+          pendingRef.current.push(setT(() => setChoices([
             "Go inside. Sleep. [-1 Food] [-1 Water]",
             "Bar the door and sleep. [+1 Noise] [-1 Food] [-1 Water]",
           ]), 3800));
@@ -2077,7 +2120,7 @@ export default function DeadSignal() {
       // The morning + Haven handoff fires from the "·" guard at the top of this branch.
       addMsg("narrator", "night falls.", 3200);
       addMsg("narrator", "day two ends.", 4400);
-      pendingRef.current.push(setTimeout(() => { setIsTyping(false); setChoices(["·"]); }, 5600));
+      pendingRef.current.push(setT(() => { setIsTyping(false); setChoices(["·"]); }, 5600));
       return;
     }
 
@@ -2093,7 +2136,7 @@ export default function DeadSignal() {
       if (next < HAVEN_APPROACH_BEATS.length) {
         const nx = HAVEN_APPROACH_BEATS[next];
         const t = scheduleMessages(nx.msgs, nx.choices, nx.from || "narrator");
-        if (nx.effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(nx.effect), t + 200));
+        if (nx.effect) pendingRef.current.push(setT(() => fireBeatEffect(nx.effect), t + 200));
       } else {
         raiseQuestion("haven"); // arrived — Haven is empty
         setGamePhase("haven_ai");
@@ -2111,7 +2154,7 @@ export default function DeadSignal() {
         addMsg("narrator", "a security office. a weapon locker, forced but not emptied.", 5900);
         equipWeapon("machete", 6700);
         // Hand off to the hub menu (named destinations) once the cache lines have landed.
-        pendingRef.current.push(setTimeout(() => { setIsTyping(true); showHavenMenu(); }, 7900));
+        pendingRef.current.push(setT(() => { setIsTyping(true); showHavenMenu(); }, 7900));
       }
       return;
     }
@@ -2124,7 +2167,7 @@ export default function DeadSignal() {
         setGamePhase("haven_final"); setHavenFinalIndex(0);
         havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
         const t = scheduleMessages(HAVEN_FINAL_SEQUENCE[0].msgs, HAVEN_FINAL_SEQUENCE[0].choices, "narrator");
-        if (HAVEN_FINAL_SEQUENCE[0].effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(HAVEN_FINAL_SEQUENCE[0].effect), t + 200));
+        if (HAVEN_FINAL_SEQUENCE[0].effect) pendingRef.current.push(setT(() => fireBeatEffect(HAVEN_FINAL_SEQUENCE[0].effect), t + 200));
         return;
       }
       // A destination — show its reveal, mark visited, then re-show the (shrunken) menu.
@@ -2134,8 +2177,8 @@ export default function DeadSignal() {
       const path = currentPathRef.current || "hospital";
       const msgs = dest.path ? (HAVEN_RECORDS_BEAT[path] || HAVEN_RECORDS_BEAT.hospital) : dest.msgs;
       const t = scheduleMessages(msgs, null, dest.from || "narrator");
-      if (dest.effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(dest.effect), t + 200));
-      pendingRef.current.push(setTimeout(() => { setIsTyping(true); showHavenMenu(); }, t + 700));
+      if (dest.effect) pendingRef.current.push(setT(() => fireBeatEffect(dest.effect), t + 200));
+      pendingRef.current.push(setT(() => { setIsTyping(true); showHavenMenu(); }, t + 700));
       return;
     }
 
@@ -2145,7 +2188,7 @@ export default function DeadSignal() {
       setHavenFinalIndex(next);
       if (next < seq.length) {
         const t = scheduleMessages(seq[next].msgs, seq[next].choices, "narrator");
-        if (seq[next].effect) pendingRef.current.push(setTimeout(() => fireBeatEffect(seq[next].effect), t + 200));
+        if (seq[next].effect) pendingRef.current.push(setT(() => fireBeatEffect(seq[next].effect), t + 200));
       } else {
         // Incoming call
         setChoices([]); setIsTyping(false);
@@ -2153,23 +2196,23 @@ export default function DeadSignal() {
         addMsg("narrator", "the phone vibrates.", 800);
         addMsg("system", "INCOMING CALL  —  ELLIE", 2400);
         addMsg("narrator", "you answer.", 4000);
-        pendingRef.current.push(setTimeout(() => { setSigFlicker(false); setIsTyping(true); }, 5400));
-        pendingRef.current.push(setTimeout(() => {
+        pendingRef.current.push(setT(() => { setSigFlicker(false); setIsTyping(true); }, 5400));
+        pendingRef.current.push(setT(() => {
           setIsTyping(false);
           setMessages(p => [...p, { id:nextId("e"), from:"ellie", text:"..." }]);
         }, 7000));
-        pendingRef.current.push(setTimeout(() => setIsTyping(true), 8200));
-        pendingRef.current.push(setTimeout(() => {
+        pendingRef.current.push(setT(() => setIsTyping(true), 8200));
+        pendingRef.current.push(setT(() => {
           setIsTyping(false);
           setSigFlicker(true);
           audioEngine.signal(); // the Signal, right up against the words — that sound = Ellie/the Signal
           setMessages(p => [...p, { id:nextId("e"), from:"ellie", text:"i remember you." }]);
-          pendingRef.current.push(setTimeout(() => setSigFlicker(false), 1000));
+          pendingRef.current.push(setT(() => setSigFlicker(false), 1000));
         }, 9800));
         // First crack, not the answer: the call drops on the player. No explanation.
         addMsg("narrator", "the line goes dead.", 11400);
         addMsg("narrator", "click.", 12800);
-        pendingRef.current.push(setTimeout(() => setScreen("phase2_complete"), 15200));
+        pendingRef.current.push(setT(() => setScreen("phase2_complete"), 15200));
       }
       return;
     }
@@ -2237,12 +2280,12 @@ export default function DeadSignal() {
       }
       const newCount = recoveredMemoriesRef.current.filter(m => m.type === "discovery").length + (isNewClue ? 1 : 0);
       setSigFlicker(true);
-      pendingRef.current.push(setTimeout(() => setSigFlicker(false), 900));
+      pendingRef.current.push(setT(() => setSigFlicker(false), 900));
 
       // System message and notification — let these land visually before returning.
       addMsg("system", smsgs[DISCOVERY_BEATS[path].onChoice], 600);
       if (isNewClue) {
-        pendingRef.current.push(setTimeout(() => {
+        pendingRef.current.push(setT(() => {
           setMessages(p => [...p, { id:nextId("disc"), from:"memory_note", name:dName, count:newCount, kind:"discovery" }]);
         }, 1400));
       }
@@ -2251,7 +2294,7 @@ export default function DeadSignal() {
       // screen and UNLOCKS "move on" (discoveryFoundRef is now true). The discovery is mid-
       // queue, not last: the optional memory + atmosphere leads may still remain after it, so
       // the player can keep exploring for those or leave now.
-      pendingRef.current.push(setTimeout(() => {
+      pendingRef.current.push(setT(() => {
         setGamePhase("p2_ai");
         setIsTyping(true);
         localBeat(null, "p2_ai");
