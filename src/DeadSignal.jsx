@@ -721,6 +721,39 @@ const parseText = (text, ctx = "button") => {
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
 const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}";
 
+// Responsive gameplay-HUD styles (injected into the chat screen's <style>). Static sizing/spacing
+// lives here so the header can shrink on phones via media queries; state-driven bits (colors,
+// animations, conditional borders) stay inline. Desktop ≈ current look; mobile = compact phone strip.
+const HUD_CSS = `
+.ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:0.5rem;padding:calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem;flex-shrink:0}
+.ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
+.ds-hud-right{justify-content:flex-end}
+.ds-hud-mid{display:flex;align-items:center;gap:0.4rem}
+.ds-count{font-size:0.58rem;letter-spacing:0.07em}
+.ds-batt-pct{font-size:0.7rem;letter-spacing:0.03em}
+.ds-contact{display:flex;flex-direction:column;align-items:center;gap:0.1rem;padding:0.4rem 1rem 0.5rem;border-bottom:1px solid #111;flex-shrink:0}
+.ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
+.ds-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0a0f0a;font-size:0.78rem;transition:border-color .8s,color .8s,box-shadow .8s;flex-shrink:0}
+.ds-name{color:#c8b896;font-size:0.7rem;letter-spacing:0.16em;transition:color .8s,text-shadow .8s}
+.ds-status{color:#6a6a6a;font-size:0.56rem;letter-spacing:0.07em}
+.ds-vitals{display:flex;gap:1rem;padding:0.38rem 1rem;align-items:center;flex-wrap:wrap;font-size:0.66rem;letter-spacing:0.09em;flex-shrink:0}
+.ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
+.ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
+.lbl-abbr{display:none}
+@media(max-width:480px){
+.ds-hud{padding-left:0.6rem;padding-right:0.6rem;gap:0.35rem}
+.ds-contact{padding:0.3rem 0.75rem 0.35rem;gap:0.05rem}
+.ds-contact-id{flex-direction:row;gap:0.45rem}
+.ds-avatar{width:20px;height:20px;font-size:0.62rem}
+.ds-vitals{gap:0.55rem;font-size:0.62rem;padding:0.34rem 0.6rem;flex-wrap:nowrap}
+.ds-equip{gap:0.6rem;font-size:0.56rem;padding:0.22rem 0.75rem}
+.lbl-full{display:none}
+.lbl-abbr{display:inline}
+.ds-battwarn{font-size:0.6rem;padding:0.32rem 0.75rem}
+.ds-battwarn:not(.ds-crit){display:none}
+.choice-btn{padding:0.65rem 0.75rem!important;font-size:0.78rem!important;line-height:1.45!important}
+}`;
+
 // Diagnostic overlay — only renders when the URL has ?debug. Shows the live audio-context
 // state so iOS audio interruptions can be diagnosed without a Mac/remote inspector.
 const AudioDebug = () => {
@@ -2727,64 +2760,79 @@ export default function DeadSignal() {
     );
   }
 
+  // ─── Gameplay header pieces (responsive via HUD_CSS classes; state-driven bits stay inline) ──
+  const TopHud = () => (
+    <div className="ds-hud">
+      <div className="ds-hud-side">
+        <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
+        <span className="ds-count" style={{ color:"#2a7a4a" }}>
+          ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
+        </span>
+        <span className="ds-count" style={{ color:"#2a6070" }}>
+          ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
+        </span>
+      </div>
+      <div className="ds-hud-mid">
+        <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
+          style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
+        <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
+          style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
+      </div>
+      <div className="ds-hud-side ds-hud-right">
+        <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
+          <svg width="24" height="12" viewBox="0 0 24 12" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
+            <rect x="0.7" y="0.7" width="18.6" height="10.6" rx="2" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.1"/>
+            <rect x="19.6" y="3" width="2.8" height="6" rx="0.7" fill={battPulse ? "#7fffa0" : battColor}/>
+            <rect x="2" y="2" width={Math.max(0,Math.round((resources.battery/100)*15.5))} height="8" rx="0.8" fill={battPulse ? "#7fffa0" : battColor}/>
+          </svg>
+          <span className="ds-batt-pct" style={{ color: battPulse ? "#7fffa0" : battColor, textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
+        </span>
+      </div>
+    </div>
+  );
+
+  const ContactHeader = () => (
+    <div className="ds-contact">
+      <div className="ds-contact-id">
+        <div className="ds-avatar" style={{ border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
+        <span className="ds-name" style={{ textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
+      </div>
+      <span className="ds-status">{contactStatus}</span>
+    </div>
+  );
+
+  const ResourceStrip = () => (
+    <div className="ds-vitals" style={{ borderBottom: showRow2 ? "none" : "1px solid #111" }}>
+      <span style={{ color:"#4a9e6b" }}>DAY {displayDay}</span>
+      <span style={{ color:hpColor, animation:resources.hp<=2?flashAnim:"none" }}>HP {resources.hp}/10{injuryLbl ? ` · ${injuryLbl}` : ""}</span>
+      <span style={{ color:watColor }}><span className="lbl-full">WATER </span><span className="lbl-abbr">W </span>{resources.water}</span>
+      <span style={{ color:fooColor }}><span className="lbl-full">FOOD </span><span className="lbl-abbr">F </span>{resources.food}</span>
+    </div>
+  );
+
+  const EquipmentStrip = () => showRow2 ? (
+    <div className="ds-equip">
+      {weapon && <span style={{ color:"#8a7a58" }}>{weapon.shortName} ·{weapon.damage}dmg</span>}
+      {noise > 0 && <span style={{ color:noiseColor, animation:noise>=4?flashAnim:"none" }}>noise {noise}/5</span>}
+      {resources.charger !== null && <span style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"needs power"}</span>}
+    </div>
+  ) : null;
+
+  const BatteryWarning = () => (resources.battery<=10 && resources.battery>0) ? (
+    <div className={`ds-battwarn${resources.battery<=5 ? " ds-crit" : ""}`} style={{ animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>
+  ) : null;
+
   return (
     <div style={{ background:"#070707", height:"100dvh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}`}</style>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}`}</style>
       <AudioDebug />
 
-      {/* Top utility bar — 3-col grid (minmax 1fr · auto · minmax 1fr) so FILE/menu stays dead-
-          centered regardless of the side clusters: signal+counters far left, battery far right */}
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)", alignItems:"center", gap:"0.5rem", padding:"calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", whiteSpace:"nowrap", minWidth:0 }}>
-          <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
-          <span style={{ color:"#2a7a4a", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◈&nbsp;<span style={{ color: fragCount > 0 ? "#4a9e6b" : "#1e4a2e", textShadow: fragCount > 0 ? "0 0 6px rgba(74,158,107,0.5)" : "none" }}>{fragCount}/9</span>
-          </span>
-          <span style={{ color:"#2a6070", fontSize:"0.58rem", letterSpacing:"0.07em" }}>
-            ◉&nbsp;<span style={{ color: clueCount > 0 ? "#4ab5c8" : "#1d3a42", textShadow: clueCount > 0 ? "0 0 6px rgba(74,181,200,0.5)" : "none" }}>{clueCount}/3</span>
-          </span>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
-          <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
-            style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
-          <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
-            style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", whiteSpace:"nowrap", minWidth:0 }}>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
-            <svg width="24" height="12" viewBox="0 0 24 12" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
-              <rect x="0.7" y="0.7" width="18.6" height="10.6" rx="2" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.1"/>
-              <rect x="19.6" y="3" width="2.8" height="6" rx="0.7" fill={battPulse ? "#7fffa0" : battColor}/>
-              <rect x="2" y="2" width={Math.max(0,Math.round((resources.battery/100)*15.5))} height="8" rx="0.8" fill={battPulse ? "#7fffa0" : battColor}/>
-            </svg>
-            <span style={{ color: battPulse ? "#7fffa0" : battColor, fontSize:"0.7rem", letterSpacing:"0.03em", textShadow: battPulse ? "0 0 8px rgba(74,158,107,0.8)" : resources.battery <= 10 ? "0 0 6px rgba(180,40,40,0.5)" : "none" }}>{resources.battery}%</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Contact header: iPhone-style, centered */}
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"0.4rem 1rem 0.5rem", borderBottom:"1px solid #111", flexShrink:0 }}>
-        <div style={{ width:26, height:26, borderRadius:"50%", border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, display:"flex", alignItems:"center", justifyContent:"center", background:"#0a0f0a", color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", fontSize:"0.78rem", marginBottom:"0.2rem", transition:"border-color 0.8s, color 0.8s", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
-        <span style={{ color:"#c8b896", fontSize:"0.7rem", letterSpacing:"0.16em", transition:"color 0.8s, text-shadow 0.8s", textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
-        <span style={{ color:"#6a6a6a", fontSize:"0.56rem", letterSpacing:"0.07em", marginTop:"0.1rem" }}>{contactStatus}</span>
-      </div>
-
-      {/* Resource bar — row 1: vitals */}
-      <div style={{ display:"flex", gap:"1rem", padding:"0.38rem 1rem", alignItems:"center", flexWrap:"wrap", borderBottom: showRow2 ? "none" : "1px solid #111", fontSize:"0.66rem", letterSpacing:"0.09em", flexShrink:0 }}>
-        <span style={{ color:"#4a9e6b" }}>DAY {displayDay}</span>
-        <span style={{ color:hpColor, animation:resources.hp<=2?flashAnim:"none" }}>HP {resources.hp}/10{injuryLbl ? ` · ${injuryLbl}` : ""}</span>
-        <span style={{ color:watColor }}>WATER {resources.water}</span>
-        <span style={{ color:fooColor }}>FOOD {resources.food}</span>
-      </div>
-
-      {/* Resource bar — row 2: equipment/status (conditional) */}
-      {showRow2 && (
-        <div style={{ display:"flex", gap:"1rem", padding:"0.25rem 1rem", borderBottom:"1px solid #111", fontSize:"0.64rem", letterSpacing:"0.09em", flexShrink:0 }}>
-          {weapon && <span style={{ color:"#8a7a58" }}>{weapon.shortName} ·{weapon.damage}dmg</span>}
-          {noise > 0 && <span style={{ color:noiseColor, animation:noise>=4?flashAnim:"none" }}>noise {noise}/5</span>}
-          {resources.charger !== null && <span style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"needs power"}</span>}
-        </div>
-      )}
+      {/* Gameplay header — responsive pieces (see HUD_CSS). TopHud = signal+counters · FILE/menu
+          (centered) · battery. Then contact, vitals, optional equipment. Mobile compacts via @media. */}
+      {TopHud()}
+      {ContactHeader()}
+      {ResourceStrip()}
+      {EquipmentStrip()}
 
       {/* Location strip — current area (hidden in the phase-1 apartment) */}
       {area && (
@@ -2802,7 +2850,7 @@ export default function DeadSignal() {
         <div ref={bottomRef} />
       </div>
 
-      {resources.battery<=10 && resources.battery>0 && <div style={{ padding:"0.4rem 1rem", background:"#0e0404", borderTop:"1px solid #2a0a0a", fontSize:"0.65rem", letterSpacing:"0.1em", color:"#8b2020", animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>}
+      {BatteryWarning()}
 
       {choices.length>0 && !isTyping && (
         <div style={{ padding:"0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))", borderTop:"1px solid #111", display:"flex", flexDirection:"column", gap:"0.5rem", flexShrink:0 }}>
@@ -2815,7 +2863,7 @@ export default function DeadSignal() {
           {choices.map((c,i) =>
             c==="·"
               ? <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>
-              : <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"clamp(0.6rem, 2.4vw, 0.75rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)", fontWeight:300, letterSpacing:"0.04em", lineHeight:"1.5", transition:"border-color 0.15s, color 0.15s" }}>
+              : <button key={i} className="cb choice-btn" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"clamp(0.6rem, 2.4vw, 0.75rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)", fontWeight:300, letterSpacing:"0.04em", lineHeight:"1.5", transition:"border-color 0.15s, color 0.15s" }}>
                   {i+1}.&nbsp;&nbsp;{parseText(c,"button")}
                 </button>
           )}
