@@ -114,7 +114,7 @@ const DISCOVERY_BEATS = {
   metro: {
     from: "narrator",
     msgs: ["transit authority office at the end of the platform.", "door open. nobody came back for it.", "shortwave log on the desk. recent entries."],
-    choices: ["Haven mentioned by name two weeks before the signal started. *Two weeks.* [examine broadcast log]"],
+    choices: ["Haven mentioned by name two weeks before the broadcast started. *Two weeks.* [examine broadcast log]"],
     onChoice: "DISCOVERY_METRO",
   },
   route9: {
@@ -178,7 +178,7 @@ const EXPLORE_BEATS = {
     { from:"ellie",    msgs:["you still with me?", "talk to me."],                           choices:["Still here.","Still moving.","Keep talking."] },
     { from:"narrator", msgs:["a chain-link fence, torn open.", "a path worn through to the next lot."], choices:["Take the gap.","Find another way.","Wait."] },
     { from:"narrator", msgs:["industrial blocks now.", "loading docks. roll-up doors."],     choices:["Keep north.","Cut between buildings.","Stay in the open."] },
-    { from:"ellie",    msgs:["signal's getting clearer.", "you're closing in."],            choices:["Good.","Keep guiding me.","Almost there."] },
+    { from:"ellie",    msgs:["the broadcast's getting clearer.", "you're closing in."],      choices:["Good.","Keep guiding me.","Almost there."] },
     { from:"narrator", msgs:["someone's laundry still on a line.", "stiff and grey."],       choices:["Keep moving.","Don't linger.","Move on."] },
     { from:"narrator", msgs:["a shopping cart in the middle of the road.", "nothing in it."], choices:["Step around it.","Keep going.","Stop. Listen."] },
   ],
@@ -214,7 +214,7 @@ const STATE_LINES = {
 
 const HAVEN_APPROACH_BEATS = [
   { from:"ellie",
-    msgs:["signal's stronger now.", "you're close."],
+    msgs:["the broadcast's stronger now.", "you're close."],
     choices:["How close?", "I can feel it."] },
   { from:"narrator",
     msgs:["the city thins out.", "buildings give way to service roads and dead grass."],
@@ -263,13 +263,16 @@ const HAVEN_DESTINATIONS = [
     msgs:["rows of bunks. all made.", "numbers stenciled by hand above each one.", "the last one reads 143."] },
   { id:"photos",      label:"The photo wall",
     msgs:["a corkboard. photographs.", "haven residents. everyone smiling.", "a date in the corner.", "three weeks before day one."] },
+  // Kim seed (STORY.md §3) — plant her shadow without naming her. "K.A." only. No 143, no reveal.
+  { id:"comms",       label:"Communications desk",
+    msgs:["a communications desk.", "a headset still plugged in.", "tape on the monitor.", "K.A."] },
   { id:"records",     label:"Records office", path:true },
 ];
 // The route-specific reveal shown at the Records office — ties Ellie to the evidence the
 // player surfaced on their leg. (Was inserted into the old linear finale; now a destination.)
 const HAVEN_RECORDS_BEAT = {
   hospital: ["a patient file, pulled from mercy general.", "her face is in it too.", "same building. before any of this."],
-  metro:    ["the broadcast log from the metro.", "her voice logged it.", "two weeks before the signal."],
+  metro:    ["the broadcast log from the metro.", "her voice logged it.", "two weeks before the broadcast."],
   route9:   ["a deployment order from the checkpoint.", "her name is on the roster.", "assigned here. before day one."],
 };
 
@@ -287,7 +290,7 @@ const HEART_LABEL = "Move on — to the heart of it.";
 const ALL_FRAGMENT_NAMES = Object.values(MEMORY_FRAGMENT_POOLS).flat().map(f => f.name); // all 9
 const BOARD_CLUES = [
   { name:"Patient File",  note:"mercy general. the name on it is yours." },
-  { name:"Broadcast Log", note:"haven was named two weeks before the signal." },
+  { name:"Broadcast Log", note:"haven was named two weeks before the broadcast." },
   { name:"Project Haven", note:"personnel reassigned to project haven. before day one." },
 ];
 const BOARD_PEOPLE = [
@@ -321,6 +324,19 @@ const BOARD_FACTS = [
   { reveal:(c, reached) => reached,       text:"Haven was real, populated — then emptied." },
   // The contradiction — surfaces only once the player has *seen* the 143 record (haven143 raised).
   { reveal:(c, reached, raised) => !!raised?.includes?.("haven143"), text:"The board counts 143 residents — all present. You haven't seen a soul." },
+];
+// CONTRADICTIONS — two KNOWN facts that can't both be true, paired into the open question they
+// force. The investigation layer the bible says to protect: it makes the Case File read like a
+// board, not a checklist. Same reveal signature as BOARD_FACTS (clues, reached, raised).
+const BOARD_CONTRADICTIONS = [
+  { reveal:(c, reached, raised) => !!raised?.includes?.("haven143"),
+    known:["Haven is empty — you've seen no one.", "The status board reads PRESENT 143."],
+    q:"Where are the 143?" },
+  // Personal — once any route evidence is in hand, the amnesia and the evidence can't both stand.
+  // Spoiler-safe: states no wipe, only the tension the player can feel.
+  { reveal:(c) => c.has("Patient File") || c.has("Broadcast Log") || c.has("Project Haven"),
+    known:["The route evidence is all about you.", "You remember none of it."],
+    q:"Why is all of it about you?" },
 ];
 // OPEN QUESTIONS reveal as the story beat that raises them is reached (key → raiseQuestion()).
 // Worded to the player's *prologue* knowledge — no Phase-3 presumptions (e.g. no "self-wipe").
@@ -406,15 +422,18 @@ const buildLeadQueue = (section) => {
   if (section === "haven") return [
     { kind: "atmo" }, { kind: "atmo" }, { kind: "atmo" }, { kind: "atmo" },
   ];
-  return [ // path leg (hospital / metro / route9) — discovery last (the climax)
+  return [ // path leg (hospital / metro / route9) — the discovery is REQUIRED: move-on stays
+           // locked until it's found (story spine). The memory is an OPTIONAL post-discovery
+           // find, so it sits after the discovery (skippable by leaving once the gate opens).
     { kind: "atmo" },
     { kind: "encounter", plan: "power" },
     { kind: "atmo" },
-    { kind: "memory" },
     { kind: "encounter", plan: "hazard" },
     { kind: "atmo", drain: "path_mid" },
     { kind: "encounter", plan: "search" },
     { kind: "discovery" },
+    { kind: "memory" },
+    { kind: "atmo" },
   ];
 };
 
@@ -853,6 +872,7 @@ export default function DeadSignal() {
   const returnToPhaseRef    = useRef("p2_ai");
   const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
   const havenVisitedRef     = useRef([]); // Haven hub — destination ids already investigated this run
+  const discoveryFoundRef   = useRef(false); // route discovery found this run — gates "move on" off the first route
   const qQueueRef           = useRef(0);  // pending QUESTION cards (stagger so simultaneous raises don't stack)
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
   const seenBeatsRef        = useRef(new Set()); // exploration beats shown this run (prefer unseen)
@@ -988,6 +1008,7 @@ export default function DeadSignal() {
     lastEncounterId: lastEncounterIdRef.current,
     havenFinal: havenFinalRef.current,
     havenVisited: havenVisitedRef.current, // Haven hub — rooms investigated
+    discoveryFound: discoveryFoundRef.current, // route discovery found (move-on gate)
     seenEncounters: [...seenEncountersRef.current],
     shelterForced: shelterForcedRef.current,
     leadQueue: leadQueueRef.current, leadCursor: leadCursorRef.current, // player-paced exploration position
@@ -1076,6 +1097,7 @@ export default function DeadSignal() {
     lastEncounterIdRef.current = run.lastEncounterId || null;
     havenFinalRef.current     = run.havenFinal || HAVEN_FINAL_SEQUENCE;
     havenVisitedRef.current   = Array.isArray(run.havenVisited) ? run.havenVisited : [];
+    discoveryFoundRef.current = !!run.discoveryFound;
     seenEncountersRef.current = new Set(run.seenEncounters || []);
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
     shelterForcedRef.current  = !!run.shelterForced;
@@ -1612,11 +1634,15 @@ export default function DeadSignal() {
       const queue     = leadQueueRef.current || [];
       const exhausted = leadCursorRef.current >= queue.length;
       const moveOn    = MOVE_ON_LABEL[moveOnKey];
+      // Story spine: on the FIRST route, "move on" stays locked until the route discovery is
+      // found (the discovery sits on the required path, so exploring always reaches it). The
+      // crossing and Haven never gate. After discovery, the optional memory/atmosphere remain.
+      const gated     = section === "path" && !discoveryFoundRef.current;
       if (exhausted) {
         scheduleMessages(EXPLORE_DONE[moveOnKey] || ["nothing else here."], [moveOn], "narrator");
       } else {
         const exploreLabel = pickRandom(EXPLORE_LABELS[exploreLabelKey(section, path)] || EXPLORE_LABELS.crossing);
-        scheduleMessages(beat.msgs, [exploreLabel, moveOn], beat.from);
+        scheduleMessages(beat.msgs, gated ? [exploreLabel] : [exploreLabel, moveOn], beat.from);
       }
     }
   };
@@ -2157,8 +2183,9 @@ export default function DeadSignal() {
     }
 
     if (gamePhaseRef.current === "p2_discovery") {
+      discoveryFoundRef.current = true; // story spine secured — "move on" off the first route now unlocks
       const path = currentPathRef.current || "hospital"; // H4
-      const smsgs = { DISCOVERY_HOSPITAL:"patient file found. the name is yours.", DISCOVERY_METRO:"broadcast log. haven mentioned two weeks pre-signal.", DISCOVERY_ROUTE9:"deployment order found. personnel reassigned to project haven." };
+      const smsgs = { DISCOVERY_HOSPITAL:"patient file found. the name is yours.", DISCOVERY_METRO:"broadcast log. haven named two weeks before any of this.", DISCOVERY_ROUTE9:"deployment order found. personnel reassigned to project haven." };
       const discoveryNames = { DISCOVERY_HOSPITAL:"Patient File", DISCOVERY_METRO:"Broadcast Log", DISCOVERY_ROUTE9:"Project Haven" };
       const dName = discoveryNames[DISCOVERY_BEATS[path].onChoice] || "Unknown";
       const isNewClue = !recoveredMemoriesRef.current.some(m => m.name === dName);
@@ -2197,7 +2224,7 @@ export default function DeadSignal() {
     lastEncounterIdRef.current = null;
     pendingStoryBeatRef.current = null;
     seenEncountersRef.current = new Set(); havenFinalRef.current = HAVEN_FINAL_SEQUENCE;
-    havenVisitedRef.current = [];
+    havenVisitedRef.current = []; discoveryFoundRef.current = false;
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null;
     seenBridgesRef.current = new Set(); leadQueueRef.current = []; leadCursorRef.current = 0;
     raisedQuestionsRef.current = []; setRaisedQuestions([]);
@@ -2382,7 +2409,7 @@ export default function DeadSignal() {
         <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards", paddingTop:"1.6rem", paddingBottom:"1.5rem" }}>
           {/* Transmission header — styled like a recovered signal log */}
           <div style={{ border:"1px solid #1d3a22", background:"#010a04", padding:"0.85rem 1rem", textAlign:"center" }}>
-            <div style={{ color:"#4a9e6b", fontSize:"0.62rem", letterSpacing:"0.22em", textShadow:"0 0 8px rgba(74,158,107,0.35)" }}>— SIGNAL RECOVERED —</div>
+            <div style={{ color:"#4a9e6b", fontSize:"0.62rem", letterSpacing:"0.22em", textShadow:"0 0 8px rgba(74,158,107,0.35)" }}>— TRANSMISSION RECOVERED —</div>
             <div style={{ color:"#6aba8a", fontSize:"0.66rem", letterSpacing:"0.16em", marginTop:"0.35rem" }}>GREATER HARWICK</div>
             <div style={{ color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>status: dark · 72h</div>
           </div>
@@ -2473,6 +2500,7 @@ export default function DeadSignal() {
     const cClues = new Set(recoveredMemories.filter(m => m.type === "discovery").map(m => m.name));
     const reached = dayThree || gamePhase.startsWith("haven");
     const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached, raisedQuestions));
+    const contradictions = BOARD_CONTRADICTIONS.filter(x => x.reveal(cClues, reached, raisedQuestions));
     const sec = (label, count) => (
       <div style={{ color:"#5a7a64", fontSize:"0.6rem", letterSpacing:"0.2em", marginTop:"1.1rem", marginBottom:"0.45rem" }}>{label}{count != null ? `  ${count}` : ""}</div>
     );
@@ -2525,6 +2553,22 @@ export default function DeadSignal() {
           {sec("KNOWN FACTS")}
           {facts.length ? facts.map((f, i) => <div key={i} style={{ color:"#8aaa90", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem" }}>› {f.text}</div>)
             : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>nothing proven yet.</div>}
+
+          {contradictions.length > 0 && <>
+            {sec("CONTRADICTIONS")}
+            {contradictions.map((x, i) => (
+              <div key={i} style={{ border:"1px solid #3a1f1f", background:"#0a0505", padding:"0.45rem 0.6rem", marginBottom:"0.45rem" }}>
+                {x.known.map((k, j) => (
+                  <div key={j} style={{ color:"#8aaa90", fontSize:"0.55rem", letterSpacing:"0.03em" }}>
+                    <span style={{ color:"#4a6a54" }}>KNOWN&nbsp;</span>{k}
+                  </div>
+                ))}
+                <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.04em", marginTop:"0.2rem", fontStyle:"italic" }}>
+                  <span style={{ color:"#8b4a4a", fontStyle:"normal" }}>⚠ CONTRADICTION&nbsp;</span>{x.q}
+                </div>
+              </div>
+            ))}
+          </>}
 
           {sec("OPEN QUESTIONS")}
           {(() => {

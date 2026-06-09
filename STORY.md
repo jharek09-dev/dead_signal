@@ -134,9 +134,12 @@ The prologue ends at Haven. It must **crack** the mystery, never explain it.
 ## 8. What's already canon in the build (Phase 1–2)
 - Harwick; three routes (Mercy General / Metro / Route 9); shortwave Haven broadcast w/ GPS coords.
 - 9 Memory Fragments (3 per route pool, 1 random/run) + 3 Clues (1 per route): hospital→*patient file,
-  the name is yours*; metro→*broadcast log, Haven named 2 weeks pre-signal*; route9→*deployment order,
+  the name is yours*; metro→*broadcast log, Haven named 2 weeks pre-broadcast*; route9→*deployment order,
   personnel reassigned to Project Haven*.
-- KIM→ELLIE contact-name flip exists. Haven photo of Ellie dated ~3 weeks before Day 1.
+- KIM→ELLIE contact-name flip exists. Haven evidence ties Ellie to the compound before Day 1 —
+  route-specific (her face, voice, or name in Haven-linked records, surfaced at Haven's Records office).
+- **Language:** in P1–2 the player hears a *broadcast* (shortwave/loop/coordinates/transmission). Reserve
+  "the **Signal**" for the deeper Phase-3 mystery (the phone-pressure beat near Haven is the first use).
 - Per-slot progression: fragments/clues accumulate toward 100% across playthroughs.
 
 ## 9. Stop-doing list — LOCKED
