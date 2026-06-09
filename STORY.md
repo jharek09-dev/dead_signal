@@ -111,16 +111,22 @@ Power becomes route-planning across tools, each draining the bank: **phone** (ma
 (reserve), **radio** (locate Signal sources / reach Ellie), **flashlight** (dark regions). Strategic,
 not a countdown. Drain is already centralized (`beatBatteryCost`); P3 adds the new consumers.
 
-## 6. The investigation layer (the next thing to build)
-Memories/Clues stop being passive rewards and become a persistent **Investigation Board** + **Journal**.
+## 6. The investigation layer — BUILT
+Memories/Clues are no longer passive rewards — they feed a persistent **Case File** (the
+Investigation Board + Journal). Implemented, opened from the in-game **FILE** button:
 
 - **Board categories:** `MEMORIES` (9), `CLUES` (3), `PEOPLE`, `LOCATIONS`.
 - **Journal:** `KNOWN FACTS` (what you've proven) + `OPEN QUESTIONS` (what you haven't).
 - Entries start locked (`???`) and unlock as the matching fragment/clue is collected. People/Locations
-  begin as `???` and reveal names/notes over time (Ellie Marsh, Kim Alvarez, Project Haven, KIM…).
-- Persist per save slot (reuse the per-slot profile system already built).
+  reveal names/notes over time (kept spoiler-safe in the prologue per §3).
+- Persists per save slot (reuses the per-slot profile system).
+- **Built beyond the original spec:** Open Questions surface as in-chat **NEW QUESTION** cards and
+  **evolve** as the mystery deepens ("Why is Haven empty?" → "Where are the 143?"; "Who was Kim?" →
+  "Was Kim one of the 143?") via a **QUESTION UPDATED** card, driven by the Haven **143** contradiction
+  record. A once-per-slot nudge teaches the FILE button.
 - **Example Known Facts (provable in the prologue):** Ellie knew me before the wipe · Project Haven
-  existed before the outbreak · Haven was populated ~3 weeks before Day 1.
+  existed before the outbreak · Haven was populated ~3 weeks before Day 1 · the board counts 143 present
+  while you stand alone.
 - **Example Open Questions:** Why did I erase my memory? · Who was Kim? · Why did I call Ellie? ·
   Why is Haven empty? · Who is Ellie?
 
@@ -141,6 +147,15 @@ The prologue ends at Haven. It must **crack** the mystery, never explain it.
 - **Language:** in P1–2 the player hears a *broadcast* (shortwave/loop/coordinates/transmission). Reserve
   "the **Signal**" for the deeper Phase-3 mystery (the phone-pressure beat near Haven is the first use).
 - Per-slot progression: fragments/clues accumulate toward 100% across playthroughs.
+- **Case File built** (§6): board + journal, evolving Open Questions (NEW QUESTION / QUESTION UPDATED
+  cards). The Haven finale includes the impossible **143 residents / 143 present** record — a
+  contradiction, not an explanation (§7 holds: it cracks, never answers).
+- **Ellie's first crack:** on the Haven approach she volunteers unease about her own knowledge
+  ("i don't know how i know that") — slow and sparse, no exposition (§4).
+- **Presentation/QoL:** a spoiler-safe **Story** lore page (the guide stays unnamed), an **Options**
+  screen (volume + mute), an in-game pause that **freezes the dialogue**, and procedural audio
+  (message blips, resource stings, a rare **Signal-distortion** artifact at memory recovery / the
+  approach / the 143 record / the call).
 
 ## 9. Stop-doing list — LOCKED
 Not worth more time pre-Phase-3: more encounter types, more random exploration beats, more Haven

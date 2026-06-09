@@ -1,3 +1,10 @@
+> ⚠ **HISTORICAL — COMPLETE & SUPERSEDED.** This is the finished M0–M8 roadmap for the
+> AI-removal + battery-economy work. The `remove-ai-battery-economy` branch is long since
+> merged/deleted, and the line numbers + some constants below are out of date (e.g.
+> `HAVEN_BATTERY_FLOOR` / `CHARGER +35` were later replaced by `HAVEN_BATTERY_CACHE=45` /
+> `CHARGER_FIND=20`). Kept for the record. Living design canon: [`STORY.md`](STORY.md);
+> current product status: [`prd.md`](prd.md).
+
 # Dead Signal — Execution Plan (Removing AI + Battery Economy)
 
 **Branch:** `remove-ai-battery-economy` · **Single file:** `src/DeadSignal.jsx` (~2,101 lines)

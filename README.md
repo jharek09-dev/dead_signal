@@ -25,6 +25,9 @@ The entire game is a single React component: [`src/DeadSignal.jsx`](src/DeadSign
   button.
 - **Save profiles.** Three slots, each its own profile: mid-run save and resume, plus
   playthroughs and collected fragments/clues that accumulate across runs toward **100%**.
+- **Presentation.** A **Story** lore page and an **Options** screen (volume slider + mute) off the
+  main menu; an in-game pause that **freezes the dialogue** and resumes mid-beat; procedural audio
+  (message blips, resource stings, a rare Signal-distortion artifact); and it's an **installable PWA**.
 
 ## Tech stack
 
@@ -53,18 +56,25 @@ shims that API onto `localStorage`, so persistence works either way.
 | `npm run dev`     | Start the Vite dev server             |
 | `npm run build`   | Production build to `dist/`           |
 | `npm run preview` | Serve the production build locally    |
+| `npm run icons`   | Regenerate the PWA icons from `public/icon.svg` |
 
 ## Project structure
 
 ```
 .
-├── index.html            # Vite entry HTML
+├── index.html            # Vite entry HTML (PWA meta)
 ├── vite.config.js        # Vite config
 ├── package.json
-├── PLAN.md               # AI-removal + battery-economy roadmap
+├── prd.md                # Product status — what's built / what's next
 ├── STORY.md              # Story bible / canon (⚠ spoilers)
+├── PLAN.md               # AI-removal + battery-economy roadmap (historical, complete)
+├── public/               # PWA assets — icons + manifest.webmanifest
+├── scripts/
+│   └── gen-icons.mjs     # Regenerates the PWA icons from icon.svg
+├── .github/workflows/    # GitHub Pages deploy
 ├── src/
 │   ├── main.jsx          # Mounts the app; storage shim
+│   ├── audio.js          # Procedural audio engine (Tone.js)
 │   └── DeadSignal.jsx    # The entire game
 └── backup/               # Local dev backups (gitignored)
 ```
