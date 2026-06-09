@@ -271,8 +271,8 @@ const HAVEN_DESTINATIONS = [
 // The route-specific reveal shown at the Records office — ties Ellie to the evidence the
 // player surfaced on their leg. (Was inserted into the old linear finale; now a destination.)
 const HAVEN_RECORDS_BEAT = {
-  hospital: ["a patient file, pulled from mercy general.", "her face is in it too.", "same building. before any of this."],
-  metro:    ["the broadcast log from the metro.", "her voice logged it.", "two weeks before the broadcast."],
+  hospital: ["a second file is clipped behind yours.", "her face is on it too.", "same building. before any of this."],
+  metro:    ["the broadcast log from the metro.", "her voice logged it.", "two weeks before the loop started."],
   route9:   ["a deployment order from the checkpoint.", "her name is on the roster.", "assigned here. before day one."],
 };
 
@@ -401,12 +401,13 @@ const HAVEN_BATTERY_CACHE = 45; // battery packs in the ops building add this mu
 const HAVEN_SUPPLY_FLOOR  = 5;  // pantry tops food/water up to at least this
 
 // ─── EXPLORATION as a player-paced "lead queue" ───────────────────────────────
-// Each area (leg) holds an ordered list of LEADS the player works through at their own
-// pace. Every exploration screen offers two choices: an "explore" option (reveal the next
-// lead) and a "move on" option (leave the area now). Full freedom: a player who moves on
-// early skips the optional encounters / memory fragment / discovery clue (they become
-// rewards for thorough play, not guarantees). When the queue is picked clean, only "move
-// on" remains (forced). The lead descriptors are plain serializable objects (save/resume).
+// Each area (leg) holds an ordered list of LEADS the player works through at their own pace.
+// Every exploration screen offers an "explore" option (reveal the next lead) and — once allowed
+// — a "move on" option (leave the area). The route DISCOVERY is REQUIRED before leaving the
+// first route: "move on" stays locked until it's found (the discovery sits on the required
+// path). Memory fragments, extra encounters, and extra atmosphere AFTER the discovery are
+// optional. When the queue is picked clean, only "move on" remains (forced). The lead
+// descriptors are plain serializable objects (save/resume).
 //   kind "atmo"      → a free atmospheric beat (drain? = applyTransitionDrain key fired)
 //        "encounter" → an encounter; plan "power" (POWER_SOURCES) | "search" | "hazard"
 //        "memory" | "discovery" → that scripted story beat (path legs only)
@@ -1641,7 +1642,11 @@ export default function DeadSignal() {
       if (exhausted) {
         scheduleMessages(EXPLORE_DONE[moveOnKey] || ["nothing else here."], [moveOn], "narrator");
       } else {
-        const exploreLabel = pickRandom(EXPLORE_LABELS[exploreLabelKey(section, path)] || EXPLORE_LABELS.crossing);
+        // The explore button reads from the beat's OWN choices so it correlates with the scene
+        // ("handprints on a door window." → "Back away."). EXPLORE_LABELS is only the fallback
+        // for any beat that lacks contextual choices.
+        const fallbackLabels = EXPLORE_LABELS[exploreLabelKey(section, path)] || EXPLORE_LABELS.crossing;
+        const exploreLabel   = pickRandom(Array.isArray(beat.choices) && beat.choices.length ? beat.choices : fallbackLabels);
         scheduleMessages(beat.msgs, gated ? [exploreLabel] : [exploreLabel, moveOn], beat.from);
       }
     }
@@ -2204,10 +2209,10 @@ export default function DeadSignal() {
         }, 1400));
       }
 
-      // The discovery is the path leg's last lead. Recording it returns the player to the
-      // exploration nav screen — the cursor is already at the end, so the next screen is
-      // the forced "move on" (which runs the crossing transition via moveOnFrom). The leg
-      // transition is no longer tied to the discovery: a player can leave without it.
+      // Recording the discovery (the required story spine) returns the player to the nav
+      // screen and UNLOCKS "move on" (discoveryFoundRef is now true). The discovery is mid-
+      // queue, not last: the optional memory + atmosphere leads may still remain after it, so
+      // the player can keep exploring for those or leave now.
       pendingRef.current.push(setTimeout(() => {
         setGamePhase("p2_ai");
         setIsTyping(true);
