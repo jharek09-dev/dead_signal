@@ -258,11 +258,14 @@ const HAVEN_APPROACH_BEATS = [
 // `path:true` swaps in the route-specific reveal at render time.
 const HAVEN_DESTINATIONS = [
   { id:"operations",  label:"Operations building",
-    msgs:["monitors still running. chairs empty.", "a loop plays on every screen.", "the haven broadcast. the one that brought you here.", "it was transmitting from inside."] },
+    msgs:["monitors still running. chairs empty.", "a loop plays on every screen.", "the haven broadcast. the one that brought you here.", "every monitor in the room, playing it back."] },
   { id:"dormitories", label:"The dormitories",
     msgs:["rows of bunks. all made.", "numbers stenciled by hand above each one.", "the last one reads 143."] },
+  // `after` = Ellie's reaction once the narrator beat lands — her crack at the faces she
+  // shouldn't know (re-homed from the old free-roam haven pool; STORY.md §3/§4: sparse unease).
   { id:"photos",      label:"The photo wall",
-    msgs:["a corkboard. photographs.", "haven residents. everyone smiling.", "a date in the corner.", "three weeks before day one."] },
+    msgs:["a corkboard. photographs.", "haven residents. everyone smiling.", "a date in the corner.", "three weeks before day one."],
+    after:["i missed this place.", "i don't know why i said that."] },
   // Kim seed (STORY.md §3) — plant her shadow without naming her. "K.A." only. No 143, no reveal.
   { id:"comms",       label:"Communications desk",
     msgs:["a communications desk.", "a headset still plugged in.", "tape on the monitor.", "K.A."] },
@@ -300,7 +303,7 @@ const BOARD_PEOPLE = [
   // kept out of the prologue (STORY.md §3). The `reached` tier ties her to the 143 as a question.
   { name:"Kim", note:(c, reached) =>
       reached ? "her number is the one that texts you. you called her the night it began. and the 143 at haven — was she one of them? you don't know."
-      : c.has("Patient File") ? "you and Kim were connected before the wipe. her phone knew your voice."
+      : c.has("Patient File") ? "her name was already saved in your phone. you knew her. you don't remember her."
       : "you were found on her phone. you called her, right before. who was she?" },
   { name:"You",   note:"no memory. the evidence keeps pointing back at you." },
 ];
@@ -312,7 +315,9 @@ const BOARD_PEOPLE = [
 const REGIONS = [
   { key:"haven",    name:"The Haven",            truth:"Ellie",         reveal:(c, reached) => reached,                                              blurb:"built for 143. you found it empty." },
   { key:"mercy",    name:"Mercy General",        truth:"you",           reveal:(c, reached, path) => c.has("Patient File") || path === "hospital",  blurb:"a hospital. your name is in its files." },
-  { key:"comms",    name:"Communications Array", truth:"the Signal",    reveal:(c) => c.has("Broadcast Log"),                                        blurb:"the broadcast has a source. someone's still transmitting." },
+  // Gated on `reached` too: the truth label names "the Signal", and canon reserves that word
+  // until the phone-pressure beat on the approach (STORY.md §8) — by Haven it's in-fiction.
+  { key:"comms",    name:"Communications Array", truth:"the Signal",    reveal:(c, reached) => c.has("Broadcast Log") && reached,                    blurb:"the broadcast has a source. someone's still transmitting." },
   { key:"cityhall", name:"City Hall",            truth:"Project Haven", reveal:() => false,                                                          blurb:"" },
   { key:"annex",    name:"Research Annex",       truth:"the outbreak",  reveal:() => false,                                                          blurb:"" },
 ];
@@ -1709,8 +1714,11 @@ export default function DeadSignal() {
       const moveOn    = MOVE_ON_LABEL[moveOnKey];
       // Story spine: on the FIRST route, "move on" stays locked until the route discovery is
       // found (the discovery sits on the required path, so exploring always reaches it). The
-      // crossing and Haven never gate. After discovery, the optional memory/atmosphere remain.
-      const gated     = section === "path" && !discoveryFoundRef.current;
+      // crossing gates lightly — two leads (one atmo + the power source) before "move on"
+      // appears, so the leg can't be skipped in a single tap and the battery lifeline is at
+      // least encountered. Haven never gates. After a gate opens, the rest stays optional.
+      const gated     = (section === "path" && !discoveryFoundRef.current)
+                     || (section === "crossing" && leadCursorRef.current < 2);
       if (exhausted) {
         scheduleMessages(EXPLORE_DONE[moveOnKey] || ["nothing else here."], [moveOn], "narrator");
       } else {
@@ -2178,7 +2186,16 @@ export default function DeadSignal() {
       const msgs = dest.path ? (HAVEN_RECORDS_BEAT[path] || HAVEN_RECORDS_BEAT.hospital) : dest.msgs;
       const t = scheduleMessages(msgs, null, dest.from || "narrator");
       if (dest.effect) pendingRef.current.push(setT(() => fireBeatEffect(dest.effect), t + 200));
-      pendingRef.current.push(setT(() => { setIsTyping(true); showHavenMenu(); }, t + 700));
+      if (dest.after) {
+        // Ellie's reaction lands after the narrator beat, then the menu returns.
+        pendingRef.current.push(setT(() => {
+          setIsTyping(true);
+          const t2 = scheduleMessages(dest.after, null, "ellie");
+          pendingRef.current.push(setT(() => { setIsTyping(true); showHavenMenu(); }, t2 + 700));
+        }, t + 500));
+      } else {
+        pendingRef.current.push(setT(() => { setIsTyping(true); showHavenMenu(); }, t + 700));
+      }
       return;
     }
 
@@ -2236,6 +2253,10 @@ export default function DeadSignal() {
       let pendingBeat = null;
       if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "encounter")) {
         // Loud → they found you. Forced fight (never overrides a memory/discovery beat).
+        // The planned lead is NOT consumed — rewind the cursor so it replays on the next
+        // explore (otherwise a cornered fight could silently eat the leg's guaranteed
+        // power-source lead, the battery lifeline). No loop risk: the fight resets noise to 0.
+        leadCursorRef.current = idx; setAiExchangeCount(idx);
         pendingBeat = { type: "encounter", enc: CORNERED_ENCOUNTER };
       } else if (lead?.kind === "memory" && !fragFiredRef.current) {
         setFragFired(true);
@@ -2502,7 +2523,7 @@ export default function DeadSignal() {
           <p style={body}>Harwick went dark three days ago. Power gone, streets emptied, and whatever moves out there now isn't what it used to be. Your phone is almost dead.</p>
 
           {ssec("THE VOICE")}
-          <p style={body}>You woke with no memory of how you got here. A stranger texts the phone beside you — no name, just a way out, if you keep moving and keep the line alive.</p>
+          <p style={body}>You woke with no memory of how you got here. A stranger texts the phone beside you — a way out, if you keep moving and keep the line alive.</p>
 
           {ssec("THE GOAL")}
           <p style={body}>A broadcast loops the same coordinates: somewhere still standing. Haven. Cross the city, keep the battery alive, reach it.</p>
