@@ -1446,14 +1446,14 @@ export default function DeadSignal() {
 
     msgs.forEach((text, i) => {
       dialogueRef.current.push(setT(() => setIsTyping(msgType !== "narrator"), t));
-      t += msgType === "narrator" ? 1800 : Math.min(500 + text.length * 22, 1800);
+      t += msgType === "narrator" ? 1200 : Math.min(500 + text.length * 22, 1800);
       dialogueRef.current.push(setT(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
         audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
         onShown?.(text, i);
       }, t));
-      t += msgType === "narrator" ? 600 : 280;
+      t += msgType === "narrator" ? 400 : 280;
     });
     if (choiceList?.length) dialogueRef.current.push(setT(() => setChoices(choiceList), t + 80));
     return t;
