@@ -299,7 +299,7 @@ const BOARD_PEOPLE = [
   // tech, one of the 143, Ellie's closest friend who rejected the Signal) is a PHASE 3 reveal,
   // kept out of the prologue (STORY.md §3). The `reached` tier ties her to the 143 as a question.
   { name:"Kim", note:(c, reached) =>
-      reached ? "her phone is the one you carry. you called her the night it began. and the 143 at haven — was she one of them? you don't know."
+      reached ? "her number is the one that texts you. you called her the night it began. and the 143 at haven — was she one of them? you don't know."
       : c.has("Patient File") ? "you and Kim were connected before the wipe. her phone knew your voice."
       : "you were found on her phone. you called her, right before. who was she?" },
   { name:"You",   note:"no memory. the evidence keeps pointing back at you." },
