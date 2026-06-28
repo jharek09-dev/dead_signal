@@ -336,7 +336,7 @@ const PHASE3_REGIONS = {
         ],
       },
       dormitories: {
-        label: "Dormitories", kind: "room",
+        label: "Dormitories", kind: "room", shelter: true,
         onEnter: [{ from: "narrator", msgs: ["rows of bunks. all made.", "numbers stenciled by hand above each one.", "a watch on a pillow. a paperback, dog-eared.", "the last bunk reads 143."] }],
         revisit: [{ from: "narrator", msgs: ["the bunks again. 143, made, empty."] }],
         ellie: ["someone slept there.", "i don't know how i know that."],
@@ -483,7 +483,7 @@ const PHASE3_REGIONS = {
         ],
       },
       dark_ward: {
-        label: "Sealed Ward", kind: "room", power: true,
+        label: "Sealed Ward", kind: "room", power: true, shelter: true,
         onEnter: [{ from: "narrator", msgs: ["a sealed ward. a generator grinds somewhere below it — the one thing still running.", "the only lit hallway in the building. the lights buzz, wrong, and hold.", "the doors are taped shut from the outside. you don't open them.", "a crash cart by the nurses' station. its battery still holds a charge."] }],
         revisit: [{ from: "narrator", msgs: ["the sealed ward. the lights still buzz. the doors stay shut."] }],
         exits: [
@@ -539,7 +539,7 @@ const PHASE3_REGIONS = {
         ],
       },
       transmitter_hall: {
-        label: "Transmitter Hall", kind: "room", power: true,
+        label: "Transmitter Hall", kind: "room", power: true, shelter: true,
         onEnter: [{ from: "narrator", msgs: ["the transmitter hall. the hum is a roar here, felt in the sternum.", "racks of hardware, indicator lights crawling. it draws its own power — it has never once stopped.", "a maintenance battery bank by the door, still holding a charge."] }],
         revisit: [{ from: "narrator", msgs: ["the transmitter hall. the roar, the crawling lights."] }],
         exits: [
@@ -549,7 +549,7 @@ const PHASE3_REGIONS = {
       },
       signal_core: {
         label: "Signal Core", kind: "room", truth: "signal",
-        onEnter: [{ from: "narrator", msgs: ["a cold room behind the transmitters. server racks, frost on the housings.", "the logs aren't broadcasts. they're people — names, then patterns. minds, written down and kept running.", "the haven 143. they didn't die. they were copied in here, and they're still running.", "you look at your phone. the texts from \"kim.\"", "no one ever held that phone. the words have been coming from in here — a transmission, wearing a name."] }],
+        onEnter: [{ from: "narrator", msgs: ["a cold room behind the transmitters. server racks, frost on the housings.", "the logs aren't broadcasts. they're people — names, then patterns. minds, written down and kept running.", "the haven 143. they didn't die. they were copied in here, and they're still running.", "you look at your phone. every text ellie ever sent you.", "they came over kim's number — but no hand ever held that phone. the words were a transmission, reaching from in here."] }],
         revisit: [{ from: "narrator", msgs: ["the cold room. the racks hum. the minds keep running."] }],
         ellie: ["i can still hear them.", "all of them. all the time."],
         caseFile: { raise: ["p3_signal_uploadnet", "p3_phone", "p3_voice"] },
@@ -598,7 +598,7 @@ const PHASE3_REGIONS = {
         ],
       },
       cold_archive: {
-        label: "Cold Archive", kind: "room", power: true,
+        label: "Cold Archive", kind: "room", power: true, shelter: true,
         onEnter: [{ from: "narrator", msgs: ["a climate-controlled archive behind the records room. a generator keeps it cold.", "dry air, steady lights — the one room they kept running, for the paper.", "a charged battery pack sits in a cradle by the door."] }],
         revisit: [{ from: "narrator", msgs: ["the cold archive. the generator holds the chill."] }],
         exits: [
@@ -667,7 +667,7 @@ const PHASE3_REGIONS = {
         ],
       },
       cold_lab: {
-        label: "Cold Lab", kind: "room", power: true,
+        label: "Cold Lab", kind: "room", power: true, shelter: true,
         onEnter: [{ from: "narrator", msgs: ["a server lab, sealed and cold, still running on its own line.", "the breach report sits open on a terminal: containment failure. signal — uncontained.", "a charged cell in a rack by the door."] }],
         revisit: [{ from: "narrator", msgs: ["the cold lab. the breach report, still on the screen."] }],
         caseFile: { raise: ["p3_an_report"] },
@@ -718,7 +718,7 @@ const PHASE3_RECORDS = {
 // (signal/project_haven/outbreak) get their lines when those regions are built (3C–3E).
 const PHASE3_TRUTHS = {
   you:           { title: "Who you were",          line: "you were the architect of Project Haven — and you erased your own memory rather than carry what you'd done." },
-  ellie:         { title: "What Ellie is" },
+  ellie:         { title: "What Ellie is",            line: "Ellie went into the Signal when the uploads began — she's been reaching you from inside it the whole time. no hand ever held the phone. she's been holding your slot open." },
   signal:        { title: "What the Signal is",        line: "the Signal is an upload network — it copies a mind in; the connected aren't dead, they're inside it. the 143 are in there. and the texts were a transmission. no one ever held the phone." },
   project_haven: { title: "What Project Haven was",     line: "Project Haven was a sanctioned program to upload the 143 into the Signal before the end. the charter, the roster, the signatures — yours among them, as architect. official. real. yours." },
   outbreak:      { title: "The outbreak",               line: "the outbreak was the Signal breaching Haven's containment — it got into people, pulled them halfway in, left the bodies moving. the 'infected' were the half-connected. every one you put down was a person. you built the thing that did it." },
@@ -1258,6 +1258,21 @@ const parseResourceMarkers = (choice) => {
 const PHASE3_MOVE_COST   = 2;   // % battery per node move
 const PHASE3_POWER_FLOOR = 60;  // a powered node tops a low battery back up to this
 
+// ─── Phase 3 — the rest of the week (Days 4–7) + the shelter rule ───────────────────
+// Phase 3 plays out over four days. Days 4–6 are investigation days: each has a DAYLIGHT
+// budget (node-moves) that ticks down as you explore. As the light fails you must reach a
+// SHELTER (one safe room per region + Haven's dorms) and bed down — the night turns the day
+// (food/water cost; a safe rest heals). Get caught in the open at nightfall and you're hurt
+// (HP, clamped ≥1) and forced to hole up where you are — non-lethal, matching Phase 3's
+// softness. Day 7 is the final day: no clock, no night — you finish up and face the finale.
+const PHASE3_START_DAY = 4;   // Phase 3 opens on Day 4 (the prologue ends Day 3, at Haven)
+const PHASE3_FINAL_DAY = 7;   // the last day of the week — the ending; no nightfall clock
+const PHASE3_DAYLIGHT  = 10;  // node-moves of daylight per investigation day (tuning knob)
+const PHASE3_DUSK      = 3;   // daylight ≤ this → "the light is failing"; shelter/bed-down offered
+const PHASE3_REST_HEAL = 2;   // HP recovered by a safe night's rest at a shelter
+const PHASE3_CAUGHT_HP = 2;   // HP lost (clamped ≥1) when nightfall catches you in the open
+const BED_DOWN_LABEL = (day) => `▸ Bed down for the night — end day ${day}`;
+
 const beatBatteryCost = (phase) => {
   if (phase === "phase1") return 0;
   if (phase === "p2_memory_frag" || phase === "p2_discovery") return 0;
@@ -1293,7 +1308,7 @@ const parseText = (text, ctx = "button") => {
 
 // Shared style fragments (L2 — hoisted so the three screens don't duplicate them)
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
-const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}";
+const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
 
 // Responsive gameplay-HUD styles (injected into the chat screen's <style>). Static sizing/spacing
 // lives here so the header can shrink on phones via media queries; state-driven bits (colors,
@@ -1468,6 +1483,8 @@ export default function DeadSignal() {
   const [visitedPhase3Nodes, setVisitedPhase3Nodes]       = useState([]);   // ["region:node", …] explored this run
   const [discoveredTruths, setDiscoveredTruths]           = useState([]);   // region truth ids paid off (none in 3A)
   const [phase3UnlockedRegions, setPhase3UnlockedRegions] = useState([]);   // region ids the player can travel to
+  const [phase3Day, setPhase3Day] = useState(PHASE3_START_DAY);             // Phase 3 day-of-week (4–7)
+  const [daylight, setDaylight]   = useState(PHASE3_DAYLIGHT);              // node-moves of light left today
 
   const pendingRef          = useRef([]);
   const dialogueRef         = useRef([]);   // timers owned by scheduleMessages (C3 — kept separate from pendingRef)
@@ -1511,6 +1528,8 @@ export default function DeadSignal() {
   const visitedPhase3NodesRef  = useRef([]);
   const discoveredTruthsRef    = useRef([]);
   const phase3UnlockedRef      = useRef([]);
+  const phase3DayRef           = useRef(PHASE3_START_DAY); // Phase 3 day clock (mirror)
+  const daylightRef            = useRef(PHASE3_DAYLIGHT);  // daylight remaining today (mirror)
 
   resourcesRef.current      = resources;
   screenRef.current         = screen;
@@ -1529,6 +1548,8 @@ export default function DeadSignal() {
   visitedPhase3NodesRef.current  = visitedPhase3Nodes;
   discoveredTruthsRef.current    = discoveredTruths;
   phase3UnlockedRef.current       = phase3UnlockedRegions;
+  phase3DayRef.current            = phase3Day;
+  daylightRef.current             = daylight;
 
   // ── Pausable timers ────────────────────────────────────────────────────────────
   // Every gameplay timer goes through setT() instead of raw setTimeout, so the dialogue
@@ -1668,7 +1689,8 @@ export default function DeadSignal() {
     return null; // phase1 (the apartment) and anything else → no strip
   };
   const snapshotDay = () =>
-    (dayThree || gamePhase.startsWith("haven")) ? 3
+    (gamePhase === "phase3" || gamePhase === "phase3_finale") ? phase3Day
+    : (dayThree || gamePhase.startsWith("haven")) ? 3
     : (gamePhase.startsWith("p2") || gamePhase === "encounter" || gamePhase === "shelter" || exchangePhase >= 10) ? 2 : 1;
   // ─── Per-slot progression model (schema v2) ────────────────────────────────────
   // A slot holds a persistent PROFILE (playthroughs + collected fragments/clues) plus
@@ -1701,6 +1723,7 @@ export default function DeadSignal() {
     visitedPhase3Nodes: visitedPhase3NodesRef.current,
     discoveredTruths: discoveredTruthsRef.current,
     phase3Unlocked: phase3UnlockedRef.current,
+    phase3Day: phase3DayRef.current, daylight: daylightRef.current, // Phase 3 day/night clock
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
   // The full per-slot record written to storage.
@@ -1792,6 +1815,8 @@ export default function DeadSignal() {
     visitedPhase3NodesRef.current  = Array.isArray(run.visitedPhase3Nodes) ? run.visitedPhase3Nodes : [];
     discoveredTruthsRef.current    = Array.isArray(run.discoveredTruths) ? run.discoveredTruths : [];
     phase3UnlockedRef.current      = Array.isArray(run.phase3Unlocked) ? run.phase3Unlocked : [];
+    phase3DayRef.current = typeof run.phase3Day === "number" ? run.phase3Day : PHASE3_START_DAY;
+    daylightRef.current  = typeof run.daylight  === "number" ? run.daylight  : PHASE3_DAYLIGHT;
     seenEncountersRef.current = new Set(run.seenEncounters || []);
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
     shelterForcedRef.current  = !!run.shelterForced;
@@ -1818,6 +1843,7 @@ export default function DeadSignal() {
     setCurrentPhase3Region(currentPhase3RegionRef.current); setCurrentPhase3Node(currentPhase3NodeRef.current);
     setVisitedPhase3Nodes(visitedPhase3NodesRef.current); setDiscoveredTruths(discoveredTruthsRef.current);
     setPhase3UnlockedRegions(phase3UnlockedRef.current);
+    setPhase3Day(phase3DayRef.current); setDaylight(daylightRef.current);
     // memories: prefer the run's own cumulative set; else committed profile; else legacy global
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
@@ -2544,12 +2570,23 @@ export default function DeadSignal() {
   // Present the current node's exits as the chat choice list. Hidden region exits (places
   // the player hasn't earned the name of) are filtered. Reuses scheduleMessages → autosaves.
   const showPhase3Exits = () => {
-    const node = phase3Node(currentPhase3RegionRef.current, currentPhase3NodeRef.current);
+    const region = currentPhase3RegionRef.current;
+    const node = phase3Node(region, currentPhase3NodeRef.current);
     if (!node) return 0;
+    // As the light fails on an investigation day, flag nearby shelters and offer bed-down (the
+    // shelter rule). The final day has no clock, so dusk never triggers there.
+    const dusk = phase3DayRef.current < PHASE3_FINAL_DAY && daylightRef.current <= PHASE3_DUSK;
     // Hidden region exits (places not yet heard of) appear once their region is unlocked.
-    const labels = (node.exits || []).filter(e => !e.hidden || (e.region && phase3UnlockedRef.current.includes(e.region))).map(e => e.label);
+    const labels = (node.exits || [])
+      .filter(e => !e.hidden || (e.region && phase3UnlockedRef.current.includes(e.region)))
+      .map(e => {
+        const dest = e.to ? phase3Node(region, e.to) : null;
+        return dusk && dest?.shelter ? `${e.label} [shelter]` : e.label;
+      });
+    // Bed down — only at a shelter, only as the light fails (resting early at one is safe). Goes first.
+    if (dusk && node.shelter) labels.unshift(BED_DOWN_LABEL(phase3DayRef.current));
     // The finale call — at the Haven hub, once all 4 truths are uncovered, the phone rings.
-    if (currentPhase3RegionRef.current === "haven" && currentPhase3NodeRef.current === "gate_yard" && discoveredTruthsRef.current.length >= 4) {
+    if (region === "haven" && currentPhase3NodeRef.current === "gate_yard" && discoveredTruthsRef.current.length >= 4) {
       labels.push(FINALE_CHOICE);
     }
     return scheduleMessages([], labels, "narrator");
@@ -2625,6 +2662,13 @@ export default function DeadSignal() {
         pendingRef.current.push(setT(() => setSigFlicker(false), 1300));
       }, t));
       t += 1000;
+      // Progress signal toward the finale gate (all 4 region truths). Gives the open
+      // investigation a visible finish line; at 4, point the player back to the gate where
+      // the call waits (the finale only appears at Haven's gate yard once all 4 are known).
+      const tn = discoveredTruthsRef.current.length;
+      pendingRef.current.push(setT(() => addMsg("system",
+        tn >= 4 ? "▸ all four truths uncovered — return to the gate yard, where the call waits" : `▸ ${tn} of 4 truths uncovered`, 0), t));
+      t += 900;
       // A truth can open the next spoke (TRUTH_UNLOCKS) — the NEW LEAD lands after the truth card.
       const opens = TRUTH_UNLOCKS[node.truth];
       if (opens && !phase3UnlockedRef.current.includes(opens)) {
@@ -2643,26 +2687,100 @@ export default function DeadSignal() {
     }
 
     // Ellie's crack (first visit only) lands after the narrator beat, then the exits return.
+    // presentPhase3Node (not showPhase3Exits) — it checks the day clock and may trigger nightfall.
     if (firstVisit && node.ellie) {
       pendingRef.current.push(setT(() => {
         setIsTyping(true);
         const et = scheduleMessages(node.ellie, null, "ellie");
-        pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, et + 700));
+        pendingRef.current.push(setT(() => { setIsTyping(true); presentPhase3Node(); }, et + 700));
       }, t + 700));
     } else {
-      pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, t + 700));
+      pendingRef.current.push(setT(() => { setIsTyping(true); presentPhase3Node(); }, t + 700));
     }
+  };
+
+  // ─── Phase 3 day clock — daylight, nightfall and the shelter rule ──────────────────
+  // Spend a move of daylight (no clock on the final day). Called on each real map move.
+  const spendDaylight = () => {
+    if (phase3DayRef.current >= PHASE3_FINAL_DAY) return;
+    const nd = daylightRef.current - 1;
+    daylightRef.current = nd; setDaylight(nd);
+  };
+
+  // After arriving at a node, decide what to present: keep exploring, or — once the light is
+  // gone — bed down. At a shelter you rest cleanly; caught in the open you're hurt and forced
+  // to hole up (non-lethal). The final day has no night, so it's always just the exits.
+  const presentPhase3Node = () => {
+    const node = phase3Node(currentPhase3RegionRef.current, currentPhase3NodeRef.current);
+    if (!node) { showPhase3Exits(); return; }
+    if (phase3DayRef.current >= PHASE3_FINAL_DAY) { showPhase3Exits(); return; }
+    if (daylightRef.current <= 0) { restNight(!node.shelter); return; }
+    showPhase3Exits();
+  };
+
+  // Bed down for the night → the survival cost, the day turns, daylight refills, then dawn.
+  // `caught` = nightfall caught you away from a shelter (HP penalty, no heal).
+  const restNight = (caught) => {
+    clearPending(); setChoices([]); setIsTyping(false);
+    const day = phase3DayRef.current;
+    let t = 600;
+    if (caught) {
+      addMsg("narrator", "the dark comes down with you still in the open.", t); t += 1800;
+      addMsg("narrator", "you find a doorway, a stairwell — anything — and wait it out.", t); t += 1800;
+    } else {
+      addMsg("narrator", "you hole up for the night. doors checked, the dark kept out.", t); t += 1800;
+    }
+    addMsg("narrator", "night falls.", t); t += 1500;
+    addMsg("narrator", `day ${day} ends.`, t); t += 1500;
+    // Survival cost (non-lethal). Shown from a snapshot; applied via a functional update.
+    const r = resourcesRef.current;
+    const seg = [];
+    seg.push(r.food  > 0 ? "food -1"  : "no food · hp -1");
+    seg.push(r.water > 0 ? "water -1" : "no water · hp -1");
+    seg.push(caught ? `caught out · hp -${PHASE3_CAUGHT_HP}` : `rested · hp +${PHASE3_REST_HEAL}`);
+    setResources(p => {
+      let f = p.food, w = p.water, h = p.hp;
+      if (f > 0) f -= 1; else h = Math.max(1, h - 1);
+      if (w > 0) w -= 1; else h = Math.max(1, h - 1);
+      h = caught ? Math.max(1, h - PHASE3_CAUGHT_HP) : Math.min(10, h + PHASE3_REST_HEAL);
+      return { ...p, food: f, water: w, hp: h };
+    });
+    addMsg("system", "shelter · " + seg.join(" · "), t); t += 500;
+    audioEngine.loss();
+    // Turn the day, refill the light.
+    const nextDay = day + 1;
+    phase3DayRef.current = nextDay; setPhase3Day(nextDay);
+    daylightRef.current = PHASE3_DAYLIGHT; setDaylight(PHASE3_DAYLIGHT);
+    // Dawn — auto-flows into the new day, then the exits return (save-safe: choices show after dawn).
+    pendingRef.current.push(setT(() => {
+      setIsTyping(true);
+      if (nextDay >= PHASE3_FINAL_DAY) {
+        const dt = scheduleMessages([`day ${nextDay}. the last day.`, "the week's run out. no more nights after this one."], null, "narrator");
+        pendingRef.current.push(setT(() => {
+          setIsTyping(true);
+          const et = scheduleMessages(["finish what's left.", "then come to the gate. i'll be there."], null, "ellie");
+          pendingRef.current.push(setT(() => { setIsTyping(true); presentPhase3Node(); }, et + 700));
+        }, dt + 700));
+      } else {
+        const dt = scheduleMessages([`day ${nextDay}.`, "morning. you made it through the night."], null, "narrator");
+        pendingRef.current.push(setT(() => { setIsTyping(true); presentPhase3Node(); }, dt + 700));
+      }
+    }, t + 900));
   };
 
   // Resolve a movement choice against the current node's exits. `to` = an in-region move;
   // `region` = a spoke exit (locked in 3A → terse "not yet" beat, no transition).
   const handlePhase3Choice = (choice) => {
-    if (stripMarkers(choice) === stripMarkers(FINALE_CHOICE)) { beginFinale(); return; }
+    const sm = stripMarkers(choice);
+    if (sm === stripMarkers(FINALE_CHOICE)) { beginFinale(); return; }
+    // Bed down for the night (the shelter rule) — turn the day. No daylight spent.
+    if (/^▸ Bed down/.test(sm)) { restNight(false); return; }
     const node = phase3Node(currentPhase3RegionRef.current, currentPhase3NodeRef.current);
     if (!node) { enterPhase3Node(PHASE3_REGIONS.haven.entryNode, { first: true }); return; }
     const picked = (node.exits || []).find(e => stripMarkers(e.label) === stripMarkers(choice));
     if (!picked) { showPhase3Exits(); return; }
-    if (picked.to) { enterPhase3Node(picked.to); return; }
+    // A real move spends a move of daylight (nightfall is handled when the node is presented).
+    if (picked.to) { spendDaylight(); enterPhase3Node(picked.to); return; }
     if (picked.region) {
       const target = PHASE3_REGIONS[picked.region];
       // Gate is driven by phase3UnlockedRegions (the data `locked` flag is just the initial state).
@@ -2672,8 +2790,9 @@ export default function DeadSignal() {
         const lines = PHASE3_LOCKED_EXIT[picked.region] || ["not yet.", "you're not ready for that."];
         const t = scheduleMessages(lines, null, "narrator");
         pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, t + 700));
-        return;
+        return; // looking down the road costs no daylight — you didn't go
       }
+      spendDaylight();
       currentPhase3RegionRef.current = picked.region; setCurrentPhase3Region(picked.region);
       enterPhase3Node(target.entryNode, { first: true });
       return;
@@ -2706,12 +2825,14 @@ export default function DeadSignal() {
     visitedPhase3NodesRef.current  = [];       setVisitedPhase3Nodes([]);
     discoveredTruthsRef.current    = [];       setDiscoveredTruths([]);
     phase3UnlockedRef.current      = ["haven"];setPhase3UnlockedRegions(["haven"]);
+    phase3DayRef.current = PHASE3_START_DAY; setPhase3Day(PHASE3_START_DAY); // the week resumes: Day 4
+    daylightRef.current  = PHASE3_DAYLIGHT;  setDaylight(PHASE3_DAYLIGHT);
     setGamePhase("phase3"); gamePhaseRef.current = "phase3";
     setContactName("ELLIE");
     setSigFlicker(false); setIsTyping(false);
     setMessages([]); setChoices([]);
     setScreen("chat"); chatStartedRef.current = true;
-    const t = scheduleMessages(["the screen goes dark.", "then it doesn't.", "you're still here.", "alone, in the light of the place that called you."], null, "narrator");
+    const t = scheduleMessages(["the screen goes dark.", "then it doesn't.", "you're still here.", "alone, in the light of the place that called you.", "no one left to ask. only the place itself.", "you start remembering by looking. so look."], null, "narrator");
     pendingRef.current.push(setT(() => { setIsTyping(true); enterPhase3Node("gate_yard", { first: true }); }, t + 900));
   };
 
@@ -2739,8 +2860,15 @@ export default function DeadSignal() {
     setChoices([]); setIsTyping(false);
     setSigFlicker(true); audioEngine.signal();
     pendingRef.current.push(setT(() => setSigFlicker(false), 1400));
+    // The call IS the Ellie reveal — record it so the Case File marks Haven's truth (no region
+    // node pays "what Ellie is" off, so without this it would read 4/5 uncovered forever).
+    if (!discoveredTruthsRef.current.includes("ellie")) {
+      discoveredTruthsRef.current = [...discoveredTruthsRef.current, "ellie"];
+      setDiscoveredTruths(discoveredTruthsRef.current);
+    }
     const t = playFinaleLines(FINALE_CONVERGENCE, 600);
-    pendingRef.current.push(setT(() => { setIsTyping(false); setChoices([ACCEPT_CHOICE, REFUSE_CHOICE]); }, t + 400));
+    pendingRef.current.push(setT(() => announceTruth("ellie"), t + 200));
+    pendingRef.current.push(setT(() => { setIsTyping(false); setChoices([ACCEPT_CHOICE, REFUSE_CHOICE]); }, t + 1600));
   };
   // Resolve the choice → play its sequence → the definitive ending screen.
   const handleFinaleChoice = (choice) => {
@@ -2755,6 +2883,21 @@ export default function DeadSignal() {
       setEndingKind(accept ? "accept" : "refuse");
       setScreen("ending");
     }, t + 1400));
+  };
+  // After an ending, walk back to the gate with the call still waiting — lets the player try the
+  // other choice without replaying the whole game. The Phase 3 state (truths, region/node) is
+  // still live in memory, so showPhase3Exits re-offers the finale (all 4 truths are still known).
+  const resumeAfterEnding = () => {
+    clearPending();
+    setEndingLines([]); setEndingKind(null); setShowRestart(false);
+    setGamePhase("phase3"); gamePhaseRef.current = "phase3";
+    currentPhase3RegionRef.current = "haven"; setCurrentPhase3Region("haven");
+    currentPhase3NodeRef.current = "gate_yard"; setCurrentPhase3Node("gate_yard");
+    phase3DayRef.current = PHASE3_FINAL_DAY; setPhase3Day(PHASE3_FINAL_DAY); // the week's over — timeless final day
+    setSigFlicker(false); setIsTyping(false); setChoices([]); setMessages([]);
+    setScreen("chat"); chatStartedRef.current = true;
+    const t = scheduleMessages(["the gate yard. the phone, still warm in your hand.", "the call is still there. it always will be."], null, "narrator");
+    pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, t + 700));
   };
 
   const handleChoice = (choice) => {
@@ -3194,6 +3337,8 @@ export default function DeadSignal() {
     setVisitedPhase3Nodes([]);    visitedPhase3NodesRef.current = [];
     setDiscoveredTruths([]);      discoveredTruthsRef.current = [];
     setPhase3UnlockedRegions([]); phase3UnlockedRef.current = [];
+    setPhase3Day(PHASE3_START_DAY); phase3DayRef.current = PHASE3_START_DAY;
+    setDaylight(PHASE3_DAYLIGHT);   daylightRef.current  = PHASE3_DAYLIGHT;
     setEndingLines([]); setEndingKind(null);
     // recoveredMemories intentionally NOT reset — persists across runs
     setOfflineLines([]); setCompleteLines([]); setShowRestart(false); setLastMessage("");
@@ -3272,13 +3417,17 @@ export default function DeadSignal() {
   // "Use charger" is a free action on normal choice screens (not encounters, not
   // continue-only beats) while the reservoir has charge and the phone isn't near full.
   const chargerAmt    = Math.min(CHARGER_TRANSFER, resources.charger || 0, 100 - resources.battery);
-  const canUseCharger = chargerAmt > 0 && resources.battery < 90 && gamePhase !== "encounter" && !(choices.length === 1 && choices[0] === "·");
+  // Phase 3 softens survival (no offline death; powered nodes auto-refill), so the battery
+  // alarm + charger action are just noise there — suppress them while keeping the ambient meter.
+  const inPhase3      = gamePhase === "phase3" || gamePhase === "phase3_finale";
+  const canUseCharger = chargerAmt > 0 && resources.battery < 90 && gamePhase !== "encounter" && !inPhase3 && !(choices.length === 1 && choices[0] === "·");
   const signalLevel =
     screen === "phase2_complete" || dayThree ? 5 :
     ["p2_ai_cross","shelter","haven_approach","haven_ai","haven_final"].includes(gamePhase) ? 4 :
     gamePhase === "p2_discovery"    ? 3 :
     ["p2_scripted","p2_ai","p2_memory_frag","encounter"].includes(gamePhase) ? 2 : 1;
   const displayDay =
+    inPhase3 ? phase3Day :
     screen === "phase2_complete" || dayThree ? 3 :
     (gamePhase.startsWith("p2") || gamePhase === "encounter" || gamePhase === "shelter") ? 2 :
     exchangePhase >= 10 ? 2 : 1;
@@ -3689,6 +3838,10 @@ export default function DeadSignal() {
             {screen === "phase2_complete" && !(winProfile && winProfile.complete) && (
               <button className="rb" onClick={withMenuSound(()=>{ const i = activeSlotRef.current; if (i != null) beginRun(i, { fresh:false }); else handleRestart(); })} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;play again</button>
             )}
+            {/* Ending: step back to the gate and pick the other choice without replaying the game. */}
+            {screen === "ending" && (
+              <button className="rb" onClick={withMenuSound(resumeAfterEnding)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;back to the gate — choose again</button>
+            )}
             <button className="rb" onClick={withMenuSound(handleRestart)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#505050", padding:"0.55rem 1.5rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;return to title</button>
           </div>
         )}
@@ -3737,6 +3890,10 @@ export default function DeadSignal() {
       <span style={{ color:hpColor, animation:resources.hp<=2?flashAnim:"none" }}>HP {resources.hp}/10{injuryLbl ? ` · ${injuryLbl}` : ""}</span>
       <span style={{ color:watColor }}>WATER {resources.water}</span>
       <span style={{ color:fooColor }}>FOOD {resources.food}</span>
+      {/* Phase 3 day clock — daylight left to reach shelter (the final day has no night). */}
+      {gamePhase === "phase3" && (phase3Day >= PHASE3_FINAL_DAY
+        ? <span style={{ color:"#c87a40", letterSpacing:"0.08em" }}>FINAL DAY</span>
+        : <span style={{ color: daylight<=PHASE3_DUSK?"#8b2020":daylight<=5?"#7a6020":"#3a7a52", animation: daylight<=PHASE3_DUSK?flashAnim:"none" }}>LIGHT {daylight}</span>)}
     </div>
   );
 
@@ -3748,7 +3905,7 @@ export default function DeadSignal() {
     </div>
   ) : null;
 
-  const BatteryWarning = () => (resources.battery<=10 && resources.battery>0) ? (
+  const BatteryWarning = () => (resources.battery<=10 && resources.battery>0 && !inPhase3) ? (
     <div className={`ds-battwarn${resources.battery<=5 ? " ds-crit" : ""}`} style={{ animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>
   ) : null;
 

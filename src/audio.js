@@ -10,7 +10,10 @@
 // Browser autoplay policy blocks sound until a user gesture, so nothing is built
 // until unlock() runs from the first pointerdown/keydown.
 
-import * as Tone from "tone";
+// Tone.js (~380 kB) is loaded lazily, on the first user gesture in unlock(), so it stays out
+// of the initial bundle. Every method below already no-ops until `unlocked`, and `unlocked`
+// is only set after Tone has loaded — so nothing references Tone before it exists.
+let Tone     = null;   // populated by unlock() via dynamic import("tone")
 
 const MASTER_DB = -4; // overall headroom; one-shots are mixed below this (the -2 limiter catches peaks)
 
@@ -74,6 +77,11 @@ const audioEngine = {
   async unlock() {
     if (unlocked) return;
     try {
+      // Lazy-load the engine on first gesture. If a slow import outlives the gesture's
+      // user-activation window, Tone.start() may not resume the context this time — but the
+      // broad gesture listener retries on the next tap (Tone is now cached), so audio still
+      // unlocks, just possibly one tap later. Audio is purely additive, so that's acceptable.
+      if (!Tone) Tone = await import("tone");
       // Do NOT set navigator.audioSession.type = "playback": that keeps audio playing while
       // the tab is backgrounded (it leaks out of the tab and leaves the context in a stuck
       // state on return). Safari's default session is browser-only — it suspends on
@@ -101,7 +109,7 @@ const audioEngine = {
   // Diagnostic snapshot for the on-screen ?debug overlay.
   status() {
     let state = "n/a";
-    try { state = Tone.getContext().state; } catch (e) {}
+    try { if (Tone) state = Tone.getContext().state; } catch (e) {}
     return { unlocked, muted, volume, state, hasNodes: !!nodes };
   },
 
