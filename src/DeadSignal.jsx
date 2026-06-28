@@ -286,6 +286,523 @@ const HAVEN_FINAL_SEQUENCE = [
 ];
 const HEART_LABEL = "Move on — to the heart of it.";
 
+// ─── PHASE 3 — the invisible region map (hub & spoke from Haven; STORY.md §5) ────────
+// Phase 3 is the open investigation. The player never sees a literal map — geography is
+// IMPLIED by a node graph: every region is rooms/exits with real adjacency, so every
+// movement choice correlates to where you actually are ("through the gate, across the
+// dining hall, into the dorms, back to the yard, out to the road"). Movement reuses the
+// chat choice list + scheduleMessages, so it autosaves/resumes like any decision point.
+//
+// Node shape:
+//   label   — short room name (HUD / prose)
+//   kind    — "hub" | "room" | "exit"
+//   power   — true → topping station; entering tops a low battery to PHASE3_POWER_FLOOR
+//   onEnter — first-visit beats [{from, msgs}]; revisit — shorter return beats (optional)
+//   ellie   — optional sparse Ellie crack line(s), text-message voice (STORY.md §3/§4)
+//   caseFile.raise — question/fact keys raised on first visit (real keys announce a NEW
+//             QUESTION card + show in OPEN QUESTIONS; silent keys only gate KNOWN FACTS)
+//   exits   — [{label, to}]  in-region moves  |  [{label, region, locked, hidden}] region exits
+//
+// 3A ships Haven only. Other regions are metadata placeholders (no nodes) — filled in
+// 3B–3E. Haven establishes the hub + investigation seeds; it does NOT pay off the Ellie
+// truth (that's 3F). Spoiler discipline holds: 143 motif, no bodies, lights on, Ellie's
+// shell thinning in tiny cracks, never acting in physical space.
+const PHASE3_REGIONS = {
+  haven: {
+    id: "haven", label: "The Haven", truth: "ellie", entryNode: "gate_yard", unlocked: true,
+    nodes: {
+      gate_yard: {
+        label: "Gate Yard", kind: "hub", power: true,
+        onEnter: [{ from: "narrator", msgs: ["the yard, inside the open gate.", "floodlights still burning. nothing moves.", "a charging rack by the dead terminals — still live."] }],
+        revisit: [{ from: "narrator", msgs: ["back in the yard. the floodlights don't blink."] }],
+        caseFile: { raise: ["p3_powered"] },
+        exits: [
+          { label: "Cross to the dining hall.", to: "dining_hall" },
+          { label: "Head for the dormitories.", to: "dormitories" },
+          { label: "Enter the operations building.", to: "operations" },
+          { label: "Down to the generator room.", to: "generator_room" },
+          { label: "Out to the road.", to: "outer_road" },
+        ],
+      },
+      dining_hall: {
+        label: "Dining Hall", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the dining hall.", "trays still out. food gone grey.", "a mug of coffee, a skin set on top.", "they left in the middle of a meal. no one cleared a plate."] }],
+        revisit: [{ from: "narrator", msgs: ["the cold dining hall. the trays haven't moved."] }],
+        caseFile: { raise: ["p3_livedin"] },
+        exits: [
+          { label: "Back to the gate yard.", to: "gate_yard" },
+          { label: "Through to the dormitories.", to: "dormitories" },
+          { label: "Follow the hum to the generator room.", to: "generator_room" },
+        ],
+      },
+      dormitories: {
+        label: "Dormitories", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["rows of bunks. all made.", "numbers stenciled by hand above each one.", "a watch on a pillow. a paperback, dog-eared.", "the last bunk reads 143."] }],
+        revisit: [{ from: "narrator", msgs: ["the bunks again. 143, made, empty."] }],
+        ellie: ["someone slept there.", "i don't know how i know that."],
+        caseFile: { raise: ["p3_143everywhere"] },
+        exits: [
+          { label: "Back to the gate yard.", to: "gate_yard" },
+          { label: "Back to the dining hall.", to: "dining_hall" },
+          { label: "Down the corridor of photos.", to: "photo_wall" },
+        ],
+      },
+      photo_wall: {
+        label: "Photo Wall", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a corridor of corkboard. photographs, edge to edge.", "haven residents. everyone smiling.", "a date in the corner. three weeks before day one."] }],
+        revisit: [{ from: "narrator", msgs: ["the wall of faces. all still smiling."] }],
+        ellie: ["i remember the light in there.", "..."],
+        caseFile: { raise: ["p3_ellie_knows"] },
+        exits: [
+          { label: "Back to the dormitories.", to: "dormitories" },
+          { label: "Through to operations.", to: "operations" },
+        ],
+      },
+      operations: {
+        label: "Operations", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the operations building.", "monitors still running. the haven broadcast, looping on every screen.", "the control room, deeper in — where the call found you.", "the status board still reads 143. present."] }],
+        revisit: [{ from: "narrator", msgs: ["operations. the loop still plays to no one."] }],
+        exits: [
+          { label: "Back to the gate yard.", to: "gate_yard" },
+          { label: "Back to the photo wall.", to: "photo_wall" },
+          { label: "Over to the communications desk.", to: "communications_desk" },
+          { label: "Into the records office.", to: "records_office" },
+        ],
+      },
+      communications_desk: {
+        label: "Comms Desk", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a communications desk, off the ops floor.", "a headset still plugged in.", "the terminal's logged in. one account. never signed off.", "tape on the monitor, hand-lettered. K.A."] }],
+        revisit: [{ from: "narrator", msgs: ["the comms desk. K.A., still logged in."] }],
+        caseFile: { raise: ["p3_kim"], unlocks: "comms" }, // Kim's station points to the array
+        exits: [
+          { label: "Back to operations.", to: "operations" },
+          { label: "Across to the records office.", to: "records_office" },
+        ],
+      },
+      records_office: {
+        label: "Records Office", kind: "room", routeRecords: true, // onEnter pulled from PHASE3_RECORDS[path]
+        revisit: [{ from: "narrator", msgs: ["the records office. your evidence and hers, filed together."] }],
+        caseFile: { raise: ["p3_records"], unlocks: "mercy" }, // the records point you back at Mercy
+        exits: [
+          { label: "Back to operations.", to: "operations" },
+          { label: "Over to the communications desk.", to: "communications_desk" },
+        ],
+      },
+      generator_room: {
+        label: "Generator Room", kind: "room", power: true,
+        onEnter: [{ from: "narrator", msgs: ["the generator room.", "the hum you've heard since the gate.", "fuel drums, half full. topped up by hand, recently.", "this is why the lights never went out. someone kept it running."] }],
+        revisit: [{ from: "narrator", msgs: ["the generator, still turning over. fuel still in the drums."] }],
+        caseFile: { raise: ["p3_power"] },
+        exits: [
+          { label: "Back to the gate yard.", to: "gate_yard" },
+          { label: "Up to the dining hall.", to: "dining_hall" },
+        ],
+      },
+      outer_road: {
+        label: "Outer Road", kind: "exit",
+        onEnter: [{ from: "narrator", msgs: ["the road out of haven.", "past the gate, the dark spreads in every direction.", "harwick. and somewhere in it, the places your evidence pointed to.", "not yet. but the roads are there when you're ready."] }],
+        revisit: [{ from: "narrator", msgs: ["the road out. harwick, waiting in the dark."] }],
+        exits: [
+          { label: "Back into the compound.", to: "gate_yard" },
+          // Region exits — spokes from the Haven hub. All locked in 3A. The two regions the
+          // player earned evidence for in the prologue are named; the rest stay hidden until
+          // a later region surfaces them (no premature names for places never heard of).
+          { label: "Mercy General — back east.", region: "mercy", locked: true },
+          { label: "The Communications Array — the broadcast's source.", region: "comms", locked: true },
+          { label: "City Hall.", region: "cityhall", locked: true, hidden: true },
+          { label: "The Research Annex.", region: "annex", locked: true, hidden: true },
+        ],
+      },
+    },
+  },
+  // ── Mercy General (3B) — truth: YOU. Who you were / why the wipe. Clinical, personal, dread.
+  // The full personal payoff lands at room 312: you were Project Haven's architect and erased your
+  // own memory here, out of guilt. It states ONLY your identity + the self-wipe — never what the
+  // Signal is, never the 143 upload, never the infected (those are Comms / City Hall / Annex).
+  // Mostly dark (only dark_ward has power) → battery tension is the dread; you recharge at Haven.
+  mercy: {
+    id: "mercy", label: "Mercy General", truth: "you", entryNode: "ambulance_bay", unlocked: false,
+    nodes: {
+      ambulance_bay: {
+        label: "Ambulance Bay", kind: "hub",
+        onEnter: [{ from: "narrator", msgs: ["mercy general. the way you came in, days ago — and long before that.", "the ambulance bay. rigs left with their doors open.", "past them, the power's dead. just your phone-light and what leaks through the windows."] }],
+        revisit: [{ from: "narrator", msgs: ["the ambulance bay. the rigs haven't moved."] }],
+        exits: [
+          { label: "In through the lobby.", to: "lobby" },
+          { label: "Out to the road — back toward Haven.", region: "haven" },
+        ],
+      },
+      lobby: {
+        label: "Lobby", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the lobby. triage tape still down on the floor.", "gurneys shoved against the wall. a clipboard. a cup of coffee gone to mould.", "the dark sits heavier in here. somewhere deep in the building, something hums."] }],
+        revisit: [{ from: "narrator", msgs: ["the lobby again. the dark, the hum."] }],
+        exits: [
+          { label: "Back to the ambulance bay.", to: "ambulance_bay" },
+          { label: "Down the administration wing.", to: "admin_wing" },
+          { label: "Toward the sealed ward — where the hum is.", to: "dark_ward" },
+        ],
+      },
+      admin_wing: {
+        label: "Administration", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the administration wing. offices, doors ajar.", "a staff directory on the wall. names and titles.", "one of them is yours. and the title beside it: director.", "the corner office is yours too. your nameplate. a layer of dust on everything but the chair."] }],
+        revisit: [{ from: "narrator", msgs: ["the admin wing. your name, still on the wall."] }],
+        caseFile: { raise: ["p3_mercy_staff"] },
+        exits: [
+          { label: "Back to the lobby.", to: "lobby" },
+          { label: "Into medical records.", to: "records_room" },
+        ],
+      },
+      records_room: {
+        label: "Medical Records", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["medical records. drawers hanging open.", "your file is thick. years of it — staff, then patient.", "the last entry is an admission. self-admitted. you checked yourself in.", "the day before the broadcast started looping."] }],
+        revisit: [{ from: "narrator", msgs: ["records. your file, where you left it open."] }],
+        caseFile: { raise: ["p3_admit"] },
+        exits: [
+          { label: "Back to administration.", to: "admin_wing" },
+          { label: "Through to the procedure suite.", to: "procedure_room" },
+        ],
+      },
+      procedure_room: {
+        label: "Procedure Suite", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a procedure suite. one chair, bolted to the floor.", "leads, straps, a tray of instruments laid out neat.", "the order on the tray: targeted memory ablation.", "the authorization line carries one signature. yours."] }],
+        revisit: [{ from: "narrator", msgs: ["the procedure suite. the chair, waiting."] }],
+        caseFile: { raise: ["p3_mercy_procedure"] },
+        exits: [
+          { label: "Back to records.", to: "records_room" },
+          { label: "To the room at the end of the hall — 312.", to: "patient_room_312" },
+        ],
+      },
+      patient_room_312: {
+        label: "Room 312", kind: "room", truth: "you",
+        onEnter: [{ from: "narrator", msgs: ["room 312. your name is on the door.", "you knew the weight of it before you touched the handle.", "a bed. a chair pulled close, like someone sat the whole time.", "on the table, a project haven badge. director. architect. yours.", "and a note, in your own handwriting: 'i built it. i can't carry what that means. let me forget.'", "you ran project haven. and when you couldn't live with it, you came here and had yourself erased."] }],
+        revisit: [{ from: "narrator", msgs: ["room 312. your name on the door. your note on the table."] }],
+        ellie: ["i remember you choosing it.", "i remember all of you."],
+        caseFile: { raise: ["p3_mercy_truth"] },
+        exits: [
+          { label: "Back to the procedure suite.", to: "procedure_room" },
+        ],
+      },
+      dark_ward: {
+        label: "Sealed Ward", kind: "room", power: true,
+        onEnter: [{ from: "narrator", msgs: ["a sealed ward. a generator grinds somewhere below it — the one thing still running.", "the only lit hallway in the building. the lights buzz, wrong, and hold.", "the doors are taped shut from the outside. you don't open them.", "a crash cart by the nurses' station. its battery still holds a charge."] }],
+        revisit: [{ from: "narrator", msgs: ["the sealed ward. the lights still buzz. the doors stay shut."] }],
+        exits: [
+          { label: "Back to the lobby.", to: "lobby" },
+        ],
+      },
+    },
+  },
+  // ── Communications Array (3C) — truth: the SIGNAL. Electromagnetic, wrong, humming. The payoff at
+  // signal_core: the Signal is an upload network (minds copied in; the connected are inside it), the
+  // 143 are in there, and the "KIM" texts have been a transmission — no hand ever held the phone.
+  // HOLD: what Ellie *is* / that she chose it (finale); the outbreak / infected = half-connected
+  // (Annex — do NOT foreshadow). Still transmitting → it has power (transmitter_hall recharges).
+  comms: {
+    id: "comms", label: "Communications Array", truth: "signal", entryNode: "array_gate", unlocked: false,
+    nodes: {
+      array_gate: {
+        label: "Array Gate", kind: "hub",
+        onEnter: [{ from: "narrator", msgs: ["the communications array. a fenced lot at the edge of harwick.", "dishes, and a single mast — red lights still blinking at the top.", "the hum reaches you before the gate does. you feel it in your teeth."] }],
+        revisit: [{ from: "narrator", msgs: ["the array gate. the mast lights still blink. the hum hasn't stopped."] }],
+        exits: [
+          { label: "In among the dishes.", to: "dish_field" },
+          { label: "Back down the access road — toward Haven.", region: "haven" },
+        ],
+      },
+      dish_field: {
+        label: "Dish Field", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["rows of dishes, all turned the same way. west — toward the city.", "the air between them is wrong. a pressure. a whine just under hearing.", "your phone-light stutters when you cross the lines."] }],
+        revisit: [{ from: "narrator", msgs: ["the dish field. every dish aimed west, holding."] }],
+        exits: [
+          { label: "Back to the gate.", to: "array_gate" },
+          { label: "Into the control room.", to: "control_room" },
+        ],
+      },
+      control_room: {
+        label: "Control Room", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the control room. monitors mostly dead, one still scrolling.", "transmitter logs. the broadcast — your broadcast, the loop that called you here — originates from this room.", "same coordinates, same voice, going out on a timer since the first night. no one at the desk."] }],
+        revisit: [{ from: "narrator", msgs: ["the control room. the loop still goes out to no one."] }],
+        caseFile: { raise: ["p3_comms_loop"] },
+        exits: [
+          { label: "Back to the dish field.", to: "dish_field" },
+          { label: "Into the operator's booth.", to: "kim_booth" },
+          { label: "Down to the transmitter hall.", to: "transmitter_hall" },
+        ],
+      },
+      kim_booth: {
+        label: "Operator's Booth", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a booth off the floor. a headset on the desk, a chair shoved back hard.", "the log is open to the last manual transmission. operator: K.A.", "she broke protocol — an open channel, unencrypted, one line:", "\"don't let them put you in. it isn't sleep. i'm going to find him.\"", "timestamped the night the uploads began. then she logged off, and never logged back in."] }],
+        revisit: [{ from: "narrator", msgs: ["the operator's booth. K.A.'s last line, still open on the log."] }],
+        caseFile: { raise: ["p3_kim_refused"] },
+        exits: [
+          { label: "Back to the control room.", to: "control_room" },
+        ],
+      },
+      transmitter_hall: {
+        label: "Transmitter Hall", kind: "room", power: true,
+        onEnter: [{ from: "narrator", msgs: ["the transmitter hall. the hum is a roar here, felt in the sternum.", "racks of hardware, indicator lights crawling. it draws its own power — it has never once stopped.", "a maintenance battery bank by the door, still holding a charge."] }],
+        revisit: [{ from: "narrator", msgs: ["the transmitter hall. the roar, the crawling lights."] }],
+        exits: [
+          { label: "Back to the control room.", to: "control_room" },
+          { label: "Through to the cold room behind it.", to: "signal_core" },
+        ],
+      },
+      signal_core: {
+        label: "Signal Core", kind: "room", truth: "signal",
+        onEnter: [{ from: "narrator", msgs: ["a cold room behind the transmitters. server racks, frost on the housings.", "the logs aren't broadcasts. they're people — names, then patterns. minds, written down and kept running.", "the haven 143. they didn't die. they were copied in here, and they're still running.", "you look at your phone. the texts from \"kim.\"", "no one ever held that phone. the words have been coming from in here — a transmission, wearing a name."] }],
+        revisit: [{ from: "narrator", msgs: ["the cold room. the racks hum. the minds keep running."] }],
+        ellie: ["i can still hear them.", "all of them. all the time."],
+        caseFile: { raise: ["p3_signal_uploadnet", "p3_phone", "p3_voice"] },
+        exits: [
+          { label: "Back to the transmitter hall.", to: "transmitter_hall" },
+        ],
+      },
+    },
+  },
+  // ── City Hall (3D) — truth: PROJECT HAVEN (what it was / who authorized). Bureaucratic rot,
+  // cover-up. RESTRAINED reveal: the charter, the 143 roster, the authorization (your signature as
+  // architect) — cold documents; let the player feel it. HOLD: the moral "lifeboat for the few"
+  // framing + cover-up extent (don't editorialize); what "the end" was; that Haven's Signal caused
+  // the outbreak (→ Annex; not foreshadowed). Truth-gated: opens once the "you" truth (Mercy) lands.
+  cityhall: {
+    id: "cityhall", label: "City Hall", truth: "project_haven", entryNode: "rotunda", unlocked: false,
+    nodes: {
+      rotunda: {
+        label: "Rotunda", kind: "hub",
+        onEnter: [{ from: "narrator", msgs: ["city hall. marble steps, a flag limp on its pole.", "the doors stand open. a rotunda under a dead chandelier.", "evacuation notices taped to everything — and dates that stop, all on the same day."] }],
+        revisit: [{ from: "narrator", msgs: ["the rotunda. the chandelier hangs dark."] }],
+        exits: [
+          { label: "Into the atrium.", to: "atrium" },
+          { label: "Out the front steps — back toward Haven.", region: "haven" },
+        ],
+      },
+      atrium: {
+        label: "Atrium", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the atrium. service counters, a building directory behind cracked glass.", "paper everywhere — forms half-filled, a city's worth of unfinished business.", "the directory lists a department that's on no public sign: project haven. sub-level."] }],
+        revisit: [{ from: "narrator", msgs: ["the atrium. paper drifts where the doors don't quite close."] }],
+        caseFile: { raise: ["p3_ch_dept"] },
+        exits: [
+          { label: "Back to the rotunda.", to: "rotunda" },
+          { label: "Into the clerk's records.", to: "records_room" },
+          { label: "Up to the council chamber.", to: "council_chamber" },
+        ],
+      },
+      records_room: {
+        label: "Clerk's Records", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the records room. cabinets pulled open and stripped.", "but the project haven drawer is full. they didn't get to it — or weren't allowed.", "requisitions. budgets. a program with a line item and a city seal."] }],
+        revisit: [{ from: "narrator", msgs: ["the records room. the project haven drawer, still full."] }],
+        exits: [
+          { label: "Back to the atrium.", to: "atrium" },
+          { label: "Into the cold archive.", to: "cold_archive" },
+          { label: "Through to the vault.", to: "charter_vault" },
+        ],
+      },
+      cold_archive: {
+        label: "Cold Archive", kind: "room", power: true,
+        onEnter: [{ from: "narrator", msgs: ["a climate-controlled archive behind the records room. a generator keeps it cold.", "dry air, steady lights — the one room they kept running, for the paper.", "a charged battery pack sits in a cradle by the door."] }],
+        revisit: [{ from: "narrator", msgs: ["the cold archive. the generator holds the chill."] }],
+        exits: [
+          { label: "Back to the records room.", to: "records_room" },
+        ],
+      },
+      council_chamber: {
+        label: "Council Chamber", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the council chamber. a dais, a horseshoe of empty seats, brass name placards.", "a vote is still up on the board: motion — project haven — approved.", "no public minutes. the gallery seats are chained off."] }],
+        revisit: [{ from: "narrator", msgs: ["the council chamber. the motion still reads approved."] }],
+        caseFile: { raise: ["p3_ch_authorized"] },
+        exits: [
+          { label: "Back to the atrium.", to: "atrium" },
+          { label: "Through to the vault.", to: "charter_vault" },
+        ],
+      },
+      charter_vault: {
+        label: "Charter Vault", kind: "room", truth: "project_haven",
+        onEnter: [{ from: "narrator", msgs: ["a secure records vault behind the chamber. a heavy door, left open.", "the project haven charter. its purpose, in plain language: preservation of personnel — minds, kept, before the end.", "a roster clipped to it. one hundred forty-three names. kim's is on it. lower down, yours.", "the authorization page. signatures — the council's, and at the bottom, as architect: yours."] }],
+        revisit: [{ from: "narrator", msgs: ["the vault. the charter, the roster, your signature at the bottom."] }],
+        ellie: ["i remember everyone.", "every name on it."],
+        caseFile: { raise: ["p3_ch_truth", "p3_why143"] },
+        exits: [
+          { label: "Back to the records room.", to: "records_room" },
+          { label: "Back to the council chamber.", to: "council_chamber" },
+        ],
+      },
+    },
+  },
+  // ── Research Annex (3E) — truth: THE OUTBREAK. "the worst place; the answer." Blunt, NOT softened
+  // (STORY.md §2): the outbreak = the Signal breaching Haven's containment; the infected = the
+  // half-connected (people, minds half-pulled in); EVERY prologue FIGHT was putting down a person;
+  // your Project Haven built the thing that did it. HOLD for the finale (3F): where the 143 went /
+  // that they "walked out"; what Ellie *is* / that she chose it; the Accept/Refuse choice + your slot.
+  annex: {
+    id: "annex", label: "Research Annex", truth: "outbreak", entryNode: "annex_dock", unlocked: false,
+    nodes: {
+      annex_dock: {
+        label: "Loading Dock", kind: "hub",
+        onEnter: [{ from: "narrator", msgs: ["the research annex. the last building, set apart — fenced twice over.", "a loading dock. biohazard placards, a decon shower long dry.", "the quiet here is heavier. you don't want to go in. you go in."] }],
+        revisit: [{ from: "narrator", msgs: ["the loading dock. the decon shower, still dry."] }],
+        exits: [
+          { label: "In through the airlock.", to: "airlock" },
+          { label: "Back up the service road — toward Haven.", region: "haven" },
+        ],
+      },
+      airlock: {
+        label: "Containment Airlock", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a containment airlock. the inner door is off its frame — blown outward.", "whatever was sealed in here didn't get let out. it pushed.", "scorch and warping, all of it pointing toward the city."] }],
+        revisit: [{ from: "narrator", msgs: ["the airlock. the door still hangs the wrong way."] }],
+        caseFile: { raise: ["p3_an_breach"] },
+        exits: [
+          { label: "Back to the dock.", to: "annex_dock" },
+          { label: "Into the labs.", to: "labs" },
+        ],
+      },
+      labs: {
+        label: "Research Labs", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the research labs. benches, terminals, a whiteboard wall.", "the work is everywhere, and it's familiar: the signal. uploading. preserving minds.", "your handwriting is on half of it. this is where you built it."] }],
+        revisit: [{ from: "narrator", msgs: ["the labs. your handwriting, still on the boards."] }],
+        caseFile: { raise: ["p3_an_lab"] },
+        exits: [
+          { label: "Back to the airlock.", to: "airlock" },
+          { label: "Into the cold lab.", to: "cold_lab" },
+          { label: "Down to the observation wing.", to: "observation" },
+        ],
+      },
+      cold_lab: {
+        label: "Cold Lab", kind: "room", power: true,
+        onEnter: [{ from: "narrator", msgs: ["a server lab, sealed and cold, still running on its own line.", "the breach report sits open on a terminal: containment failure. signal — uncontained.", "a charged cell in a rack by the door."] }],
+        revisit: [{ from: "narrator", msgs: ["the cold lab. the breach report, still on the screen."] }],
+        caseFile: { raise: ["p3_an_report"] },
+        exits: [
+          { label: "Back to the labs.", to: "labs" },
+        ],
+      },
+      observation: {
+        label: "Observation Wing", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["an observation wing. cells behind reinforced glass.", "the early subjects — when it was still being studied, one at a time.", "behind the glass: movement. slow. wrong. and unmistakably people. faces.", "the same wrongness that's out in the streets. the same that came at you on the way here."] }],
+        revisit: [{ from: "narrator", msgs: ["the observation wing. behind the glass, they still move."] }],
+        caseFile: { raise: ["p3_an_patientzero"] },
+        exits: [
+          { label: "Back to the labs.", to: "labs" },
+          { label: "To the containment chamber at the heart of it.", to: "containment_core" },
+        ],
+      },
+      containment_core: {
+        label: "Containment Core", kind: "room", truth: "outbreak",
+        onEnter: [{ from: "narrator", msgs: ["the containment chamber at the heart of the annex. the breach started here.", "the signal was never just a broadcast. it was a way in — minds copied, kept. haven did that cleanly, to its 143.", "here it got loose. uncontained. and it didn't take people whole — it took them halfway.", "mind half-pulled into the signal, the body left standing, moving, wrong. that is the outbreak. that is the infected.", "the things you fought through to reach haven — every one of them was a person. still half-alive in there. you didn't know. you do now.", "haven's 143 went in clean. the city got the spill. you built the thing that did both."] }],
+        revisit: [{ from: "narrator", msgs: ["the containment core. the breach, where it began."] }],
+        ellie: ["the ones in the street.", "i felt every one of them go out."],
+        caseFile: { raise: ["p3_an_truth"] },
+        exits: [
+          { label: "Back to the observation wing.", to: "observation" },
+        ],
+      },
+    },
+  },
+};
+// Locked-region exit beats — terse, no spoilers (the gate, not the truth behind it).
+const PHASE3_LOCKED_EXIT = {
+  mercy:    ["mercy general. east, the way you came.", "not yet. you need a reason to walk back into that."],
+  comms:    ["the array — wherever the broadcast comes from.", "you don't know the way. not yet."],
+  cityhall: ["there's somewhere else. you can feel it.", "but you don't have what you'd need to find it."],
+  annex:    ["somewhere this all started.", "you're not ready. not for that."],
+};
+// records_office is ROUTE-AWARE — it ties to the same evidence the player surfaced on their
+// prologue leg (mirrors HAVEN_RECORDS_BEAT: file/face · log/voice · order/name), so the beat
+// never claims a "file" or a "face" on a route that actually found a log or a deployment order.
+const PHASE3_RECORDS = {
+  hospital: ["the records office. resident files, a roster.", "your patient file is here — the one with your name on it.", "a second clipped behind it. her face. same building. before any of this."],
+  metro:    ["the records office. resident files, a roster.", "the broadcast log from the metro is filed here.", "and logged beside it — her voice. two weeks before the loop. before any of this."],
+  route9:   ["the records office. resident files, a roster.", "the deployment order from the checkpoint is filed here.", "and on the roster beside it — her name. assigned here. before any of this."],
+};
+// Region truths — each spoke pays off exactly one (STORY.md §5). Keyed by truth id; `line` is the
+// one-sentence Case File crystallization shown in the TRUTHS section once uncovered. Later regions
+// (signal/project_haven/outbreak) get their lines when those regions are built (3C–3E).
+const PHASE3_TRUTHS = {
+  you:           { title: "Who you were",          line: "you were the architect of Project Haven — and you erased your own memory rather than carry what you'd done." },
+  ellie:         { title: "What Ellie is" },
+  signal:        { title: "What the Signal is",        line: "the Signal is an upload network — it copies a mind in; the connected aren't dead, they're inside it. the 143 are in there. and the texts were a transmission. no one ever held the phone." },
+  project_haven: { title: "What Project Haven was",     line: "Project Haven was a sanctioned program to upload the 143 into the Signal before the end. the charter, the roster, the signatures — yours among them, as architect. official. real. yours." },
+  outbreak:      { title: "The outbreak",               line: "the outbreak was the Signal breaching Haven's containment — it got into people, pulled them halfway in, left the bodies moving. the 'infected' were the half-connected. every one you put down was a person. you built the thing that did it." },
+};
+// Truth-gated region unlocks — uncovering a truth can open the next spoke (mid/late progression).
+// "you" (Mercy) → City Hall: you learn you ran the project, so you go find who authorized it.
+// (The Research Annex, 3E, will gate on a truth COUNT rather than a single id.)
+const TRUTH_UNLOCKS = { you: "cityhall" };
+
+// ─── Phase 3F — the finale: the Accept / Refuse ending ──────────────────────────────
+// Triggered by a final call at Haven once all 4 truths are uncovered (bookends the prologue's
+// first call). The call pays off the last held threads — what Ellie IS, that the 143 walked out
+// (destination OPEN, §2), the no-body phone, and your held slot — then offers the binary choice
+// canon built toward. Two ambiguous, definitive endings; neither "wins" (SOMA-tone).
+const FINALE_CHOICE = "▸ the phone — it's ringing. answer it.";
+const ACCEPT_CHOICE = "Let her take you in.";
+const REFUSE_CHOICE = "Put the phone down.";
+// The convergence call — a flat line list, played with cumulative delays (mirrors the prologue call).
+const FINALE_CONVERGENCE = [
+  { from:"narrator", text:"the phone rings." },
+  { from:"narrator", text:"not a buzz this time. a call. the way it did that first night." },
+  { from:"system",   text:"INCOMING CALL  —  ELLIE" },
+  { from:"narrator", text:"you answer." },
+  { from:"ellie",    text:"you found all of it." },
+  { from:"ellie",    text:"then you know what i am now." },
+  { from:"ellie",    text:"i went in. when the uploads started, i said yes. i'm in the signal — i have been the whole time." },
+  { from:"ellie",    text:"no one's been holding this phone. it's just me, reaching." },
+  { from:"ellie",    text:"the 143 didn't vanish. once they were copied clean they walked out — through the open gate, on their own feet. that's what a finished one does." },
+  { from:"ellie",    text:"kim wouldn't come. she said it wasn't sleep. she stayed herself, and the city took her for it." },
+  { from:"ellie",    text:"there's a slot here. the board still counts it. it's been yours since the start — i've been holding it open." },
+  { from:"ellie",    text:"you don't have to be the last one out there. come in. i'll be here. all of us will." },
+  { from:"narrator", text:"the phone is warm in your hand." },
+  { from:"narrator", text:"it's the same choice kim made. you can feel it waiting." },
+];
+const FINALE_ACCEPT = [
+  { from:"player",   text:"Okay. Okay." },
+  { from:"ellie",    text:"okay. just stop holding on." },
+  { from:"narrator", text:"you let go." },
+  { from:"narrator", text:"it doesn't hurt. it's like a name being read off a list." },
+  { from:"narrator", text:"then you're — everywhere. the 143. ellie. all of it at once. warm. together." },
+  { from:"narrator", text:"you can hear them. all of them. all the time." },
+  { from:"narrator", text:"somewhere a body slumps against a wall, phone still in its hand, eyes open. it doesn't get up." },
+  { from:"narrator", text:"you don't think about it. you're not out there anymore." },
+  { from:"narrator", text:"or something that remembers being you isn't. it's hard to tell, in here. it doesn't seem to matter." },
+];
+const ACCEPT_ENDING_LINES = ["you went in.", "you are not alone anymore.", "you are not sure you are anyone at all."];
+const FINALE_REFUSE = [
+  { from:"narrator", text:"you set the phone down on the rack. screen up." },
+  { from:"ellie",    text:"..." },
+  { from:"ellie",    text:"okay." },
+  { from:"narrator", text:"the call doesn't end. you just stop listening to it." },
+  { from:"narrator", text:"the screen stays lit a while. then it doesn't." },
+  { from:"narrator", text:"you're alone. really alone now — the only voice out here that's still a person." },
+  { from:"narrator", text:"the city is dead. you will be too, before long. like kim. as yourself." },
+  { from:"narrator", text:"you don't know if that was brave or just stubborn." },
+  { from:"narrator", text:"kim refused, and it killed her. you refused too. the difference is you got to choose it with your eyes open." },
+];
+const REFUSE_ENDING_LINES = ["you stayed.", "you are still yourself.", "for as long as that lasts."];
+
+// Dev-only map integrity check (run once on mount when import.meta.env.DEV). Catches the
+// classic node-graph mistakes so a new region/node can't silently soft-lock: exits that point
+// nowhere, dead ends, and nodes unreachable from the region's entry. No-op in production.
+const validatePhase3Map = () => {
+  Object.values(PHASE3_REGIONS).forEach(region => {
+    const nodes = region.nodes || {};
+    const ids = Object.keys(nodes);
+    if (!ids.length) return; // placeholder region (no nodes yet) — skip
+    if (!nodes[region.entryNode]) console.warn(`[Phase3] ${region.id}: entryNode "${region.entryNode}" does not exist`);
+    ids.forEach(id => {
+      const exits = nodes[id].exits || [];
+      if (!exits.length && nodes[id].kind !== "terminal") console.warn(`[Phase3] ${region.id}.${id}: dead end (no exits, not kind:"terminal")`);
+      exits.forEach(e => {
+        if (e.to && !nodes[e.to]) console.warn(`[Phase3] ${region.id}.${id}: exit → "${e.to}" (no such node)`);
+        if (e.region && !PHASE3_REGIONS[e.region]) console.warn(`[Phase3] ${region.id}.${id}: region exit → "${e.region}" (no such region)`);
+        if (!e.to && !e.region) console.warn(`[Phase3] ${region.id}.${id}: exit "${e.label}" has neither to nor region`);
+      });
+    });
+    // Reachability from entryNode (in-region `to` edges only).
+    const seen = new Set(), stack = [region.entryNode];
+    while (stack.length) { const n = stack.pop(); if (seen.has(n) || !nodes[n]) continue; seen.add(n); (nodes[n].exits || []).forEach(e => e.to && stack.push(e.to)); }
+    ids.forEach(id => { if (!seen.has(id)) console.warn(`[Phase3] ${region.id}.${id}: unreachable from entryNode "${region.entryNode}"`); });
+  });
+};
+
 // ─── Investigation board — the persistent case file (Phase-3 foundation). ───────────
 // Entries reveal as the matching fragment/clue is collected; People/Locations/Questions
 // are scaffolded now and deepen in Phase 3. Kept deliberately sparse — Haven cracks the
@@ -297,15 +814,22 @@ const BOARD_CLUES = [
   { name:"Project Haven", note:"personnel reassigned to project haven. before day one." },
 ];
 const BOARD_PEOPLE = [
-  { name:"Ellie", note:"the voice. she says she remembers you." },
+  { name:"Ellie", note:(c, reached, raised, truths) =>
+      truths?.includes?.("signal") ? "she reaches you from inside the Signal — a transmission, not a hand on a phone. whether what's left is still her, you don't know yet."
+      : "the voice. she says she remembers you." },
   // Kim deepens by progress but stays a QUESTION. Her full identity (Kim Alvarez — Haven comms
   // tech, one of the 143, Ellie's closest friend who rejected the Signal) is a PHASE 3 reveal,
   // kept out of the prologue (STORY.md §3). The `reached` tier ties her to the 143 as a question.
-  { name:"Kim", note:(c, reached) =>
-      reached ? "her number is the one that texts you. you called her the night it began. and the 143 at haven — was she one of them? you don't know."
+  { name:"Kim", note:(c, reached, raised) =>
+      raised?.includes?.("p3_kim_refused") ? "Kim Alvarez — comms tech, one of the 143. her last transmission: she refused the upload ('it isn't sleep') and went to find the architect — you. she never connected. she died as herself."
+      : raised?.includes?.("p3_kim") ? "K.A. — her station at haven, still logged in. she worked the comms here. you've stood at her chair. you called her the night it began. and the 143 — was she one of them?"
+      : reached ? "her number is the one that texts you. you called her the night it began. and the 143 at haven — was she one of them? you don't know."
       : c.has("Patient File") ? "her name was already saved in your phone. you knew her. you don't remember her."
       : "you were found on her phone. you called her, right before. who was she?" },
-  { name:"You",   note:"no memory. the evidence keeps pointing back at you." },
+  { name:"You",   note:(c, reached, raised, truths) =>
+      truths?.includes?.("outbreak") ? "the architect of Project Haven. you built the Signal — and when it breached, it became the outbreak. the 143 went in clean; the city, and everyone in it, was the spill. all of it traces back to you. you couldn't carry it, so you made yourself forget."
+      : truths?.includes?.("you") ? "the architect of Project Haven. you ran it — then you admitted yourself to Mercy and had your own memory erased. you couldn't carry what you'd built."
+      : "no memory. the evidence keeps pointing back at you." },
 ];
 
 // Phase 3 = hub & spoke from Haven; each region holds one truth (STORY.md §5). The Case File
@@ -313,13 +837,14 @@ const BOARD_PEOPLE = [
 // stay hidden until Phase 3 surfaces them (no premature "???" for places never heard of).
 // reveal(clues:Set<string>, reached:boolean, path:string) → boolean
 const REGIONS = [
-  { key:"haven",    name:"The Haven",            truth:"Ellie",         reveal:(c, reached) => reached,                                              blurb:"built for 143. you found it empty." },
-  { key:"mercy",    name:"Mercy General",        truth:"you",           reveal:(c, reached, path) => c.has("Patient File") || path === "hospital",  blurb:"a hospital. your name is in its files." },
+  // `truthId` is the short id stored in discoveredTruths (display `truth` is the prose label).
+  { key:"haven",    name:"The Haven",            truth:"Ellie",         truthId:"ellie",         reveal:(c, reached) => reached,                                              blurb:"built for 143. you found it empty." },
+  { key:"mercy",    name:"Mercy General",        truth:"you",           truthId:"you",           reveal:(c, reached, path) => c.has("Patient File") || path === "hospital",  blurb:"a hospital. your name is in its files." },
   // Gated on `reached` too: the truth label names "the Signal", and canon reserves that word
   // until the phone-pressure beat on the approach (STORY.md §8) — by Haven it's in-fiction.
-  { key:"comms",    name:"Communications Array", truth:"the Signal",    reveal:(c, reached) => c.has("Broadcast Log") && reached,                    blurb:"the broadcast has a source. someone's still transmitting." },
-  { key:"cityhall", name:"City Hall",            truth:"Project Haven", reveal:() => false,                                                          blurb:"" },
-  { key:"annex",    name:"Research Annex",       truth:"the outbreak",  reveal:() => false,                                                          blurb:"" },
+  { key:"comms",    name:"Communications Array", truth:"the Signal",    truthId:"signal",        reveal:(c, reached) => c.has("Broadcast Log") && reached,                    blurb:"the broadcast has a source. someone's still transmitting." },
+  { key:"cityhall", name:"City Hall",            truth:"Project Haven", truthId:"project_haven", reveal:() => false,                                                          blurb:"where the program was approved — on the record, and off it." },
+  { key:"annex",    name:"Research Annex",       truth:"the outbreak",  truthId:"outbreak",      reveal:() => false,                                                          blurb:"where it began — and where it got out." },
 ];
 // reveal(clues:Set<string>, reached:boolean, raised:string[]) → boolean
 const BOARD_FACTS = [
@@ -329,6 +854,31 @@ const BOARD_FACTS = [
   { reveal:(c, reached) => reached,       text:"Haven was real, populated — then emptied." },
   // The contradiction — surfaces only once the player has *seen* the 143 record (haven143 raised).
   { reveal:(c, reached, raised) => !!raised?.includes?.("haven143"), text:"The board counts 143 residents — all present. You haven't seen a soul." },
+  // Phase 3 — Haven investigation facts (raised silently by node caseFile hooks; STORY.md §5).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_powered"),       text:"Haven's lights still burn — the power never failed." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_livedin"),       text:"Haven was lived-in — they left in the middle of a meal." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_143everywhere"), text:"143 bunks, 143 of everything — and not a body anywhere." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_records"),       text:"Your evidence and hers are filed together at Haven — before Day 1." },
+  // Phase 3 — Mercy General investigation (raised by Mercy nodes; the last is the truth itself).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_staff"),     text:"You were Mercy's director — and Project Haven's." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_admit"),           text:"You admitted yourself to Mercy — the day before the broadcast." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_procedure"), text:"The wipe was a procedure here. You signed the authorization." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_truth"),     text:"You built Project Haven — then erased yourself rather than carry it." },
+  // Phase 3 — Communications Array (the Signal). Holds what Ellie *is* + the outbreak/infected truth.
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_comms_loop"),       text:"The Haven broadcast comes from the array — going out on a timer since the first night." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_kim_refused"),      text:"Kim refused the upload, warned you it isn't sleep, and went looking for you." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_signal_uploadnet"), text:"The Signal is an upload network. The connected aren't dead — they're inside it. The 143 are in there." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_phone"),            text:"No one holds Kim's phone. The texts are a transmission from inside the Signal." },
+  // Phase 3 — City Hall (restrained: the documents, not the editorial). Holds the moral framing + cause.
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_dept"),          text:"Project Haven was a sanctioned city department — off the public signs." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_authorized"),    text:"Project Haven was approved by vote. No public minutes were kept." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_truth"),         text:"Project Haven preserved minds — it uploaded the 143 into the Signal before 'the end.'" },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_truth"),         text:"The 143 were a fixed roster — Kim's name, and yours. The charter is signed by you, as architect." },
+  // Phase 3 — Research Annex (the outbreak). Blunt; the combat reveal must land (STORY.md §2).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_report"),        text:"Containment failed at the Annex. The Signal got out — uncontained." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_patientzero"),   text:"The 'infected' are people — minds half-pulled into the Signal, the bodies still moving." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_truth"),         text:"Every thing you fought through in the prologue was a half-connected person." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_truth"),         text:"The outbreak was your Signal breaching Haven. The 143 went in clean; the city got the spill — you built both." },
 ];
 // CONTRADICTIONS — two KNOWN facts that can't both be true, paired into the open question they
 // force. The investigation layer the bible says to protect: it makes the Case File read like a
@@ -355,6 +905,17 @@ const BOARD_QUESTIONS = [
   { key:"haven",  text:"Why is Haven empty?",   evolved:{ key:"haven143", text:"Where are the 143?" } },
   // World thread — raised by studying route-9's environmental clues (OBSERVE).
   { key:"harwick", text:"What actually happened to Harwick?" },
+  // Phase 3 — Haven investigation. Surfaced as the player walks the compound (node caseFile
+  // hooks). Spoiler-safe: questions, not answers — they deepen the mystery, never resolve it.
+  { key:"p3_kim",         text:"Whose station is K.A. — and why is it still logged in?" },
+  { key:"p3_ellie_knows", text:"Why does the voice know this place?" },
+  { key:"p3_power",       text:"Who's been keeping Haven's lights on?" },
+  // Phase 3 — Mercy General (answered by the room-312 truth).
+  { key:"p3_admit",       text:"Why did you admit yourself to Mercy?" },
+  // Phase 3 — Communications Array. Deliberately UNANSWERED — the hook to the finale (what Ellie is).
+  { key:"p3_voice",       text:"If no hand ever held the phone — what's been texting you?" },
+  // Phase 3 — City Hall. UNANSWERED — the hook to the Research Annex (the outbreak / what was coming).
+  { key:"p3_why143",      text:"Why only 143 — and what were they so sure was coming?" },
 ];
 // Base question keys (top-level) — used to decide whether a raiseQuestion() announces a "NEW
 // QUESTION" card. Evolution keys (kim143/haven143) aren't here, so they don't double-announce.
@@ -690,9 +1251,17 @@ const parseResourceMarkers = (choice) => {
 // costs power — one place owns the rate. Exceptions: phase1 is a pre-charger set-piece
 // (not a clock yet), and pure story beats (memory flash, discovery) aren't traversal.
 // Continues ("·") are charged 0 by the caller. Tune this rate in the M7 balance pass.
+// Phase 3 — "battery is exploration" (softened survival, STORY.md §4). Movement between map
+// nodes costs a little power; powered nodes (gate yard, generator) top you back to a floor.
+// Deliberately non-punishing in 3A — no offline-death in Phase 3 yet (the tool-drain model
+// — radio / flashlight — lands in a later phase).
+const PHASE3_MOVE_COST   = 2;   // % battery per node move
+const PHASE3_POWER_FLOOR = 60;  // a powered node tops a low battery back up to this
+
 const beatBatteryCost = (phase) => {
   if (phase === "phase1") return 0;
   if (phase === "p2_memory_frag" || phase === "p2_discovery") return 0;
+  if (phase === "phase3") return PHASE3_MOVE_COST; // a map move (drain applied per choice in handleChoice)
   return 1; // everything else: 1% per advance
 };
 
@@ -829,6 +1398,13 @@ const MessageRow = memo(function MessageRow({ m }) {
         )}
       </div>
     );
+  if (m.from === "truth_note")
+    return (
+      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.7rem 1.4rem", border:"1px solid #5a3a1a", background:"#0d0703", boxShadow:"0 0 18px rgba(200,120,40,0.18)", animation:"fi 1s ease" }}>
+        <div style={{ color:"#c87a40", fontSize:"0.62rem", letterSpacing:"0.2em", textShadow:"0 0 8px rgba(200,122,64,0.5)" }}>TRUTH UNCOVERED</div>
+        <div style={{ color:"#e0c89a", fontSize:"0.86rem", fontStyle:"italic", marginTop:"0.3rem", letterSpacing:"0.04em" }}>{m.title}</div>
+      </div>
+    );
   return (
     <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.55rem 0.9rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", lineHeight:"1.7", fontWeight:300, animation:"fi 0.35s ease" }}>
       {m.from==="player" ? parseText(m.text,"sent") : parseText(m.text,"msg")}
@@ -842,6 +1418,8 @@ export default function DeadSignal() {
   const [showNotif, setShowNotif]       = useState(false);
   const [offlineLines, setOfflineLines] = useState([]);
   const [completeLines, setCompleteLines] = useState([]);
+  const [endingLines, setEndingLines]   = useState([]);   // Phase 3F — the definitive ending screen
+  const [endingKind, setEndingKind]     = useState(null); // "accept" | "refuse"
   const [deathLines, setDeathLines]     = useState([]);   // Priority 1 — death screen
   const [deathCause, setDeathCause]     = useState(null); // "injury" | "starvation" | "dehydration"
   const [muted, setMuted]               = useState(false); // audio — user mute preference (persisted)
@@ -856,6 +1434,7 @@ export default function DeadSignal() {
   const [menuMsg, setMenuMsg]           = useState("");    // transient confirmation in the menu
   const [menuNote, setMenuNote]         = useState("");    // transient note on the main menu (e.g. Story teaser)
   const [confirmReset, setConfirmReset] = useState(false); // two-tap confirm for the pause-menu "reset this run"
+  const [confirmPrologueRestart, setConfirmPrologueRestart] = useState(false); // two-tap confirm — Phase 3 "restart prologue · keep progress"
   const [optConfirm, setOptConfirm]     = useState(false); // two-tap confirm for Options "reset all data"
   const [showRestart, setShowRestart]   = useState(false);
   const [winProfile, setWinProfile]     = useState(null); // post-finish profile summary for the win screen
@@ -883,6 +1462,12 @@ export default function DeadSignal() {
   const [battPulse, setBattPulse]   = useState(false); // P6c — battery pickup HUD flourish
   const [dayThree, setDayThree]     = useState(false);
   const [havenFinalIndex, setHavenFinalIndex] = useState(0);
+  // ── Phase 3 — the open investigation (hub & spoke from Haven; STORY.md §5). ──
+  const [currentPhase3Region, setCurrentPhase3Region]     = useState(null); // active region id (e.g. "haven")
+  const [currentPhase3Node, setCurrentPhase3Node]         = useState(null); // active node id (e.g. "gate_yard")
+  const [visitedPhase3Nodes, setVisitedPhase3Nodes]       = useState([]);   // ["region:node", …] explored this run
+  const [discoveredTruths, setDiscoveredTruths]           = useState([]);   // region truth ids paid off (none in 3A)
+  const [phase3UnlockedRegions, setPhase3UnlockedRegions] = useState([]);   // region ids the player can travel to
 
   const pendingRef          = useRef([]);
   const dialogueRef         = useRef([]);   // timers owned by scheduleMessages (C3 — kept separate from pendingRef)
@@ -921,6 +1506,11 @@ export default function DeadSignal() {
   const raisedQuestionsRef  = useRef([]);    // case-file OPEN QUESTIONS raised this run (by story beat)
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
+  const currentPhase3RegionRef = useRef(null); // Phase 3 — mirrors for async timers / handlers
+  const currentPhase3NodeRef   = useRef(null);
+  const visitedPhase3NodesRef  = useRef([]);
+  const discoveredTruthsRef    = useRef([]);
+  const phase3UnlockedRef      = useRef([]);
 
   resourcesRef.current      = resources;
   screenRef.current         = screen;
@@ -934,6 +1524,11 @@ export default function DeadSignal() {
   currentEncounterRef.current  = currentEncounter;
   selectedFragmentRef.current  = selectedFragment;
   recoveredMemoriesRef.current = recoveredMemories;
+  currentPhase3RegionRef.current = currentPhase3Region;
+  currentPhase3NodeRef.current   = currentPhase3Node;
+  visitedPhase3NodesRef.current  = visitedPhase3Nodes;
+  discoveredTruthsRef.current    = discoveredTruths;
+  phase3UnlockedRef.current       = phase3UnlockedRegions;
 
   // ── Pausable timers ────────────────────────────────────────────────────────────
   // Every gameplay timer goes through setT() instead of raw setTimeout, so the dialogue
@@ -983,6 +1578,8 @@ export default function DeadSignal() {
   useEffect(() => {
     if (screen === "chat" && !menuOpen) resumeTimers(); else pauseTimers();
   }, [screen, menuOpen]);
+  // Dev-only: validate the Phase 3 invisible map once on mount (warns on broken exits/dead ends).
+  useEffect(() => { try { if (import.meta.env?.DEV) validatePhase3Map(); } catch (e) {} }, []);
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
 
   // Drop a QUESTION card into the chat, staggered so simultaneous raises (e.g. the name
@@ -994,6 +1591,12 @@ export default function DeadSignal() {
       setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...card }]);
       qQueueRef.current = Math.max(0, qQueueRef.current - 1);
     }, delay));
+  };
+
+  // Drop a TRUTH UNCOVERED card — a region's earned payoff (Phase 3). Caller schedules the timing
+  // (it lands right after the truth node's beats, with the Signal sting). One per region.
+  const announceTruth = (id) => {
+    setMessages(p => [...p, { id: nextId("truth"), from: "truth_note", truthId: id, title: (PHASE3_TRUTHS[id]?.title || id) }]);
   };
 
   // Case file — surface an OPEN QUESTION when its story beat hits (dedupe; mirror ref→state)
@@ -1043,6 +1646,7 @@ export default function DeadSignal() {
   const slotKey = (i) => `ds_save_${i}`;
   // Short, human-readable location for the slot screen, derived from run state.
   const locationLabel = () => {
+    if (gamePhase === "phase3" || gamePhase === "phase3_finale") return PHASE3_REGIONS[currentPhase3Region]?.label || "The Haven";
     if (dayThree || gamePhase.startsWith("haven")) return "The Haven";
     if (gamePhase === "shelter")     return "Shelter";
     if (gamePhase === "p2_ai_cross") return "Crossing Harwick";
@@ -1055,6 +1659,7 @@ export default function DeadSignal() {
   // strip, e.g. the apartment in phase1). Encounters borrow their leg's label via returnToPhase.
   const areaLabel = () => {
     const gp = gamePhase;
+    if (gp === "phase3" || gp === "phase3_finale") return (PHASE3_REGIONS[currentPhase3Region]?.label || "The Haven").toUpperCase();
     if (dayThree || gp.startsWith("haven")) return "THE HAVEN";
     if (gp === "shelter") return "SHELTER";
     if (gp === "p2_ai_cross" || (gp === "encounter" && returnToPhaseRef.current === "p2_ai_cross")) return "CROSSING HARWICK";
@@ -1090,6 +1695,12 @@ export default function DeadSignal() {
     seenEncounters: [...seenEncountersRef.current],
     shelterForced: shelterForcedRef.current,
     leadQueue: leadQueueRef.current, leadCursor: leadCursorRef.current, // player-paced exploration position
+    // Phase 3 — the investigation: which region/node, what's explored, truths, unlocked spokes.
+    phase3Region: currentPhase3RegionRef.current,
+    phase3Node: currentPhase3NodeRef.current,
+    visitedPhase3Nodes: visitedPhase3NodesRef.current,
+    discoveredTruths: discoveredTruthsRef.current,
+    phase3Unlocked: phase3UnlockedRef.current,
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
   // The full per-slot record written to storage.
@@ -1176,6 +1787,11 @@ export default function DeadSignal() {
     havenFinalRef.current     = run.havenFinal || HAVEN_FINAL_SEQUENCE;
     havenVisitedRef.current   = Array.isArray(run.havenVisited) ? run.havenVisited : [];
     discoveryFoundRef.current = !!run.discoveryFound;
+    currentPhase3RegionRef.current = run.phase3Region || null;
+    currentPhase3NodeRef.current   = run.phase3Node || null;
+    visitedPhase3NodesRef.current  = Array.isArray(run.visitedPhase3Nodes) ? run.visitedPhase3Nodes : [];
+    discoveredTruthsRef.current    = Array.isArray(run.discoveredTruths) ? run.discoveredTruths : [];
+    phase3UnlockedRef.current      = Array.isArray(run.phase3Unlocked) ? run.phase3Unlocked : [];
     seenEncountersRef.current = new Set(run.seenEncounters || []);
     seenBeatsRef.current = new Set(); lastStateLineRef.current = null; // run-local, not persisted
     shelterForcedRef.current  = !!run.shelterForced;
@@ -1199,6 +1815,9 @@ export default function DeadSignal() {
     setFragFired(!!run.fragFired); setCurrentEncounter(run.currentEncounter || null);
     setSelectedFragment(run.selectedFragment || null); setDayThree(!!run.dayThree);
     setHavenFinalIndex(run.havenFinalIndex || 0);
+    setCurrentPhase3Region(currentPhase3RegionRef.current); setCurrentPhase3Node(currentPhase3NodeRef.current);
+    setVisitedPhase3Nodes(visitedPhase3NodesRef.current); setDiscoveredTruths(discoveredTruthsRef.current);
+    setPhase3UnlockedRegions(phase3UnlockedRef.current);
     // memories: prefer the run's own cumulative set; else committed profile; else legacy global
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
@@ -1919,6 +2538,225 @@ export default function DeadSignal() {
     return t + delay;
   };
 
+  // ─── Phase 3 navigation — the invisible map made playable (mirrors showHavenMenu) ────
+  const phase3Node = (region, node) => PHASE3_REGIONS[region]?.nodes?.[node] || null;
+
+  // Present the current node's exits as the chat choice list. Hidden region exits (places
+  // the player hasn't earned the name of) are filtered. Reuses scheduleMessages → autosaves.
+  const showPhase3Exits = () => {
+    const node = phase3Node(currentPhase3RegionRef.current, currentPhase3NodeRef.current);
+    if (!node) return 0;
+    // Hidden region exits (places not yet heard of) appear once their region is unlocked.
+    const labels = (node.exits || []).filter(e => !e.hidden || (e.region && phase3UnlockedRef.current.includes(e.region))).map(e => e.label);
+    // The finale call — at the Haven hub, once all 4 truths are uncovered, the phone rings.
+    if (currentPhase3RegionRef.current === "haven" && currentPhase3NodeRef.current === "gate_yard" && discoveredTruthsRef.current.length >= 4) {
+      labels.push(FINALE_CHOICE);
+    }
+    return scheduleMessages([], labels, "narrator");
+  };
+
+  // Enter a node: (per-move battery drain is applied by handleChoice's generic drain via
+  // beatBatteryCost("phase3")). Here: top up at powered nodes, raise the node's Case File
+  // hooks, stream its beats (+ a sparse Ellie crack on first visit), mark visited, re-show
+  // exits. `first` = a region's entry node (an arrival, not a move).
+  const enterPhase3Node = (nodeId, { first = false } = {}) => {
+    const region = currentPhase3RegionRef.current;
+    const node = phase3Node(region, nodeId);
+    if (!node) { showPhase3Exits(); return; }
+    // Reconcile truth-gated unlocks (silent) — covers resumed saves whose truth predates this feature.
+    discoveredTruthsRef.current.forEach(tr => {
+      const opens = TRUTH_UNLOCKS[tr];
+      if (opens && !phase3UnlockedRef.current.includes(opens)) {
+        phase3UnlockedRef.current = [...phase3UnlockedRef.current, opens];
+        setPhase3UnlockedRegions(phase3UnlockedRef.current);
+      }
+    });
+    if (discoveredTruthsRef.current.length >= 2 && !phase3UnlockedRef.current.includes("annex")) {
+      phase3UnlockedRef.current = [...phase3UnlockedRef.current, "annex"];
+      setPhase3UnlockedRegions(phase3UnlockedRef.current);
+    }
+    const key = `${region}:${nodeId}`;
+    const firstVisit = !visitedPhase3NodesRef.current.includes(key);
+    currentPhase3NodeRef.current = nodeId; setCurrentPhase3Node(nodeId);
+    if (firstVisit) {
+      visitedPhase3NodesRef.current = [...visitedPhase3NodesRef.current, key];
+      setVisitedPhase3Nodes(visitedPhase3NodesRef.current);
+      // Case File hooks — questions announce a NEW QUESTION card; silent keys only gate facts.
+      if (node.caseFile?.raise) node.caseFile.raise.forEach(k => raiseQuestion(k));
+    }
+
+    // Route-aware nodes (records_office) pull their first-visit beat from a per-path map so the
+    // text matches what the player actually found on their leg (file/face · log/voice · order/name).
+    let beatMsgs, beatFrom = "narrator";
+    if (firstVisit && node.routeRecords) {
+      beatMsgs = PHASE3_RECORDS[currentPathRef.current] || PHASE3_RECORDS.hospital;
+    } else {
+      const beat = (firstVisit ? node.onEnter : (node.revisit || node.onEnter))?.[0];
+      beatMsgs = beat?.msgs || ["..."]; beatFrom = beat?.from || "narrator";
+    }
+    let t = scheduleMessages(beatMsgs, null, beatFrom);
+
+    // Powered node — top a low battery back to the floor ("battery is exploration", soft).
+    if (node.power && resourcesRef.current.battery < PHASE3_POWER_FLOOR) {
+      pendingRef.current.push(setT(() => {
+        setResources(p => ({ ...p, battery: Math.max(p.battery, PHASE3_POWER_FLOOR) }));
+        addMsg("system", `you pull a charge · battery ${PHASE3_POWER_FLOOR}%`, 0);
+        pulseBattery();
+      }, t));
+      t += 700;
+    }
+
+    // Region unlock — investigating a node can open a new spoke (its lead points there). Set the
+    // unlock immediately; the in-chat NEW LEAD card lands after this node's beats.
+    if (firstVisit && node.caseFile?.unlocks && !phase3UnlockedRef.current.includes(node.caseFile.unlocks)) {
+      const rid = node.caseFile.unlocks;
+      phase3UnlockedRef.current = [...phase3UnlockedRef.current, rid];
+      setPhase3UnlockedRegions(phase3UnlockedRef.current);
+      pendingRef.current.push(setT(() => addMsg("system", `▸ new lead · ${PHASE3_REGIONS[rid]?.label || rid} — reachable from the road`, 0), t));
+      t += 900;
+    }
+
+    // Truth payoff — a region's one answer, delivered ONCE, only where it's earned (STORY.md §5).
+    if (firstVisit && node.truth && !discoveredTruthsRef.current.includes(node.truth)) {
+      discoveredTruthsRef.current = [...discoveredTruthsRef.current, node.truth];
+      setDiscoveredTruths(discoveredTruthsRef.current);
+      pendingRef.current.push(setT(() => {
+        setSigFlicker(true); audioEngine.signal(); announceTruth(node.truth);
+        pendingRef.current.push(setT(() => setSigFlicker(false), 1300));
+      }, t));
+      t += 1000;
+      // A truth can open the next spoke (TRUTH_UNLOCKS) — the NEW LEAD lands after the truth card.
+      const opens = TRUTH_UNLOCKS[node.truth];
+      if (opens && !phase3UnlockedRef.current.includes(opens)) {
+        phase3UnlockedRef.current = [...phase3UnlockedRef.current, opens];
+        setPhase3UnlockedRegions(phase3UnlockedRef.current);
+        pendingRef.current.push(setT(() => addMsg("system", `▸ new lead · ${PHASE3_REGIONS[opens]?.label || opens} — reachable from the road`, 0), t));
+        t += 900;
+      }
+      // Count-gated: the Research Annex opens once 2 truths are uncovered (STORY.md §5, "late").
+      if (discoveredTruthsRef.current.length >= 2 && !phase3UnlockedRef.current.includes("annex")) {
+        phase3UnlockedRef.current = [...phase3UnlockedRef.current, "annex"];
+        setPhase3UnlockedRegions(phase3UnlockedRef.current);
+        pendingRef.current.push(setT(() => addMsg("system", `▸ new lead · ${PHASE3_REGIONS.annex.label} — reachable from the road`, 0), t));
+        t += 900;
+      }
+    }
+
+    // Ellie's crack (first visit only) lands after the narrator beat, then the exits return.
+    if (firstVisit && node.ellie) {
+      pendingRef.current.push(setT(() => {
+        setIsTyping(true);
+        const et = scheduleMessages(node.ellie, null, "ellie");
+        pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, et + 700));
+      }, t + 700));
+    } else {
+      pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, t + 700));
+    }
+  };
+
+  // Resolve a movement choice against the current node's exits. `to` = an in-region move;
+  // `region` = a spoke exit (locked in 3A → terse "not yet" beat, no transition).
+  const handlePhase3Choice = (choice) => {
+    if (stripMarkers(choice) === stripMarkers(FINALE_CHOICE)) { beginFinale(); return; }
+    const node = phase3Node(currentPhase3RegionRef.current, currentPhase3NodeRef.current);
+    if (!node) { enterPhase3Node(PHASE3_REGIONS.haven.entryNode, { first: true }); return; }
+    const picked = (node.exits || []).find(e => stripMarkers(e.label) === stripMarkers(choice));
+    if (!picked) { showPhase3Exits(); return; }
+    if (picked.to) { enterPhase3Node(picked.to); return; }
+    if (picked.region) {
+      const target = PHASE3_REGIONS[picked.region];
+      // Gate is driven by phase3UnlockedRegions (the data `locked` flag is just the initial state).
+      const unlocked = phase3UnlockedRef.current.includes(picked.region)
+        && target && Object.keys(target.nodes || {}).length > 0;
+      if (!unlocked) {
+        const lines = PHASE3_LOCKED_EXIT[picked.region] || ["not yet.", "you're not ready for that."];
+        const t = scheduleMessages(lines, null, "narrator");
+        pendingRef.current.push(setT(() => { setIsTyping(true); showPhase3Exits(); }, t + 700));
+        return;
+      }
+      currentPhase3RegionRef.current = picked.region; setCurrentPhase3Region(picked.region);
+      enterPhase3Node(target.entryNode, { first: true });
+      return;
+    }
+    showPhase3Exits();
+  };
+
+  // Commit this run's fragments/clues into the slot profile, bump playthroughs, set the 100%
+  // flag, and persist (run cleared — Phase 3 writes its own snapshot on the first menu).
+  // Shared by the auto-flow handoff so prologue progress still records without a win screen.
+  const mergeRunIntoProfile = () => {
+    const prev = activeProfileRef.current || emptyProfile();
+    const fragments = [...new Set([...(prev.fragments || []), ...recoveredMemoriesRef.current.filter(m => m.type === "fragment").map(m => m.name)])];
+    const clues     = [...new Set([...(prev.clues     || []), ...recoveredMemoriesRef.current.filter(m => m.type === "discovery").map(m => m.name)])];
+    const profile = { playthroughs: (prev.playthroughs || 0) + 1, fragments, clues, complete: fragments.length >= 9 && clues.length >= 3 };
+    activeProfileRef.current = profile;
+    const i = activeSlotRef.current;
+    (async () => { try { if (i != null) await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, null))); } catch (e) {} await refreshSlots(); })();
+    return profile;
+  };
+
+  // Auto-flow handoff into Phase 3 (STORY.md §7, revised): after the call dies, the prologue
+  // commits and the player is dropped — alone — into Haven as the investigation hub. Resources
+  // carry over ("battery is exploration"). No win screen; the pause is the canon "alone" beat.
+  const beginPhase3 = () => {
+    clearPending();
+    mergeRunIntoProfile();
+    currentPhase3RegionRef.current = "haven";  setCurrentPhase3Region("haven");
+    currentPhase3NodeRef.current   = null;     setCurrentPhase3Node(null);
+    visitedPhase3NodesRef.current  = [];       setVisitedPhase3Nodes([]);
+    discoveredTruthsRef.current    = [];       setDiscoveredTruths([]);
+    phase3UnlockedRef.current      = ["haven"];setPhase3UnlockedRegions(["haven"]);
+    setGamePhase("phase3"); gamePhaseRef.current = "phase3";
+    setContactName("ELLIE");
+    setSigFlicker(false); setIsTyping(false);
+    setMessages([]); setChoices([]);
+    setScreen("chat"); chatStartedRef.current = true;
+    const t = scheduleMessages(["the screen goes dark.", "then it doesn't.", "you're still here.", "alone, in the light of the place that called you."], null, "narrator");
+    pendingRef.current.push(setT(() => { setIsTyping(true); enterPhase3Node("gate_yard", { first: true }); }, t + 900));
+  };
+
+  // ─── Phase 3F — the finale flow (mirrors the prologue's call cadence) ────────────────
+  // Play a flat line list with cumulative delays; returns the total time so callers can chain.
+  const playFinaleLines = (lines, startDelay = 0) => {
+    let d = startDelay;
+    lines.forEach(ln => {
+      addMsg(ln.from, ln.text, d);
+      d += ln.from === "narrator" ? 1900 : ln.from === "system" ? 1400 : 2100;
+    });
+    return d;
+  };
+  // Persist which ending the player reached (the run is over → cleared to null).
+  const recordEnding = (kind) => {
+    const profile = { ...(activeProfileRef.current || emptyProfile()), ending: kind };
+    activeProfileRef.current = profile;
+    const i = activeSlotRef.current;
+    (async () => { try { if (i != null) await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, null))); } catch (e) {} await refreshSlots(); })();
+  };
+  // The final call at Haven — pays off the held threads, then offers Accept / Refuse.
+  const beginFinale = () => {
+    clearPending();
+    setGamePhase("phase3_finale"); gamePhaseRef.current = "phase3_finale";
+    setChoices([]); setIsTyping(false);
+    setSigFlicker(true); audioEngine.signal();
+    pendingRef.current.push(setT(() => setSigFlicker(false), 1400));
+    const t = playFinaleLines(FINALE_CONVERGENCE, 600);
+    pendingRef.current.push(setT(() => { setIsTyping(false); setChoices([ACCEPT_CHOICE, REFUSE_CHOICE]); }, t + 400));
+  };
+  // Resolve the choice → play its sequence → the definitive ending screen.
+  const handleFinaleChoice = (choice) => {
+    clearPending(); setChoices([]); setIsTyping(false);
+    const accept = stripMarkers(choice) === stripMarkers(ACCEPT_CHOICE);
+    setSigFlicker(true); audioEngine.signal();
+    pendingRef.current.push(setT(() => setSigFlicker(false), 1600));
+    const t = playFinaleLines(accept ? FINALE_ACCEPT : FINALE_REFUSE, 500);
+    recordEnding(accept ? "accept" : "refuse");
+    pendingRef.current.push(setT(() => {
+      setEndingLines(accept ? ACCEPT_ENDING_LINES : REFUSE_ENDING_LINES);
+      setEndingKind(accept ? "accept" : "refuse");
+      setScreen("ending");
+    }, t + 1400));
+  };
+
   const handleChoice = (choice) => {
     audioEngine.tapResponse(); // audio — response/choice tap
     clearPending();
@@ -1948,6 +2786,11 @@ export default function DeadSignal() {
       pendingRef.current.push(setT(() => setScreen("offline"), 1500));
       return;
     }
+
+    // Phase 3 — map navigation. The generic drain above already charged the move; no offline
+    // death in Phase 3 (non-punishing, STORY.md §4). enterPhase3Node owns recharge + beats.
+    if (gamePhaseRef.current === "phase3") { handlePhase3Choice(choice); return; }
+    if (gamePhaseRef.current === "phase3_finale") { handleFinaleChoice(choice); return; }
 
     if (gamePhaseRef.current === "p2_memory_frag") {
       const frag = selectedFragmentRef.current;
@@ -2229,7 +3072,9 @@ export default function DeadSignal() {
         // First crack, not the answer: the call drops on the player. No explanation.
         addMsg("narrator", "the line goes dead.", 11400);
         addMsg("narrator", "click.", 12800);
-        pendingRef.current.push(setT(() => setScreen("phase2_complete"), 15200));
+        // Auto-flow into Phase 3: the prologue commits, then Haven opens as the investigation
+        // hub (no win screen — the silence after "click." is the canon "player alone" beat).
+        pendingRef.current.push(setT(() => beginPhase3(), 15200));
       }
       return;
     }
@@ -2343,6 +3188,13 @@ export default function DeadSignal() {
     setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false);
     setCurrentEncounter(null); setSelectedFragment(null); setDayThree(false);
     setHavenFinalIndex(0); shelterForcedRef.current = false;
+    // Phase 3 — clear the investigation so a fresh prologue run starts clean.
+    setCurrentPhase3Region(null); currentPhase3RegionRef.current = null;
+    setCurrentPhase3Node(null);   currentPhase3NodeRef.current = null;
+    setVisitedPhase3Nodes([]);    visitedPhase3NodesRef.current = [];
+    setDiscoveredTruths([]);      discoveredTruthsRef.current = [];
+    setPhase3UnlockedRegions([]); phase3UnlockedRef.current = [];
+    setEndingLines([]); setEndingKind(null);
     // recoveredMemories intentionally NOT reset — persists across runs
     setOfflineLines([]); setCompleteLines([]); setShowRestart(false); setLastMessage("");
     setDeathLines([]); setDeathCause(null);
@@ -2603,7 +3455,7 @@ export default function DeadSignal() {
   if (screen === "board") {
     const cFrags = new Set(recoveredMemories.filter(m => m.type === "fragment").map(m => m.name));
     const cClues = new Set(recoveredMemories.filter(m => m.type === "discovery").map(m => m.name));
-    const reached = dayThree || gamePhase.startsWith("haven");
+    const reached = dayThree || gamePhase.startsWith("haven") || gamePhase === "phase3";
     const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached, raisedQuestions));
     const contradictions = BOARD_CONTRADICTIONS.filter(x => x.reveal(cClues, reached, raisedQuestions));
     const sec = (label, count) => (
@@ -2634,20 +3486,32 @@ export default function DeadSignal() {
             : <div key={i} style={{ color:"#2d4a52", fontSize:"0.62rem", letterSpacing:"0.06em", marginBottom:"0.4rem" }}>◉ ???</div>
           )}
 
+          {/* TRUTHS — the region payoffs (Phase 3). Each spoke uncovers one. Hidden until earned. */}
+          {discoveredTruths.length > 0 && <>
+            {sec("TRUTHS")}
+            {discoveredTruths.map((id, i) => (
+              <div key={i} style={{ border:"1px solid #5a3a1a", background:"#0d0703", padding:"0.45rem 0.6rem", marginBottom:"0.45rem", boxShadow:"0 0 12px rgba(200,120,40,0.12)" }}>
+                <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.12em" }}>◆ {PHASE3_TRUTHS[id]?.title || id}</div>
+                {PHASE3_TRUTHS[id]?.line && <div style={{ color:"#b89a6a", fontSize:"0.58rem", marginTop:"0.2rem", fontStyle:"italic", lineHeight:1.4 }}>{PHASE3_TRUTHS[id].line}</div>}
+              </div>
+            ))}
+          </>}
+
           {sec("PEOPLE")}
           {BOARD_PEOPLE.map((p, i) => (
-            <div key={i} style={{ marginBottom:"0.4rem" }}><span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{p.name}</span><div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{typeof p.note === "function" ? p.note(cClues, reached) : p.note}</div></div>
+            <div key={i} style={{ marginBottom:"0.4rem" }}><span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{p.name}</span><div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{typeof p.note === "function" ? p.note(cClues, reached, raisedQuestions, discoveredTruths) : p.note}</div></div>
           ))}
 
           {sec("LOCATIONS")}
           {(() => {
-            const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath));
+            const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath) || phase3UnlockedRegions.includes(r.key));
             return (<>
               {shown.length === 0 && <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no leads yet.</div>}
               {shown.map((r, i) => (
                 <div key={i} style={{ marginBottom:"0.4rem" }}>
                   <span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{r.name}</span>
                   <span style={{ color:"#4a6a54", fontSize:"0.54rem", letterSpacing:"0.04em" }}>{`  · the truth about ${r.truth}`}</span>
+                  {discoveredTruths.includes(r.truthId || r.truth) && <span style={{ color:"#c87a40", fontSize:"0.54rem", letterSpacing:"0.08em" }}>{"  ◆ uncovered"}</span>}
                   {r.blurb && <div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{r.blurb}</div>}
                 </div>
               ))}
@@ -2788,12 +3652,14 @@ export default function DeadSignal() {
     </div>
   );
 
-  if (screen === "offline" || screen === "phase2_complete" || screen === "dead") {
-    const lines  = screen === "offline" ? offlineLines : screen === "dead" ? deathLines : completeLines;
+  if (screen === "offline" || screen === "phase2_complete" || screen === "dead" || screen === "ending") {
+    const lines  = screen === "offline" ? offlineLines : screen === "dead" ? deathLines : screen === "ending" ? endingLines : completeLines;
     const colors = screen === "offline"
       ? (i) => i === 0 ? "#2a2a2a" : "#8b2020"
       : screen === "dead"
       ? (i) => i === 0 ? "#a83232" : "#7a1f1f"
+      : screen === "ending"
+      ? () => (endingKind === "accept" ? "#6a9a78" : "#7a7a82")
       : () => "#c8b98a";
     return (
       <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
@@ -2812,9 +3678,12 @@ export default function DeadSignal() {
           {screen === "offline" && lastMessage && lines.length >= 3 && (
             <p style={{ color:"#1a1a1a", fontSize:"0.68rem", marginTop:"1.5rem", letterSpacing:"0.06em", fontWeight:300 }}>last sent: "{lastMessage}"</p>
           )}
+          {screen === "ending" && (
+            <p style={{ color: endingKind === "accept" ? "#3a5a44" : "#4a4a52", fontSize:"0.66rem", marginTop:"1.6rem", letterSpacing:"0.18em", opacity:0, animation:"fi 1.2s ease 1.4s forwards" }}>— you {endingKind === "accept" ? "accepted" : "refused"} —</p>
+          )}
         </div>
-        {showRestart && (
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"3rem" }}>
+        {(showRestart || screen === "ending") && (
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"3rem", ...(screen === "ending" ? { opacity:0, animation:"fi 1.4s ease 3s forwards" } : {}) }}>
             {/* Win: the slot is saved with updated progress. Play again (keeps the profile,
                 unless 100% — then it's locked and you return to title to Reset from the slot). */}
             {screen === "phase2_complete" && !(winProfile && winProfile.complete) && (
@@ -2933,17 +3802,28 @@ export default function DeadSignal() {
 
       {/* Pause menu — save / load / exit / restart. Sits above the chat as an overlay. */}
       {menuOpen && (
-        <div onClick={()=>{ setMenuOpen(false); setConfirmReset(false); }}
+        <div onClick={()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); }}
           style={{ position:"fixed", inset:0, background:"rgba(3,5,3,0.82)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, fontFamily:font }}>
           <div onClick={e=>e.stopPropagation()}
             style={{ background:"#080a08", border:"1px solid #1d3a22", padding:"1.4rem 1.3rem", width:"260px", display:"flex", flexDirection:"column", gap:"0.55rem", boxShadow:"0 0 40px rgba(0,0,0,0.8)" }}>
             <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
-            <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); })} style={menuBtn}>Resume</button>
+            <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); })} style={menuBtn}>Resume</button>
             {/* Load — opens the save-slots screen in load mode, same as the main-menu LOAD.
                 The run is autosaved at every decision point, so leaving to it is safe. */}
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>
             <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>
             <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>
+            {/* Phase 3 only — replay the prologue from the start while KEEPING this slot's
+                profile (fragments/clues toward 100%). Two-tap, since it abandons Haven progress.
+                Restores the collect-toward-100% loop the auto-flow handoff otherwise blocks. */}
+            {gamePhase === "phase3" && (
+              <button className="cb" onClick={withMenuSound(()=>{
+                if (confirmPrologueRestart) { setConfirmPrologueRestart(false); setMenuOpen(false); setMenuMsg(""); const i = activeSlotRef.current; if (i != null) beginRun(i, { fresh:false }); }
+                else { setConfirmPrologueRestart(true); setMenuMsg("this abandons Haven · keeps fragments/clues"); }
+              })} style={{ ...menuBtn, color: confirmPrologueRestart ? "#c8a840" : undefined, borderColor: confirmPrologueRestart ? "#5a4a20" : undefined }}>
+                {confirmPrologueRestart ? "restart prologue — confirm?" : "restart prologue · keep progress"}
+              </button>
+            )}
             {/* Options — audio (volume + mute) and "reset this run" live here now. */}
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setOptConfirm(false); setConfirmReset(false); setOptionsFrom("chat"); setScreen("options"); })} style={menuBtn}>Options</button>
             <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>{menuMsg}</div>

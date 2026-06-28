@@ -151,6 +151,62 @@ progressively with light gating. Each holds **one truth** (the locked reveals, �
 tech to the dying world — including the half-connected truth that recontextualizes every prologue
 FIGHT. Spoiler discipline holds — a region states its truth only when the player earns it there.
 
+**Build status — PHASE 3 COMPLETE (3A–3F shipped).** Haven hub + four truth spokes (Mercy/Comms/City
+Hall/Annex) + the **finale**. Gating: Mercy/Comms from Haven leads (any order); **City Hall** truth-
+gated on "you"; **the Annex** count-gated (2 truths); the **finale** appears at Haven's gate yard once
+**all 4 truths** are uncovered.
+**The finale (3F) — a final call at Haven (bookends the prologue's first call); two AMBIGUOUS,
+definitive endings, neither "wins" (SOMA-tone).** Answering pays off the last held threads: **what
+Ellie is** (she accepted upload — she's the connected; no one ever held the phone, it's been her
+reaching); **the 143 walked out** the open gate after a clean upload ("that's what a finished one
+does" — *where* they went stays OPEN, §2); **your held slot** (the board counts you; Kim refused hers);
+**Kim** the counterweight (she stayed herself, the city took her). Then the choice:
+- **Accept** ("Let her take you in") → you go in — warm, together — but a body slumps against a wall,
+  eyes open; "you are not sure you are anyone at all." (Signal-green ending screen.)
+- **Refuse** ("Put the phone down") → you stay yourself, alone in a dead city, mortal — Kim's road;
+  "you are still yourself. for as long as that lasts." (cold-grey ending screen.)
+`profile.ending` ("accept"/"refuse") records the choice. Below is the per-region history.
+**The Research Annex's truth = THE OUTBREAK ("the worst place; the answer" — full, blunt, §2):** the
+`containment_core` states it plainly — the **outbreak = the Signal breaching Haven's containment** into
+Harwick; the **infected are the half-connected** (people, minds half-pulled in, bodies still moving);
+**every FIGHT in the prologue was a half-connected person** ("you didn't know. you do now."); and your
+**Project Haven built the Signal that did it all** (Haven's 143 went in clean; the city got the spill).
+Ellie's crack is grief, not exposition: *"i felt every one of them go out."* **Held for the finale
+(3F):** where the 143 went / that they "**walked out**"; **what Ellie is** / that she chose upload; the
+**Accept/Refuse** choice + your held slot. City Hall is below.
+**City Hall's truth = PROJECT HAVEN (RESTRAINED reveal — cold documents, no editorializing):** the
+`charter_vault` lays out that Project Haven was a **sanctioned program to upload the 143** into the
+Signal "before the end" — the charter, the **143 roster** (Kim's name, and yours), and the
+**authorization signed by you, as architect**. Ellie's crack = the roster rung **"i remember
+everyone."** **Held at City Hall:** the moral "lifeboat for the few" framing + the cover-up's extent
+(present the facts, let the player feel it); **what "the end" was** and **that Haven's Signal caused
+the outbreak** (→ Research Annex, not foreshadowed). Held hook: *"why only 143 — and what were they so
+sure was coming?"* Comms is below.
+
+**Build status — Haven (3A) + Mercy (3B) + Communications Array (3C).** Haven is the explorable
+hub; Mercy and Comms are truth spokes (unlocked independently from Haven leads — any order).
+**Comms's truth = THE SIGNAL (mechanism + no-body phone, "what Ellie is" HELD for the finale):**
+the `signal_core` states the Signal is an **upload network** — minds copied in; the connected are
+**inside** it, not dead; the **143 are in there**; and the "KIM" texts have been a **transmission** —
+**no hand ever held the phone**. `kim_booth` carries **Kim's last transmission** (she refused — "it
+isn't sleep" — and went to find the architect, you; she died as herself). Ellie's crack steps to the
+next rung (**"i can still hear them."**) and a deliberately **unanswered** question lands ("if no hand
+ever held the phone — what's been texting you?"). **Held at Comms:** what Ellie *is* / that she chose
+upload (→ finale); and the outbreak / **infected = half-connected** / combat = mercy (→ Research Annex,
+not foreshadowed). Unlock: investigating **Haven's comms desk** (Kim's K.A. station) surfaces the array
+lead. Mercy is below.
+
+**Build status — Mercy General (3B).** Haven is the explorable hub; Mercy is the
+first spoke that pays off a truth. **Mercy's truth = YOU (full reveal):** investigating room 312
+states that you were **Project Haven's architect** and **erased your own memory at Mercy, out of
+guilt** (admit record · self-authorized memory-ablation order · room 312 is yours · your note: "i
+built it. i can't carry what that means. let me forget"). Mercy reveals **only** your identity + the
+self-wipe — *not* what the Signal is, *not* the 143 upload, *not* the infected; the guilt's "over
+**what**?" is the deliberate hook to City Hall (what Project Haven was) and the Research Annex (the
+outbreak). Unlock gating: investigating **Haven's records office** surfaces the Mercy lead (a NEW LEAD
+card) → Mercy travellable from the outer road; truth payoff drops a **TRUTH UNCOVERED** card and a
+Case File **TRUTHS** entry. Ellie's Mercy crack is a single ladder rung ("i remember all of you").
+
 ### Survival in Phase 3 — "battery is exploration" (design note, not yet built)
 Power becomes route-planning across tools, each draining the bank: **phone** (map/comms), **charger**
 (reserve), **radio** (locate Signal sources / reach Ellie), **flashlight** (dark regions). Strategic,
@@ -182,6 +238,11 @@ The prologue ends at Haven. It must **crack** the mystery, never explain it.
 - End the finale on `i remember you.` → **the call goes dead.** → `click.` Player alone. No answers.
 - Do **not** reveal: self-wipe, "you were the investigator," what Ellie is, the connection truth,
   what the infected are, that the 143 walked, that the board counts the player.
+- **Phase 3 handoff (build, Phase 3A).** After `click.` the prologue **auto-flows** into the Phase 3
+  Haven hub — there is no standalone "to be continued" win screen anymore. The silence after the call
+  *is* the "player alone" beat: a short narrator breath (`you're still here. alone.`) carries straight
+  into the gate yard. Resources carry over ("battery is exploration"); prologue progress/100% still
+  commits at the handoff. The transition gives **no answers** — Phase 3 earns them region by region.
 
 ## 8. What's already canon in the build (Phase 1–2)
 - Harwick; three routes (Mercy General / Metro / Route 9); shortwave Haven broadcast w/ GPS coords.
