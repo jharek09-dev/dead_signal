@@ -203,8 +203,16 @@ const EXPLORE_BEATS = {
 // (injury/food/water) are the game's voice — narrator (centered, diegetic), never Ellie, since
 // she can't know your physical state.
 const STATE_LINES = {
-  battery_critical: { from:"ellie",    msgs:["your battery.", "find power or i lose you."], choices:["Keep moving.","Find power."] },
-  battery_low:      { from:"ellie",    msgs:["battery's getting low.", "watch it."],         choices:["Keep moving.","Watch it."] },
+  battery_critical: { from:"ellie", pool:[
+    ["your battery.", "find power or i lose you."],
+    ["you're about to go dark.", "i can't follow you into that."],
+    ["the screen's dying.", "please. find something. anything."],
+  ], choices:["Keep moving.","Find power."] },
+  battery_low: { from:"ellie", pool:[
+    ["battery's getting low.", "watch it."],
+    ["you're burning power.", "don't waste it."],
+    ["keep an eye on that battery.", "i don't like how low it's getting."],
+  ], choices:["Keep moving.","Watch it."] },
   injured_bad:      { from:"narrator", msgs:["the bleeding hasn't stopped.", "you're slowing down."], choices:["Push on."] },
   low_food:         { from:"narrator", msgs:["your stomach is hollow.", "it's been too long since you ate."], choices:["Keep moving."] },
   low_water:        { from:"narrator", msgs:["your mouth is dry.", "you need water soon."],   choices:["Keep moving."] },
@@ -1196,6 +1204,14 @@ const NARRATOR_ATMOSPHERE = {
   sneak_success: "the noise fades. nothing follows.",
   wait:          "it passes.",
   observe:       "you take it in.",
+};
+
+// Ellie reacts to noise (she can hear you through the phone — canon-safe). Escalates from
+// caution at the 2-cross to genuine fear at the 4-cross. Stacks with the narrator's
+// "something answers." so her fear and the world's response land in the same beat.
+const ELLIE_NOISE = {
+  rising: ["you're making noise. ease off.", "too loud. quiet down.", "they can hear that. careful."],
+  high:   ["you have to get quiet. now.", "stop. please. they're listening.", "that's too much noise — they'll find you."],
 };
 
 const OFFLINE_LINES = [
@@ -2311,7 +2327,9 @@ export default function DeadSignal() {
     if (stateKey && stateKey !== lastStateLineRef.current &&
         (stateKey === "battery_critical" || Math.random() < 0.4)) {
       lastStateLineRef.current = stateKey;
-      return STATE_LINES[stateKey];
+      // Ellie's battery lines carry a pool (vary her worry); narrator keys stay fixed.
+      const line = STATE_LINES[stateKey];
+      return line.pool ? { from: line.from, msgs: pickRandom(line.pool), choices: line.choices } : line;
     }
     lastStateLineRef.current = null;
 
@@ -2553,9 +2571,17 @@ export default function DeadSignal() {
     const useNar  = narLine && (reactionKey.includes("fail") || reactionKey.startsWith("fight") || reactionKey === "sneak_success" || reactionKey === "wait");
     const reactionDelay = useNar ? 2000 : 1400;
     if (useNar) addMsg("narrator", narLine, 900);
-    addMsg("ellie", pickRandom(ENCOUNTER_REACTIONS[reactionKey] || ["keep moving."]), reactionDelay);
+    // When a fight leaves you badly hurt, her voice changes — fear, not a scripted line.
+    // (Reads pre-update curRes.hp + dHp; setResources hasn't applied yet.)
+    const hpAfter = Math.max(hpFloor, Math.min(10, curRes.hp + dHp));
+    const reactionPool = (reactionKey === "fight_loss" && hpAfter <= 3)
+      ? ["you're hurt bad. i know. keep moving — don't you stop.", "stay with me. please. you're okay. you're okay."]
+      : (ENCOUNTER_REACTIONS[reactionKey] || ["keep moving."]);
+    addMsg("ellie", pickRandom(reactionPool), reactionDelay);
 
-    if (prevNoise < 2 && newNoise >= 2) addMsg("ellie", "you're making noise. ease off.", reactionDelay + 700);
+    // Noise crossings — Ellie's caution (2) escalates to fear (4); narrator lines stay.
+    if (prevNoise < 2 && newNoise >= 2) addMsg("ellie", pickRandom(ELLIE_NOISE.rising), reactionDelay + 700);
+    if (prevNoise < 4 && newNoise >= 4) addMsg("ellie", pickRandom(ELLIE_NOISE.high), reactionDelay + 700);
     if (prevNoise < 4 && newNoise >= 4) addMsg("narrator", "something answers.", reactionDelay + 700);
     if (prevNoise < 5 && newNoise >= 5) addMsg("narrator", "you hear footsteps. more than one set.", reactionDelay + 700);
 
@@ -3249,9 +3275,9 @@ export default function DeadSignal() {
         addMsg("narrator", "you keep walking.", 1000);
         addMsg("narrator", "night gets worse.", 2600);
         addMsg("narrator", "something follows.", 4100);
-        addMsg("ellie", "stop.", 5600);
-        addMsg("ellie", "you have to stop. right now.", 7100);
-        shelterForcedRef.current = true;
+        addMsg("ellie", "i told you to stop.", 5600); // the slip — her fear sharpens for one line
+        addMsg("ellie", "...i'm sorry. i'm just scared. keep going. i've got you.", 7100); // and she walks it back
+        shelterForcedRef.current = true; // one-shot — this whole branch only fires the first "Keep moving"
         pendingRef.current.push(setT(() => {
           addMsg("narrator", "a doorway.", 200);
           addMsg("narrator", "dark inside. but quiet.", 1600);
