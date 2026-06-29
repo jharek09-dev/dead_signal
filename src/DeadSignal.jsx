@@ -1900,9 +1900,9 @@ export default function DeadSignal() {
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
-    // Resume into the resting screen if a day-gate is still pending (the countdown picks up from the
-    // saved absolute timestamp, and shows "morning" immediately if the wait already elapsed offline).
-    setScreen(gateWakeAtRef.current ? "resting" : "chat");
+    // Gates dropped — always resume into the chat (clear any stale gate timestamp from an old save).
+    gateWakeAtRef.current = null; setGateWakeAt(null);
+    setScreen("chat");
   };
 
   // ─── Pause menu actions (manual save / load / exit) ────────────────────────────
@@ -2835,15 +2835,11 @@ export default function DeadSignal() {
     pendingRef.current.push(setT(() => startDayGate(), t + 900));
   };
 
-  // ─── Real-time day gate ───────────────────────────────────────────────────────────
-  // Start the wall-clock wait for the next day. DEV / ?debug skip it so testing isn't blocked.
-  const startDayGate = () => {
-    if (GATE_BYPASS) { wakeFromGate(); return; }
-    const wakeAt = Date.now() + DAY_GATE_MS;
-    gateWakeAtRef.current = wakeAt; setGateWakeAt(wakeAt);
-    setChoices([]); setIsTyping(false);
-    setScreen("resting"); // a post-render effect persists the gate with fresh state (see below)
-  };
+  // ─── Day transition ────────────────────────────────────────────────────────────────
+  // Real-time gates were dropped (per design) — the night passes instantly and the game flows
+  // straight through. This just hands off to the dawn/entry beat (wakeFromGate). The resting-screen
+  // scaffolding is left inert (never reached) and can be cleaned up later.
+  const startDayGate = () => { wakeFromGate(); };
   // Wake from a day-gate and continue. The continuation is derived from state (not a stored
   // callback): the prologue→Phase-3 gate has no node yet → start Day 4 at the gate yard; a night
   // gate → the dawn beat for the (already-advanced) day, then the current node's exits.
