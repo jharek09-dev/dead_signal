@@ -950,16 +950,28 @@ const CHARGER_TRANSFER = 25; // reservoir → phone per "Use charger" tap (tunin
 const CHARGER_FIND     = 20; // phase-1 charger find → battery dumped into the phone. Tight: start phase 2 ~29% — neglecting power still → offline, but an engaged player who works the power sources has margin to Haven (tuning)
 const START_SUPPLY     = 4;  // phase-1 starting food & water. Low enough that neglect → 0 in the crossing/approach (starvation death), but an engaged searcher keeps a survivable margin to the Haven cache (tuning)
 
-// Weapons. damage drives the FIGHT action (success odds + bleed on a loss). Improvised
-// base tier = 3; upgrades raise the floor. equipWeapon() only ever upgrades.
+// Weapons. damage drives the FIGHT action (success odds + bleed on a loss). The three
+// route starters are tiered so the route choice carries a combat fingerprint, and so the
+// guaranteed shelter axe is a real upgrade for everyone. equipWeapon() only ever upgrades.
+// FIGHT odds = 0.45 + dmg*0.08 → knife 61% / bat 69% / crowbar 77% / axe 85% / machete 93%.
 const WEAPONS = {
-  knife:   { name:"worn pocket knife", shortName:"knife",    damage:3 },
-  bat:     { name:"baseball bat",      shortName:"bat",      damage:3 },
-  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:3 },
+  knife:   { name:"worn pocket knife", shortName:"knife",    damage:2 }, // hospital starter — desperate, close
+  bat:     { name:"baseball bat",      shortName:"bat",      damage:3 }, // metro starter — middle
+  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:4 }, // route9 starter — best, you'll need the edge in the open
   axe:     { name:"fire axe",          shortName:"fire axe", damage:5 },
   machete: { name:"machete",           shortName:"machete",  damage:6 },
 };
 const WEAPON_PICKUPS = { WEAPON_KNIFE:"knife", WEAPON_BAT:"bat", WEAPON_CROWBAR:"crowbar", WEAPON_AXE:"axe", WEAPON_MACHETE:"machete" };
+
+// Route identity — each route makes one resource cheap and one expensive. Read at encounter
+// selection (power frequency), combat resolution (noise penalty), and between-leg noise decay.
+// Hospital: easy battery / deadly accumulating noise. Route 9: scarce battery / forgiving noise.
+// Metro: middling on both. Defaults (hospital) keep any unlisted route on the old uniform tuning.
+const ROUTE_PROFILE = {
+  hospital: { powerBias: +0.20, noiseCombatPenalty: 0.18, noiseDecayPerLeg: 0 }, // power common, tight halls carry sound + never clear
+  metro:    { powerBias: -0.05, noiseCombatPenalty: 0.10, noiseDecayPerLeg: 1 }, // base tuning
+  route9:   { powerBias: -0.25, noiseCombatPenalty: 0.05, noiseDecayPerLeg: 2 }, // almost no generators, sound disperses outdoors
+};
 
 // Haven cache (the relief at the end of the scarcity gauntlet — diegetic, placed in
 // logical rooms). Replaces the old invisible battery floor.
@@ -2187,6 +2199,10 @@ export default function DeadSignal() {
     if (pos) audioEngine.gain(); else if (neg) audioEngine.loss();
   };
 
+  // Current route's identity profile (power/noise tuning). Keys off currentPathRef, which
+  // holds the chosen route through the crossing too. Defaults to hospital for an unset route.
+  const routeProfile = () => ROUTE_PROFILE[currentPathRef.current] || ROUTE_PROFILE.hospital;
+
   // Resource drain at section transitions and mid-legs. The steady squeeze that
   // makes searching matter (supply economy). Code owns every number.
   // Returns the {food, water} deltas it applied so a same-tick caller can fold them
@@ -2215,13 +2231,14 @@ export default function DeadSignal() {
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "the miles add up · [-1 Food] [-1 Water]", 500);
     }
-    // Per-leg noise relief — loud play softens by 1 at each new leg (it never resets, and
-    // the clamp makes this a no-op for a quiet run already at 0). This is the recovery the
-    // noise model leans on alongside the forced-fight reset, so loudness ebbs between legs
-    // instead of ratcheting up for the whole run.
-    if ((type === "path_start" || type === "crossing_start") && noiseRef.current > 0) {
-      setNoise(n => Math.max(0, n - 1));
-      addMsg("system", "the noise dies down · noise -1", 900);
+    // Per-leg noise relief — route-aware (see ROUTE_PROFILE). route9 (2) clears the air each
+    // leg; metro (1) softens by one; hospital (0) gives NO relief, so loud play accumulates
+    // across the whole route. This is the recovery the noise model leans on alongside the
+    // forced-fight reset, so loudness ebbs between legs instead of ratcheting up for the run.
+    const noiseDecay = routeProfile().noiseDecayPerLeg;
+    if ((type === "path_start" || type === "crossing_start") && noiseDecay > 0 && noiseRef.current > 0) {
+      setNoise(n => Math.max(0, n - noiseDecay));
+      addMsg("system", `the noise dies down · noise -${noiseDecay}`, 900);
     }
     // Only sound the loss if a resource actually drops (not already at 0).
     const cur = resourcesRef.current;
@@ -2500,7 +2517,7 @@ export default function DeadSignal() {
         // Weapon-driven combat. Damage raises the odds of a clean kill and cuts the
         // bleed on a loss. Unarmed is desperate. Fighting is loud either way.
         const dmg = weaponRef.current ? weaponRef.current.damage : 0;
-        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? 0.1 : 0)));
+        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? routeProfile().noiseCombatPenalty : 0)));
         dNoise = dmg ? 1 : 2;
         if (ok) { outcome = dmg ? "you put it down." : "you fight it off. barely."; reactionKey = "fight_win";  dHp = dmg ? 0  : -1; }
         else    { outcome = dmg ? "it gets a hit in."  : "it gets to you. bad.";    reactionKey = "fight_loss"; dHp = dmg ? -1 : -3; }
@@ -2589,6 +2606,18 @@ export default function DeadSignal() {
     let matching;
     if (plan === "power") matching = pool.filter(e => POWER_SOURCES.has(e.id));
     else { const wantSearch = plan === "search"; matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch); }
+    // Route-aware power frequency (the core of route identity). Hospital (powerBias > 0)
+    // PROMOTES a non-power lead into a power lead so battery rarely bites; route9
+    // (powerBias < 0) DEMOTES some explicit power leads back into ordinary encounters so the
+    // player is always hunting the next charge. Each roll only lands when the pool allows it,
+    // and an empty result still falls back to `pool` below — never soft-locks the queue.
+    const powerBias = routeProfile().powerBias;
+    if (powerBias > 0 && plan !== "power" && Math.random() < powerBias) {
+      const powerLeads = pool.filter(e => POWER_SOURCES.has(e.id));
+      if (powerLeads.length) matching = powerLeads;
+    } else if (powerBias < 0 && plan === "power" && Math.random() < -powerBias) {
+      matching = pool.filter(e => !POWER_SOURCES.has(e.id));
+    }
     const choicesPool = matching.length ? matching : pool;
     const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id)); // P6a
     const finalPool = unseen.length ? unseen : choicesPool;
