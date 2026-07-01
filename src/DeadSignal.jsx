@@ -3281,10 +3281,12 @@ export default function DeadSignal() {
         pendingRef.current.push(setT(() => {
           addMsg("narrator", "a doorway.", 200);
           addMsg("narrator", "dark inside. but quiet.", 1600);
-          pendingRef.current.push(setT(() => setChoices([
+          // setIsTyping(false) matters: handleChoice set it true, and the choice row only
+          // renders when !isTyping — without the clear this path soft-locked on the dots.
+          pendingRef.current.push(setT(() => { setIsTyping(false); setChoices([
             "Go inside. Sleep. [-1 Food] [-1 Water]",
             "Bar the door and sleep. [+1 Noise] [-1 Food] [-1 Water]",
-          ]), 3800));
+          ]); }, 3800));
         }, 9000));
         return;
       }
