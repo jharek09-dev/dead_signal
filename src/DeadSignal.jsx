@@ -203,8 +203,16 @@ const EXPLORE_BEATS = {
 // (injury/food/water) are the game's voice — narrator (centered, diegetic), never Ellie, since
 // she can't know your physical state.
 const STATE_LINES = {
-  battery_critical: { from:"ellie",    msgs:["your battery.", "find power or i lose you."], choices:["Keep moving.","Find power."] },
-  battery_low:      { from:"ellie",    msgs:["battery's getting low.", "watch it."],         choices:["Keep moving.","Watch it."] },
+  battery_critical: { from:"ellie", pool:[
+    ["your battery.", "find power or i lose you."],
+    ["you're about to go dark.", "i can't follow you into that."],
+    ["the screen's dying.", "please. find something. anything."],
+  ], choices:["Keep moving.","Find power."] },
+  battery_low: { from:"ellie", pool:[
+    ["battery's getting low.", "watch it."],
+    ["you're burning power.", "don't waste it."],
+    ["keep an eye on that battery.", "i don't like how low it's getting."],
+  ], choices:["Keep moving.","Watch it."] },
   injured_bad:      { from:"narrator", msgs:["the bleeding hasn't stopped.", "you're slowing down."], choices:["Push on."] },
   low_food:         { from:"narrator", msgs:["your stomach is hollow.", "it's been too long since you ate."], choices:["Keep moving."] },
   low_water:        { from:"narrator", msgs:["your mouth is dry.", "you need water soon."],   choices:["Keep moving."] },
@@ -950,16 +958,28 @@ const CHARGER_TRANSFER = 25; // reservoir → phone per "Use charger" tap (tunin
 const CHARGER_FIND     = 20; // phase-1 charger find → battery dumped into the phone. Tight: start phase 2 ~29% — neglecting power still → offline, but an engaged player who works the power sources has margin to Haven (tuning)
 const START_SUPPLY     = 4;  // phase-1 starting food & water. Low enough that neglect → 0 in the crossing/approach (starvation death), but an engaged searcher keeps a survivable margin to the Haven cache (tuning)
 
-// Weapons. damage drives the FIGHT action (success odds + bleed on a loss). Improvised
-// base tier = 3; upgrades raise the floor. equipWeapon() only ever upgrades.
+// Weapons. damage drives the FIGHT action (success odds + bleed on a loss). The three
+// route starters are tiered so the route choice carries a combat fingerprint, and so the
+// guaranteed shelter axe is a real upgrade for everyone. equipWeapon() only ever upgrades.
+// FIGHT odds = 0.45 + dmg*0.08 → knife 61% / bat 69% / crowbar 77% / axe 85% / machete 93%.
 const WEAPONS = {
-  knife:   { name:"worn pocket knife", shortName:"knife",    damage:3 },
-  bat:     { name:"baseball bat",      shortName:"bat",      damage:3 },
-  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:3 },
+  knife:   { name:"worn pocket knife", shortName:"knife",    damage:2 }, // hospital starter — desperate, close
+  bat:     { name:"baseball bat",      shortName:"bat",      damage:3 }, // metro starter — middle
+  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:4 }, // route9 starter — best, you'll need the edge in the open
   axe:     { name:"fire axe",          shortName:"fire axe", damage:5 },
   machete: { name:"machete",           shortName:"machete",  damage:6 },
 };
 const WEAPON_PICKUPS = { WEAPON_KNIFE:"knife", WEAPON_BAT:"bat", WEAPON_CROWBAR:"crowbar", WEAPON_AXE:"axe", WEAPON_MACHETE:"machete" };
+
+// Route identity — each route makes one resource cheap and one expensive. Read at encounter
+// selection (power frequency), combat resolution (noise penalty), and between-leg noise decay.
+// Hospital: easy battery / deadly accumulating noise. Route 9: scarce battery / forgiving noise.
+// Metro: middling on both. Defaults (hospital) keep any unlisted route on the old uniform tuning.
+const ROUTE_PROFILE = {
+  hospital: { powerBias: +0.20, noiseCombatPenalty: 0.18, noiseDecayPerLeg: 0 }, // power common, tight halls carry sound + never clear
+  metro:    { powerBias: -0.05, noiseCombatPenalty: 0.10, noiseDecayPerLeg: 1 }, // base tuning
+  route9:   { powerBias: -0.25, noiseCombatPenalty: 0.05, noiseDecayPerLeg: 2 }, // almost no generators, sound disperses outdoors
+};
 
 // Haven cache (the relief at the end of the scarcity gauntlet — diegetic, placed in
 // logical rooms). Replaces the old invisible battery floor.
@@ -1184,6 +1204,14 @@ const NARRATOR_ATMOSPHERE = {
   sneak_success: "the noise fades. nothing follows.",
   wait:          "it passes.",
   observe:       "you take it in.",
+};
+
+// Ellie reacts to noise (she can hear you through the phone — canon-safe). Escalates from
+// caution at the 2-cross to genuine fear at the 4-cross. Stacks with the narrator's
+// "something answers." so her fear and the world's response land in the same beat.
+const ELLIE_NOISE = {
+  rising: ["you're making noise. ease off.", "too loud. quiet down.", "they can hear that. careful."],
+  high:   ["you have to get quiet. now.", "stop. please. they're listening.", "that's too much noise — they'll find you."],
 };
 
 const OFFLINE_LINES = [
@@ -2187,6 +2215,10 @@ export default function DeadSignal() {
     if (pos) audioEngine.gain(); else if (neg) audioEngine.loss();
   };
 
+  // Current route's identity profile (power/noise tuning). Keys off currentPathRef, which
+  // holds the chosen route through the crossing too. Defaults to hospital for an unset route.
+  const routeProfile = () => ROUTE_PROFILE[currentPathRef.current] || ROUTE_PROFILE.hospital;
+
   // Resource drain at section transitions and mid-legs. The steady squeeze that
   // makes searching matter (supply economy). Code owns every number.
   // Returns the {food, water} deltas it applied so a same-tick caller can fold them
@@ -2215,13 +2247,14 @@ export default function DeadSignal() {
       setResources(p => ({ ...p, food: Math.max(0, p.food - 1), water: Math.max(0, p.water - 1) }));
       addMsg("system", "the miles add up · [-1 Food] [-1 Water]", 500);
     }
-    // Per-leg noise relief — loud play softens by 1 at each new leg (it never resets, and
-    // the clamp makes this a no-op for a quiet run already at 0). This is the recovery the
-    // noise model leans on alongside the forced-fight reset, so loudness ebbs between legs
-    // instead of ratcheting up for the whole run.
-    if ((type === "path_start" || type === "crossing_start") && noiseRef.current > 0) {
-      setNoise(n => Math.max(0, n - 1));
-      addMsg("system", "the noise dies down · noise -1", 900);
+    // Per-leg noise relief — route-aware (see ROUTE_PROFILE). route9 (2) clears the air each
+    // leg; metro (1) softens by one; hospital (0) gives NO relief, so loud play accumulates
+    // across the whole route. This is the recovery the noise model leans on alongside the
+    // forced-fight reset, so loudness ebbs between legs instead of ratcheting up for the run.
+    const noiseDecay = routeProfile().noiseDecayPerLeg;
+    if ((type === "path_start" || type === "crossing_start") && noiseDecay > 0 && noiseRef.current > 0) {
+      setNoise(n => Math.max(0, n - noiseDecay));
+      addMsg("system", `the noise dies down · noise -${noiseDecay}`, 900);
     }
     // Only sound the loss if a resource actually drops (not already at 0).
     const cur = resourcesRef.current;
@@ -2294,7 +2327,9 @@ export default function DeadSignal() {
     if (stateKey && stateKey !== lastStateLineRef.current &&
         (stateKey === "battery_critical" || Math.random() < 0.4)) {
       lastStateLineRef.current = stateKey;
-      return STATE_LINES[stateKey];
+      // Ellie's battery lines carry a pool (vary her worry); narrator keys stay fixed.
+      const line = STATE_LINES[stateKey];
+      return line.pool ? { from: line.from, msgs: pickRandom(line.pool), choices: line.choices } : line;
     }
     lastStateLineRef.current = null;
 
@@ -2500,7 +2535,7 @@ export default function DeadSignal() {
         // Weapon-driven combat. Damage raises the odds of a clean kill and cuts the
         // bleed on a loss. Unarmed is desperate. Fighting is loud either way.
         const dmg = weaponRef.current ? weaponRef.current.damage : 0;
-        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? 0.1 : 0)));
+        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? routeProfile().noiseCombatPenalty : 0)));
         dNoise = dmg ? 1 : 2;
         if (ok) { outcome = dmg ? "you put it down." : "you fight it off. barely."; reactionKey = "fight_win";  dHp = dmg ? 0  : -1; }
         else    { outcome = dmg ? "it gets a hit in."  : "it gets to you. bad.";    reactionKey = "fight_loss"; dHp = dmg ? -1 : -3; }
@@ -2536,9 +2571,17 @@ export default function DeadSignal() {
     const useNar  = narLine && (reactionKey.includes("fail") || reactionKey.startsWith("fight") || reactionKey === "sneak_success" || reactionKey === "wait");
     const reactionDelay = useNar ? 2000 : 1400;
     if (useNar) addMsg("narrator", narLine, 900);
-    addMsg("ellie", pickRandom(ENCOUNTER_REACTIONS[reactionKey] || ["keep moving."]), reactionDelay);
+    // When a fight leaves you badly hurt, her voice changes — fear, not a scripted line.
+    // (Reads pre-update curRes.hp + dHp; setResources hasn't applied yet.)
+    const hpAfter = Math.max(hpFloor, Math.min(10, curRes.hp + dHp));
+    const reactionPool = (reactionKey === "fight_loss" && hpAfter <= 3)
+      ? ["you're hurt bad. i know. keep moving — don't you stop.", "stay with me. please. you're okay. you're okay."]
+      : (ENCOUNTER_REACTIONS[reactionKey] || ["keep moving."]);
+    addMsg("ellie", pickRandom(reactionPool), reactionDelay);
 
-    if (prevNoise < 2 && newNoise >= 2) addMsg("ellie", "you're making noise. ease off.", reactionDelay + 700);
+    // Noise crossings — Ellie's caution (2) escalates to fear (4); narrator lines stay.
+    if (prevNoise < 2 && newNoise >= 2) addMsg("ellie", pickRandom(ELLIE_NOISE.rising), reactionDelay + 700);
+    if (prevNoise < 4 && newNoise >= 4) addMsg("ellie", pickRandom(ELLIE_NOISE.high), reactionDelay + 700);
     if (prevNoise < 4 && newNoise >= 4) addMsg("narrator", "something answers.", reactionDelay + 700);
     if (prevNoise < 5 && newNoise >= 5) addMsg("narrator", "you hear footsteps. more than one set.", reactionDelay + 700);
 
@@ -2589,6 +2632,18 @@ export default function DeadSignal() {
     let matching;
     if (plan === "power") matching = pool.filter(e => POWER_SOURCES.has(e.id));
     else { const wantSearch = plan === "search"; matching = pool.filter(e => e.choices.some(c => c.action === "SEARCH") === wantSearch); }
+    // Route-aware power frequency (the core of route identity). Hospital (powerBias > 0)
+    // PROMOTES a non-power lead into a power lead so battery rarely bites; route9
+    // (powerBias < 0) DEMOTES some explicit power leads back into ordinary encounters so the
+    // player is always hunting the next charge. Each roll only lands when the pool allows it,
+    // and an empty result still falls back to `pool` below — never soft-locks the queue.
+    const powerBias = routeProfile().powerBias;
+    if (powerBias > 0 && plan !== "power" && Math.random() < powerBias) {
+      const powerLeads = pool.filter(e => POWER_SOURCES.has(e.id));
+      if (powerLeads.length) matching = powerLeads;
+    } else if (powerBias < 0 && plan === "power" && Math.random() < -powerBias) {
+      matching = pool.filter(e => !POWER_SOURCES.has(e.id));
+    }
     const choicesPool = matching.length ? matching : pool;
     const unseen = choicesPool.filter(e => !seenEncountersRef.current.has(e.id)); // P6a
     const finalPool = unseen.length ? unseen : choicesPool;
@@ -3220,16 +3275,18 @@ export default function DeadSignal() {
         addMsg("narrator", "you keep walking.", 1000);
         addMsg("narrator", "night gets worse.", 2600);
         addMsg("narrator", "something follows.", 4100);
-        addMsg("ellie", "stop.", 5600);
-        addMsg("ellie", "you have to stop. right now.", 7100);
-        shelterForcedRef.current = true;
+        addMsg("ellie", "i told you to stop.", 5600); // the slip — her fear sharpens for one line
+        addMsg("ellie", "...i'm sorry. i'm just scared. keep going. i've got you.", 7100); // and she walks it back
+        shelterForcedRef.current = true; // one-shot — this whole branch only fires the first "Keep moving"
         pendingRef.current.push(setT(() => {
           addMsg("narrator", "a doorway.", 200);
           addMsg("narrator", "dark inside. but quiet.", 1600);
-          pendingRef.current.push(setT(() => setChoices([
+          // setIsTyping(false) matters: handleChoice set it true, and the choice row only
+          // renders when !isTyping — without the clear this path soft-locked on the dots.
+          pendingRef.current.push(setT(() => { setIsTyping(false); setChoices([
             "Go inside. Sleep. [-1 Food] [-1 Water]",
             "Bar the door and sleep. [+1 Noise] [-1 Food] [-1 Water]",
-          ]), 3800));
+          ]); }, 3800));
         }, 9000));
         return;
       }
