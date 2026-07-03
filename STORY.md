@@ -207,7 +207,7 @@ outbreak). Unlock gating: investigating **Haven's records office** surfaces the 
 card) → Mercy travellable from the outer road; truth payoff drops a **TRUTH UNCOVERED** card and a
 Case File **TRUTHS** entry. Ellie's Mercy crack is a single ladder rung ("i remember all of you").
 
-### Survival in Phase 3 — "battery is exploration" (design note, not yet built)
+### Survival in Phase 3 — "battery is exploration" (partially built — move-cost/power-floor shipped; tool-drain layer [radio/flashlight] not yet built)
 Power becomes route-planning across tools, each draining the bank: **phone** (map/comms), **charger**
 (reserve), **radio** (locate Signal sources / reach Ellie), **flashlight** (dark regions). Strategic,
 not a countdown. Drain is already centralized (`beatBatteryCost`); P3 adds the new consumers.
@@ -295,3 +295,21 @@ Holes found and the locked fixes, for the record:
    Ellie spoofs Kim's number; nobody holds Kim's phone (§3).
 7. **Wipe-motivation drift across docs** (architect's guilt vs investigator-in-denial). → **Architect's
    guilt is the only canon**; the investigator framing in older docs is superseded (§2).
+8. **Real-time day gates** (Lifeline-style pacing — wall-clock nights) were designed and built, then
+   **dropped** for smooth prologue→Phase-3 flow; the inert scaffolding was removed from the build
+   (2026-07-01). The win screen it replaced (`phase2_complete`) was culled the same day — the
+   prologue auto-flows into Phase 3.
+9. **Encounter risk was illegible** — every dangerous choice wore the same static yellow `[risk]`
+   while the resolver computed live odds from noise + weapon. → Computed tier tags (2026-07-02):
+   `[LOW]`/`[MED]`/`[HIGH]` from the resolver's own odds functions (`pSneak`/`pRun`/`pFight`,
+   single source of truth shared by the roll and the tag), `[COSTLY]` for the no-roll FORCE;
+   an untagged gamble gets a tag injected only when its odds degrade to MED/HIGH, so the quiet
+   option stays quiet while it's genuinely favorable. Display-only — deltas, dispatch, and
+   route tuning untouched. The tag is HUD register (like `[+1 Noise]`); Ellie never speaks it.
+10. **The drain loop had no relief** — the legs are a continuous squeeze (transition drain, noise,
+    encounters) with nothing quiet before the Haven cache. → The **calm beat** (2026-07-02): one
+    guaranteed breather per run, mid path-leg (the lead-queue slot between the two encounter
+    leads) — no drain, no encounter, no loot, no battery (choiceless; it auto-flows back to the
+    nav screen). Three narrator stillness lines + one Ellie line that deliberately breaks her
+    clipped register (warmth, not information). One-shot (`calmFired`, save-persisted); never
+    fires in Phase 3 — lead queues exist only in the prologue legs.

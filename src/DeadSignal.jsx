@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, memo } from "react";
 import audioEngine from "./audio.js";
 
 const INTRO_LINES = [
@@ -43,7 +43,7 @@ const SCRIPTED_EXCHANGES = [
 
 const PATH_BEATS = {
   hospital: [
-    { msgs: ["mercy general is 6 blocks east.", "stay close to the buildings. don't stop moving."],
+    { msgs: ["mercy general is 6 blocks east.", "stay close to the buildings. don't stop moving.", "power's still on in there. but those halls carry sound. whatever hears you stays close."],
       choices: ["Moving. Street looks clear so far.", "On my way. Something feels off going east."], onChoice: null },
     { msgs: ["you there?", "what does it look like?"],
       choices: ["I'm here. Power's still running somewhere inside.", "At the entrance. Doors are open. It's quiet."], onChoice: null },
@@ -71,7 +71,7 @@ const PATH_BEATS = {
       choices: ["How do you know this station?", "Looking for exit C."], onChoice: null },
   ],
   route9: [
-    { msgs: ["on-ramp is four blocks north of you.", "open road. good and bad. keep moving."],
+    { msgs: ["on-ramp is four blocks north of you.", "open road. good and bad. keep moving.", "nothing to charge from out there. but it's open — sound just goes."],
       choices: ["Moving north. It's quieter up here.", "On my way. What am I looking at on the highway?"], onChoice: null },
     { msgs: ["you at the ramp?", "should be maintenance trucks near the barrier."],
       choices: ["Yeah. Truck's blocking the lane. Lot of abandoned cars.", "At the ramp. Opens up past the overpass."], onChoice: null },
@@ -769,6 +769,7 @@ const FINALE_ACCEPT = [
   { from:"narrator", text:"then you're — everywhere. the 143. ellie. all of it at once. warm. together." },
   { from:"narrator", text:"you can hear them. all of them. all the time." },
   { from:"narrator", text:"somewhere a body slumps against a wall, phone still in its hand, eyes open. it doesn't get up." },
+  { from:"narrator", text:"the 143 walked out. yours doesn't." },
   { from:"narrator", text:"you don't think about it. you're not out there anymore." },
   { from:"narrator", text:"or something that remembers being you isn't. it's hard to tell, in here. it doesn't seem to matter." },
 ];
@@ -782,7 +783,7 @@ const FINALE_REFUSE = [
   { from:"narrator", text:"you're alone. really alone now — the only voice out here that's still a person." },
   { from:"narrator", text:"the city is dead. you will be too, before long. like kim. as yourself." },
   { from:"narrator", text:"you don't know if that was brave or just stubborn." },
-  { from:"narrator", text:"kim refused, and it killed her. you refused too. the difference is you got to choose it with your eyes open." },
+  { from:"narrator", text:"kim refused, and the city killed her for it. you refused too. the difference is you got to choose it with your eyes open." },
 ];
 const REFUSE_ENDING_LINES = ["you stayed.", "you are still yourself.", "for as long as that lasts."];
 
@@ -965,7 +966,7 @@ const START_SUPPLY     = 4;  // phase-1 starting food & water. Low enough that n
 const WEAPONS = {
   knife:   { name:"worn pocket knife", shortName:"knife",    damage:2 }, // hospital starter — desperate, close
   bat:     { name:"baseball bat",      shortName:"bat",      damage:3 }, // metro starter — middle
-  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:4 }, // route9 starter — best, you'll need the edge in the open
+  crowbar: { name:"crowbar",           shortName:"crowbar",  damage:4 }, // route9 starter — best of the three; route9's tradeoff is power, not combat
   axe:     { name:"fire axe",          shortName:"fire axe", damage:5 },
   machete: { name:"machete",           shortName:"machete",  damage:6 },
 };
@@ -997,6 +998,8 @@ const HAVEN_SUPPLY_FLOOR  = 5;  // pantry tops food/water up to at least this
 //   kind "atmo"      → a free atmospheric beat (drain? = applyTransitionDrain key fired)
 //        "encounter" → an encounter; plan "power" (POWER_SOURCES) | "search" | "hazard"
 //        "memory" | "discovery" → that scripted story beat (path legs only)
+//        "calm"      → the one-per-run breather (CALM_BEAT): no drain, no encounter,
+//                      no loot, no battery — pure pacing relief (path legs only)
 const buildLeadQueue = (section) => {
   if (section === "crossing") return [
     { kind: "atmo" },
@@ -1014,7 +1017,7 @@ const buildLeadQueue = (section) => {
            // find, so it sits after the discovery (skippable by leaving once the gate opens).
     { kind: "atmo" },
     { kind: "encounter", plan: "power" },
-    { kind: "atmo" },
+    { kind: "calm" },
     { kind: "encounter", plan: "hazard" },
     { kind: "atmo", drain: "path_mid" },
     { kind: "encounter", plan: "search" },
@@ -1091,6 +1094,19 @@ const EXPLORE_DONE = {
   path:     ["you've been through all of it.", "nothing else here."],
   crossing: ["you've covered the area.", "no reason to stay."],
   haven:    ["you've walked all of it.", "haven holds nothing else."],
+};
+
+// ─── The calm beat — one guaranteed breather per run (pacing, not resources) ──
+// A held breath mid path-leg (the lead-queue slot between the two encounter
+// leads): no drain, no encounter, no loot, and no battery — the beat is
+// choiceless, so the per-tap charge site never sees it. Ellie's line
+// deliberately breaks her clipped register — warmth, not information. Never
+// fires in Phase 3 (lead queues exist only in the prologue legs).
+const CALM_BEAT = {
+  hospital: { msgs: ["a waiting room. dust thick on the chairs, sun through the blinds.", "for a minute, nothing moves.", "just your own breathing."] },
+  metro:    { msgs: ["a stretch of empty platform. the rails hum, low and steady.", "for a minute, nothing moves.", "just your own breathing."] },
+  route9:   { msgs: ["the road crests a rise. the valley below, still as a photograph.", "for a minute, nothing moves.", "just your own breathing."] },
+  ellie: ["...you're doing okay. i mean it.", "...take a second. i'm not going anywhere."],
 };
 
 // ─── ENCOUNTER POOLS (8 per path, 9 crossing) ─────────────────────────────────
@@ -1194,6 +1210,8 @@ const ENCOUNTER_REACTIONS = {
   avoid:         ["probably smart.", "keep moving."],
 };
 
+const ELLIE_DEFLECT = ["not now.", "does it matter? keep moving.", "i just do. go."];
+
 const NARRATOR_ATMOSPHERE = {
   sneak_fail:    "it heard you.",
   search_fail:   "something stirs.",
@@ -1218,11 +1236,6 @@ const OFFLINE_LINES = [
   { text: "the screen goes dark.", delay: 0 },
   { text: "battery dead.", delay: 1800 },
   { text: "signal lost.", delay: 3200 },
-];
-
-const P2_COMPLETE_LINES = [
-  { text: "you found haven.", delay: 0 },
-  { text: "it was empty.", delay: 1800 },
 ];
 
 // Death screen lines, keyed by cause. Distinct from OFFLINE_LINES (battery).
@@ -1275,6 +1288,49 @@ const parseResourceMarkers = (choice) => {
   return out;
 };
 
+// ─── Encounter odds — SINGLE SOURCE OF TRUTH ──────────────────────────────────
+// The resolver rolls against these AND the choice-button risk tags are computed
+// from them, so a balance tweak here can never make the tags lie. penalty is the
+// route's noiseCombatPenalty (routeProfile() is component-scope, so it's a param).
+const pSneak = (noise) => noise <= 1 ? 0.92 : noise <= 3 ? 0.68 : 0.38;
+const pRun   = (noise) => noise <= 3 ? 0.75 : 0.48;
+const pFight = (dmg, noise, penalty) =>
+  Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (noise >= 4 ? penalty : 0)));
+
+// Tier vocabulary: LOW/MED/HIGH = a gamble's live odds; COSTLY = a guaranteed
+// price (no roll). Boundaries land clean on today's numbers (bat FIGHT .69 → MED
+// by intent; nothing computes to exactly 0.70), so no epsilon.
+const tierForP = (p) => (p >= 0.70 ? "LOW" : p >= 0.45 ? "MED" : "HIGH");
+
+// null = no tag (safe/neutral options stay visually quiet so the tagged ones
+// carry the tension).
+const riskTier = (action, { noise, dmg, penalty }) => {
+  switch (action) {
+    case "SNEAK":  return tierForP(pSneak(noise));
+    case "RUN":    return tierForP(pRun(noise));
+    case "FIGHT":  return tierForP(pFight(dmg, noise, penalty));
+    case "SEARCH": return "MED";    // flat 0.80 payout, but the 0.20 fail bites
+    case "FORCE":  return "COSTLY"; // no roll — a guaranteed price, not a gamble
+    default:       return null;     // WAIT / AVOID / OBSERVE / DISTRACT
+  }
+};
+
+// Display-only decoration: swap an authored [risk] for the live tier; inject a
+// trailing tag on an untagged gamble (SNEAK/RUN/FIGHT) only when its odds have
+// degraded to MED/HIGH — the quiet option stays quiet while it's genuinely
+// favorable. stripMarkers removes ALL [...] tokens, so the resolver's
+// stripped-text action dispatch is unaffected by any of this.
+const RISK_TOKEN_RE = /\s*\[risk\]/i; // data carries at most one [risk] per choice
+const decorateChoiceText = (text, action, odds) => {
+  const tier = riskTier(action, odds);
+  if (!tier) return RISK_TOKEN_RE.test(text) // defensive: no null-tier action carries [risk] today
+    ? text.replace(RISK_TOKEN_RE, "").replace(/\s{2,}/g, " ").trim()
+    : text;
+  if (RISK_TOKEN_RE.test(text)) return text.replace(RISK_TOKEN_RE, ` [${tier}]`).trim();
+  const gamble = action === "SNEAK" || action === "RUN" || action === "FIGHT";
+  return gamble && (tier === "MED" || tier === "HIGH") ? `${text} [${tier}]` : text;
+};
+
 // Battery is the master clock. The phone is on the whole game, so advancing a beat
 // costs power — one place owns the rate. Exceptions: phase1 is a pre-charger set-piece
 // (not a clock yet), and pure story beats (memory flash, discovery) aren't traversal.
@@ -1301,21 +1357,6 @@ const PHASE3_DUSK      = 3;   // daylight ≤ this → "the light is failing"; s
 const PHASE3_REST_HEAL = 2;   // HP recovered by a safe night's rest at a shelter
 const PHASE3_CAUGHT_HP = 2;   // HP lost (clamped ≥1) when nightfall catches you in the open
 const BED_DOWN_LABEL = (day) => `▸ Bed down for the night — end day ${day}`;
-
-// ─── Real-time day gate (Lifeline-style pacing) ─────────────────────────────────────
-// Bedding down at a gated night (the prologue→Day-4 handoff, and each Phase-3 night) locks the
-// next day behind a wall-clock wait, so the game can't be finished in one sitting and spans 2+
-// hours across sittings. The unlock time is an absolute timestamp persisted in the save, so
-// closing/reopening can't skip it. DEV / ?debug bypass the wait for testing.
-const DAY_GATE_MS = 17 * 60 * 1000; // ~17 min real-time wait before a new day unlocks (tune 15–20)
-const GATE_BYPASS = (() => {
-  try { return !!import.meta.env?.DEV || (typeof location !== "undefined" && /[?&]debug/.test(location.search)); }
-  catch (e) { return false; }
-})();
-const fmtCountdown = (ms) => {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-};
 
 // ─── Phase 3 encounters — the half-connected ────────────────────────────────────────
 // Reuses the prologue's encounter engine (resolveEncounterChoice). By Phase 3 you KNOW these are
@@ -1359,7 +1400,13 @@ const parseText = (text, ctx = "button") => {
       // Story / discovery
       else if (low.includes("memory fragment") || low === "memory") color = "#4a9e6b";
       else if (low.includes("project haven") || low.includes("discovery") || low.includes("examine") || low.includes("clue")) color = "#4ab5c8";
-      // Risk / warning
+      // Risk tiers — EXACT match only: "[open highway]" contains "high", so
+      // substring matching here would repaint the route-branch button.
+      else if (low === "low")                      color = "#4a9e6b";
+      else if (low === "med" || low === "costly")  color = "#c8a020";
+      else if (low === "high")                     color = "#8b4a4a";
+      // Risk / warning (legacy [risk] kept as fallback: pre-feature saves can
+      // restore literal [risk] choice strings — they should still render sanely)
       else if (low.includes("risk") || low.includes("attracts")) color = "#c8a020";
       // Neutral actions (collect, pick up, equip) + default
       else color = ctx === "button" ? "#4a9e6b" : "#8fba8f";
@@ -1497,7 +1544,6 @@ export default function DeadSignal() {
   const [shownLines, setShownLines]     = useState([]);
   const [showNotif, setShowNotif]       = useState(false);
   const [offlineLines, setOfflineLines] = useState([]);
-  const [completeLines, setCompleteLines] = useState([]);
   const [endingLines, setEndingLines]   = useState([]);   // Phase 3F — the definitive ending screen
   const [endingKind, setEndingKind]     = useState(null); // "accept" | "refuse"
   const [deathLines, setDeathLines]     = useState([]);   // Priority 1 — death screen
@@ -1517,7 +1563,6 @@ export default function DeadSignal() {
   const [confirmPrologueRestart, setConfirmPrologueRestart] = useState(false); // two-tap confirm — Phase 3 "restart prologue · keep progress"
   const [optConfirm, setOptConfirm]     = useState(false); // two-tap confirm for Options "reset all data"
   const [showRestart, setShowRestart]   = useState(false);
-  const [winProfile, setWinProfile]     = useState(null); // post-finish profile summary for the win screen
   const [raisedQuestions, setRaisedQuestions] = useState([]); // case-file OPEN QUESTIONS surfaced this run
   const [lastMessage, setLastMessage]   = useState("");
   const [messages, setMessages]         = useState([]);
@@ -1535,6 +1580,7 @@ export default function DeadSignal() {
   const [aiExchangeCount, setAiExchangeCount]   = useState(0);
   const [aiExchangeTarget, setAiExchangeTarget] = useState(7);
   const [fragFired, setFragFired]               = useState(false);
+  const [calmFired, setCalmFired]               = useState(false);
   const [currentEncounter, setCurrentEncounter] = useState(null);
   const [selectedFragment, setSelectedFragment] = useState(null);
   const [recoveredMemories, setRecoveredMemories] = useState([]);
@@ -1550,13 +1596,15 @@ export default function DeadSignal() {
   const [phase3UnlockedRegions, setPhase3UnlockedRegions] = useState([]);   // region ids the player can travel to
   const [phase3Day, setPhase3Day] = useState(PHASE3_START_DAY);             // Phase 3 day-of-week (4–7)
   const [daylight, setDaylight]   = useState(PHASE3_DAYLIGHT);              // node-moves of light left today
-  const [gateWakeAt, setGateWakeAt] = useState(null);                      // real-time day-gate unlock timestamp (null = none)
-  const [nowTick, setNowTick]       = useState(0);                         // 1s clock that drives the resting-screen countdown
 
   const pendingRef          = useRef([]);
   const dialogueRef         = useRef([]);   // timers owned by scheduleMessages (C3 — kept separate from pendingRef)
   const idRef               = useRef(0);    // monotonic id source (H1 — avoids Date.now() key collisions)
   const bottomRef           = useRef(null);
+  const chatScrollRef       = useRef(null);
+  const chatScrollTopRef    = useRef(0);
+  const restoreChatScrollRef = useRef(false);
+  const suppressNextAutoScrollRef = useRef(false);
   const chatStartedRef      = useRef(false);
   const resourcesRef        = useRef(resources);
   const screenRef           = useRef(screen);
@@ -1567,6 +1615,7 @@ export default function DeadSignal() {
   const aiCountRef          = useRef(aiExchangeCount);
   const aiTargetRef         = useRef(aiExchangeTarget);
   const fragFiredRef        = useRef(fragFired);
+  const calmFiredRef        = useRef(calmFired);
   const currentEncounterRef = useRef(currentEncounter);
   const selectedFragmentRef  = useRef(selectedFragment);
   const recoveredMemoriesRef = useRef(recoveredMemories);
@@ -1586,7 +1635,6 @@ export default function DeadSignal() {
   const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
   const activeProfileRef    = useRef(null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
-  const completeSoundRef    = useRef(false); // one-shot guard for the completion terminal sound
   const raisedQuestionsRef  = useRef([]);    // case-file OPEN QUESTIONS raised this run (by story beat)
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
@@ -1597,7 +1645,6 @@ export default function DeadSignal() {
   const phase3UnlockedRef      = useRef([]);
   const phase3DayRef           = useRef(PHASE3_START_DAY); // Phase 3 day clock (mirror)
   const daylightRef            = useRef(PHASE3_DAYLIGHT);  // daylight remaining today (mirror)
-  const gateWakeAtRef          = useRef(null);             // day-gate unlock timestamp (mirror)
   const lastPhase3EncounterIdRef = useRef(null);          // last half-connected encounter (dedupe)
   const phase3PendingDestRef     = useRef(null);          // node to enter after a Phase-3 encounter resolves
   const phase3SearchedRef        = useRef(new Set());     // "region:node" rooms already searched this run
@@ -1611,6 +1658,7 @@ export default function DeadSignal() {
   aiCountRef.current        = aiExchangeCount;
   aiTargetRef.current       = aiExchangeTarget;
   fragFiredRef.current      = fragFired;
+  calmFiredRef.current      = calmFired;
   currentEncounterRef.current  = currentEncounter;
   selectedFragmentRef.current  = selectedFragment;
   recoveredMemoriesRef.current = recoveredMemories;
@@ -1621,7 +1669,6 @@ export default function DeadSignal() {
   phase3UnlockedRef.current       = phase3UnlockedRegions;
   phase3DayRef.current            = phase3Day;
   daylightRef.current             = daylight;
-  gateWakeAtRef.current           = gateWakeAt;
 
   // ── Pausable timers ────────────────────────────────────────────────────────────
   // Every gameplay timer goes through setT() instead of raw setTimeout, so the dialogue
@@ -1777,7 +1824,7 @@ export default function DeadSignal() {
     messages, choices, lastMessage,
     resources, weapon, noise, contactName,
     gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
-    aiExchangeCount, aiExchangeTarget, fragFired,
+    aiExchangeCount, aiExchangeTarget, fragFired, calmFired,
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
     recoveredMemories, // this run's cumulative collection (profile + new this run)
     raisedQuestions: raisedQuestionsRef.current, // case-file OPEN QUESTIONS surfaced so far
@@ -1797,7 +1844,6 @@ export default function DeadSignal() {
     discoveredTruths: discoveredTruthsRef.current,
     phase3Unlocked: phase3UnlockedRef.current,
     phase3Day: phase3DayRef.current, daylight: daylightRef.current, // Phase 3 day/night clock
-    gateWakeAt: gateWakeAtRef.current, // real-time day-gate unlock timestamp (absolute ms)
     phase3Searched: [...phase3SearchedRef.current], phase3PendingDest: phase3PendingDestRef.current,
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
@@ -1892,7 +1938,6 @@ export default function DeadSignal() {
     phase3UnlockedRef.current      = Array.isArray(run.phase3Unlocked) ? run.phase3Unlocked : [];
     phase3DayRef.current = typeof run.phase3Day === "number" ? run.phase3Day : PHASE3_START_DAY;
     daylightRef.current  = typeof run.daylight  === "number" ? run.daylight  : PHASE3_DAYLIGHT;
-    gateWakeAtRef.current = typeof run.gateWakeAt === "number" ? run.gateWakeAt : null;
     phase3SearchedRef.current = new Set(Array.isArray(run.phase3Searched) ? run.phase3Searched : []);
     phase3PendingDestRef.current = run.phase3PendingDest || null;
     lastPhase3EncounterIdRef.current = null;
@@ -1916,20 +1961,17 @@ export default function DeadSignal() {
     setCurrentPath(run.currentPath || null); setExchangePhase(run.exchangePhase || 0);
     setP2BeatIndex(run.p2BeatIndex || 0); setAiExchangeCount(run.aiExchangeCount || 0);
     setAiExchangeTarget(run.aiExchangeTarget || 7);
-    setFragFired(!!run.fragFired); setCurrentEncounter(run.currentEncounter || null);
+    setFragFired(!!run.fragFired); setCalmFired(!!run.calmFired); setCurrentEncounter(run.currentEncounter || null);
     setSelectedFragment(run.selectedFragment || null); setDayThree(!!run.dayThree);
     setHavenFinalIndex(run.havenFinalIndex || 0);
     setCurrentPhase3Region(currentPhase3RegionRef.current); setCurrentPhase3Node(currentPhase3NodeRef.current);
     setVisitedPhase3Nodes(visitedPhase3NodesRef.current); setDiscoveredTruths(discoveredTruthsRef.current);
     setPhase3UnlockedRegions(phase3UnlockedRef.current);
     setPhase3Day(phase3DayRef.current); setDaylight(daylightRef.current);
-    setGateWakeAt(gateWakeAtRef.current);
     // memories: prefer the run's own cumulative set; else committed profile; else legacy global
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
-    // Gates dropped — always resume into the chat (clear any stale gate timestamp from an old save).
-    gateWakeAtRef.current = null; setGateWakeAt(null);
     setScreen("chat");
   };
 
@@ -2020,15 +2062,6 @@ export default function DeadSignal() {
     };
   }, []);
 
-  // Terminal-screen audio (once unlocked). Only completion has a sound. Guarded so it
-  // fires exactly once per entry — never replays on a re-render / audioReady flip.
-  useEffect(() => {
-    if (screen !== "phase2_complete") { completeSoundRef.current = false; return; }
-    if (completeSoundRef.current || !audioReady) return;
-    completeSoundRef.current = true;
-    audioEngine.terminal("complete");
-  }, [screen, audioReady]);
-
   useEffect(() => {
     if (screen !== "intro") return; // re-fires every time screen returns to "intro"
     setShownLines([]); setShowNotif(false); // start the cinematic clean — never stack lines
@@ -2089,28 +2122,21 @@ export default function DeadSignal() {
     return () => ids.forEach(clearTimeout);
   }, [screen, deathCause]);
 
-  useEffect(() => {
-    if (screen !== "phase2_complete") return;
-    setCompleteLines([]); // reset on entry so a re-trigger can't stack duplicate lines
-    const ids = [];
-    P2_COMPLETE_LINES.forEach(({ text, delay }) => ids.push(setTimeout(() => setCompleteLines(p => [...p, text]), delay)));
-    ids.push(setTimeout(() => setShowRestart(true), 6000));
-    return () => ids.forEach(clearTimeout); // C2
+  useLayoutEffect(() => {
+    if (screen !== "chat" || !restoreChatScrollRef.current) return;
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = Math.min(chatScrollTopRef.current, Math.max(0, el.scrollHeight - el.clientHeight));
+    restoreChatScrollRef.current = false;
   }, [screen]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, isTyping, choices]);
-
-  // Day-gate countdown — tick a 1s clock while the resting screen is up so the timer counts down
-  // and flips to "morning" when the wall-clock unlock time is reached.
   useEffect(() => {
-    if (screen !== "resting") return;
-    setNowTick(Date.now());
-    const id = setInterval(() => setNowTick(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [screen]);
-  // Persist the gate from a post-render effect (NOT synchronously in startDayGate) so the snapshot
-  // captures the fresh, post-night state (resources/day already applied) rather than a stale closure.
-  useEffect(() => { if (screen === "resting" && gateWakeAtRef.current) saveRun(); }, [screen]);
+    if (screen !== "chat") return;
+    if (suppressNextAutoScrollRef.current) {
+      suppressNextAutoScrollRef.current = false;
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, isTyping, choices, screen]);
 
   // P4 — on mount, migrate any legacy single-slot save into slot 0, then read all slots.
   // refreshSlots() validates each slot and cleans up zero-progress / malformed saves.
@@ -2138,11 +2164,10 @@ export default function DeadSignal() {
     if (screen === "chat" && choices.length > 0 && !isTyping) saveRun();
   }, [screen, choices, isTyping]);
 
-  // Terminal screens resolve the active slot's profile (the per-slot progression).
-  //  • death / offline → discard the in-progress run, KEEP the accumulated profile
-  //    (a single failure no longer erases fragments earned in earlier playthroughs).
-  //  • win → merge this run's collection into the profile, bump playthroughs, clear the
-  //    run (back to the beginning), and keep the slot (it locks at 100%).
+  // Terminal screens resolve the active slot's profile (the per-slot progression):
+  // death / offline → discard the in-progress run, KEEP the accumulated profile
+  // (a single failure no longer erases fragments earned in earlier playthroughs).
+  // The prologue's win-merge lives in beginPhase3 (mergeRunIntoProfile) — it auto-flows into Phase 3.
   useEffect(() => {
     const i = activeSlotRef.current;
     if (screen === "dead" || screen === "offline") {
@@ -2156,17 +2181,6 @@ export default function DeadSignal() {
         await refreshSlots();
       })();
       setRecoveredMemories([]);
-    } else if (screen === "phase2_complete") {
-      const prev = activeProfileRef.current || emptyProfile();
-      const fragments = [...new Set([...(prev.fragments || []), ...recoveredMemories.filter(m => m.type === "fragment").map(m => m.name)])];
-      const clues     = [...new Set([...(prev.clues     || []), ...recoveredMemories.filter(m => m.type === "discovery").map(m => m.name)])];
-      const profile = { playthroughs: (prev.playthroughs || 0) + 1, fragments, clues, complete: fragments.length >= 9 && clues.length >= 3 };
-      activeProfileRef.current = profile;
-      setWinProfile({ playthroughs: profile.playthroughs, frags: fragments.length, clues: clues.length, complete: profile.complete });
-      (async () => {
-        try { if (i != null) await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, null))); } catch (e) {}
-        await refreshSlots();
-      })();
     }
   }, [screen]);
 
@@ -2218,6 +2232,17 @@ export default function DeadSignal() {
   // Current route's identity profile (power/noise tuning). Keys off currentPathRef, which
   // holds the chosen route through the crossing too. Defaults to hospital for an unset route.
   const routeProfile = () => ROUTE_PROFILE[currentPathRef.current] || ROUTE_PROFILE.hospital;
+
+  // Risk legibility — an encounter's choices mapped to their tagged display
+  // strings, from the SAME inputs the resolver will read at the tap (nothing
+  // mutates noise/weapon between presentation and resolution). Pure map: never
+  // mutates c.text — the pools are module-scope objects shared across runs.
+  const tagEncounterChoices = (enc) =>
+    enc.choices.map(c => decorateChoiceText(c.text, c.action, {
+      noise:   noiseRef.current,
+      dmg:     weaponRef.current ? weaponRef.current.damage : 0,
+      penalty: routeProfile().noiseCombatPenalty,
+    }));
 
   // Resource drain at section transitions and mid-legs. The steady squeeze that
   // makes searching matter (supply economy). Code owns every number.
@@ -2446,8 +2471,16 @@ export default function DeadSignal() {
             setCurrentEncounter(enc);
             returnToPhaseRef.current = gamePhaseRef.current;
             setGamePhase("encounter");
-            scheduleMessages(enc.msgs, enc.choices.map(c => c.text), "narrator");
+            scheduleMessages(enc.msgs, tagEncounterChoices(enc), "narrator");
           }, bridgeTime + 300));
+
+        } else if (pending.type === "calm") {
+          // The one-per-run breather: choiceless (no tap → no battery charge),
+          // auto-flows back to the nav screen after the held breath.
+          const calm = CALM_BEAT[path] || CALM_BEAT.hospital;
+          const ct = scheduleMessages(calm.msgs, null, "narrator");
+          addMsg("ellie", pickRandom(CALM_BEAT.ellie), ct + 900);
+          pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(); }, ct + 2600));
         }
 
       }, aiMsgTime + 600));
@@ -2487,7 +2520,7 @@ export default function DeadSignal() {
 
     switch (action) {
       case "SNEAK": {
-        const ok = Math.random() < (curNoise <= 1 ? 0.92 : curNoise <= 3 ? 0.68 : 0.38);
+        const ok = Math.random() < pSneak(curNoise);
         if (ok) { outcome = "you slipped past unnoticed."; reactionKey = "sneak_success"; }
         else    { outcome = "it heard you."; reactionKey = "sneak_fail"; dNoise = 1; dHp = -1; }
         break;
@@ -2524,7 +2557,7 @@ export default function DeadSignal() {
       case "WAIT":    { outcome = "you waited. it passed."; reactionKey = "wait"; break; }
       case "DISTRACT":{ if (curRes.food > 0) { dFood = -1; outcome = "it goes for the food. you slip past."; } else { outcome = "nothing to throw. you slip past anyway."; } reactionKey = "distract"; dNoise = 1; break; }
       case "RUN": {
-        const ok = Math.random() < (curNoise <= 3 ? 0.75 : 0.48);
+        const ok = Math.random() < pRun(curNoise);
         if (ok) { outcome = "you ran. made it."; reactionKey = "run_success"; dNoise = 1; }
         else    { outcome = "you got away. dropped something."; reactionKey = "run_fail"; dFood = -1; dWater = -1; dNoise = 2; }
         break;
@@ -2535,7 +2568,7 @@ export default function DeadSignal() {
         // Weapon-driven combat. Damage raises the odds of a clean kill and cuts the
         // bleed on a loss. Unarmed is desperate. Fighting is loud either way.
         const dmg = weaponRef.current ? weaponRef.current.damage : 0;
-        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? routeProfile().noiseCombatPenalty : 0)));
+        const ok  = Math.random() < pFight(dmg, curNoise, routeProfile().noiseCombatPenalty);
         dNoise = dmg ? 1 : 2;
         if (ok) { outcome = dmg ? "you put it down." : "you fight it off. barely."; reactionKey = "fight_win";  dHp = dmg ? 0  : -1; }
         else    { outcome = dmg ? "it gets a hit in."  : "it gets to you. bad.";    reactionKey = "fight_loss"; dHp = dmg ? -1 : -3; }
@@ -2885,25 +2918,23 @@ export default function DeadSignal() {
     const nextDay = day + 1;
     phase3DayRef.current = nextDay; setPhase3Day(nextDay);
     daylightRef.current = PHASE3_DAYLIGHT; setDaylight(PHASE3_DAYLIGHT);
-    // The night now passes in REAL TIME — gate the next day behind a wall-clock wait (so the game
-    // can't be binged in one sitting). The dawn beat plays on wake, in wakeFromGate.
-    pendingRef.current.push(setT(() => startDayGate(), t + 900));
+    // The night passes instantly; the dawn beat for the new day plays via wakeFromGate.
+    pendingRef.current.push(setT(() => wakeFromGate(), t + 900));
   };
 
   // ─── Day transition ────────────────────────────────────────────────────────────────
-  // Real-time gates were dropped (per design) — the night passes instantly and the game flows
-  // straight through. This just hands off to the dawn/entry beat (wakeFromGate). The resting-screen
-  // scaffolding is left inert (never reached) and can be cleaned up later.
-  const startDayGate = () => { wakeFromGate(); };
-  // Wake from a day-gate and continue. The continuation is derived from state (not a stored
-  // callback): the prologue→Phase-3 gate has no node yet → start Day 4 at the gate yard; a night
-  // gate → the dawn beat for the (already-advanced) day, then the current node's exits.
+  // The dawn/entry beat. The continuation is derived from state (not a stored callback):
+  // no Phase-3 node yet (the prologue→Phase-3 handoff) → start Day 4 at the gate yard;
+  // otherwise → the dawn beat for the (already-advanced) day, then the current node's exits.
   const wakeFromGate = () => {
-    gateWakeAtRef.current = null; setGateWakeAt(null);
     setScreen("chat"); setIsTyping(true);
     if (currentPhase3NodeRef.current == null) {
       const t = scheduleMessages(["day 4.", "you wake at haven. the floodlights never went out.", "you start remembering by looking. so look."], null, "narrator");
-      pendingRef.current.push(setT(() => { setIsTyping(true); enterPhase3Node("gate_yard", { first: true }); }, t + 700));
+      pendingRef.current.push(setT(() => {
+        setIsTyping(true);
+        const et = scheduleMessages(["you've got a few days. after that i don't think it waits anymore."], null, "ellie");
+        pendingRef.current.push(setT(() => { setIsTyping(true); enterPhase3Node("gate_yard", { first: true }); }, et + 700));
+      }, t + 700));
     } else {
       const day = phase3DayRef.current;
       if (day >= PHASE3_FINAL_DAY) {
@@ -2936,7 +2967,7 @@ export default function DeadSignal() {
     setCurrentEncounter(enc); currentEncounterRef.current = enc;
     setGamePhase("encounter"); gamePhaseRef.current = "encounter";
     setIsTyping(true);
-    scheduleMessages(enc.msgs, enc.choices.map(c => c.text), "narrator");
+    scheduleMessages(enc.msgs, tagEncounterChoices(enc), "narrator");
     return true;
   };
 
@@ -3023,9 +3054,9 @@ export default function DeadSignal() {
     setMessages([]); setChoices([]);
     setScreen("chat"); chatStartedRef.current = true;
     const t = scheduleMessages(["the screen goes dark.", "then it doesn't.", "you're still here.", "alone, in the light of the place that called you.", "you've been awake for three days.", "you find a bunk. you let yourself sleep."], null, "narrator");
-    // The night between the prologue and the investigation passes in real time — the Day 3→4 gate.
-    // Day 4 begins on wake (wakeFromGate enters the gate yard, since no Phase-3 node is set yet).
-    pendingRef.current.push(setT(() => startDayGate(), t + 900));
+    // The night passes instantly; the dawn beat plays via wakeFromGate
+    // (Day 4 begins at the gate yard, since no Phase-3 node is set yet).
+    pendingRef.current.push(setT(() => wakeFromGate(), t + 900));
   };
 
   // ─── Phase 3F — the finale flow (mirrors the prologue's call cadence) ────────────────
@@ -3219,7 +3250,7 @@ export default function DeadSignal() {
       if (next < beats.length) {
         setP2BeatIndex(next);
         const nb = beats[next];
-        const msgs = askedHow ? ["not now.", ...nb.msgs] : nb.msgs;
+        const msgs = askedHow ? [pickRandom(ELLIE_DEFLECT), ...nb.msgs] : nb.msgs;
         scheduleMessages(msgs, nb.choices, "ellie");
       } else {
         // Path scripted complete — pick this run's fragment, drain water, start AI.
@@ -3236,7 +3267,7 @@ export default function DeadSignal() {
         // exploration cursor and the one-shot memory guard, then show the first nav screen.
         const startLeg = () => {
           applyTransitionDrain("path_start");
-          setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
+          setFragFired(false); setCalmFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
           leadQueueRef.current = buildLeadQueue("path"); leadCursorRef.current = 0; // explore at your pace
           localBeat(null, "p2_ai"); // first nav screen of the path leg
         };
@@ -3433,11 +3464,13 @@ export default function DeadSignal() {
       const drain = lead?.drain ? applyTransitionDrain(lead.drain) : { food: 0, water: 0 }; // mid-leg squeeze
 
       let pendingBeat = null;
-      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "encounter")) {
+      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "calm" || lead.kind === "encounter")) {
         // Loud → they found you. Forced fight (never overrides a memory/discovery beat).
         // The planned lead is NOT consumed — rewind the cursor so it replays on the next
         // explore (otherwise a cornered fight could silently eat the leg's guaranteed
         // power-source lead, the battery lifeline). No loop risk: the fight resets noise to 0.
+        // A calm lead also yields: the fight fires first, then the breather replays after —
+        // earned relief, and the one-per-run beat can't be eaten.
         leadCursorRef.current = idx; setAiExchangeCount(idx);
         pendingBeat = { type: "encounter", enc: CORNERED_ENCOUNTER };
       } else if (lead?.kind === "memory" && !fragFiredRef.current) {
@@ -3445,6 +3478,9 @@ export default function DeadSignal() {
         pendingBeat = { type: "memory" };
       } else if (lead?.kind === "discovery") {
         pendingBeat = { type: "discovery" };
+      } else if (lead?.kind === "calm" && !calmFiredRef.current) {
+        setCalmFired(true);
+        pendingBeat = { type: "calm" };
       } else if (lead?.kind === "encounter") {
         pendingBeat = pickEncounterBeat(section, path, lead.plan);
       }
@@ -3522,7 +3558,7 @@ export default function DeadSignal() {
     setWeapon(null); setNoise(0);
     setExchangePhase(0); setContactName("KIM"); setChosenPath(null);
     setGamePhase("phase1"); setCurrentPath(null); setP2BeatIndex(0);
-    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false);
+    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false); setCalmFired(false);
     setCurrentEncounter(null); setSelectedFragment(null); setDayThree(false);
     setHavenFinalIndex(0); shelterForcedRef.current = false;
     // Phase 3 — clear the investigation so a fresh prologue run starts clean.
@@ -3533,17 +3569,25 @@ export default function DeadSignal() {
     setPhase3UnlockedRegions([]); phase3UnlockedRef.current = [];
     setPhase3Day(PHASE3_START_DAY); phase3DayRef.current = PHASE3_START_DAY;
     setDaylight(PHASE3_DAYLIGHT);   daylightRef.current  = PHASE3_DAYLIGHT;
-    setGateWakeAt(null);            gateWakeAtRef.current = null;
     phase3SearchedRef.current = new Set(); phase3PendingDestRef.current = null; lastPhase3EncounterIdRef.current = null;
     setEndingLines([]); setEndingKind(null);
     // recoveredMemories intentionally NOT reset — persists across runs
-    setOfflineLines([]); setCompleteLines([]); setShowRestart(false); setLastMessage("");
+    setOfflineLines([]); setShowRestart(false); setLastMessage("");
     setDeathLines([]); setDeathCause(null);
     setShownLines([]); setShowNotif(false); setMenuOpen(false); setMenuMsg(""); setMenuNote("");
   };
 
   // audio — wrap a menu-button handler so it plays the distinct menu-tap click.
   const withMenuSound = (fn) => () => { audioEngine.tapMenu(); fn?.(); };
+  const openCaseFile = () => {
+    if (chatScrollRef.current) chatScrollTopRef.current = chatScrollRef.current.scrollTop;
+    setScreen("board");
+  };
+  const closeCaseFile = () => {
+    restoreChatScrollRef.current = true;
+    suppressNextAutoScrollRef.current = true;
+    setScreen("chat");
+  };
 
   // audio — small mute toggle glyph (line-through ♪ when muted). Reused on every screen.
   // audio — speaker icon (line style matches the HUD battery glyph). Sound waves
@@ -3618,13 +3662,13 @@ export default function DeadSignal() {
   const inPhase3      = gamePhase === "phase3" || gamePhase === "phase3_finale" || (gamePhase === "encounter" && returnToPhaseRef.current === "phase3");
   const canUseCharger = chargerAmt > 0 && resources.battery < 90 && gamePhase !== "encounter" && !inPhase3 && !(choices.length === 1 && choices[0] === "·");
   const signalLevel =
-    screen === "phase2_complete" || dayThree ? 5 :
+    dayThree ? 5 :
     ["p2_ai_cross","shelter","haven_approach","haven_ai","haven_final"].includes(gamePhase) ? 4 :
     gamePhase === "p2_discovery"    ? 3 :
     ["p2_scripted","p2_ai","p2_memory_frag","encounter"].includes(gamePhase) ? 2 : 1;
   const displayDay =
     inPhase3 ? phase3Day :
-    screen === "phase2_complete" || dayThree ? 3 :
+    dayThree ? 3 :
     (gamePhase.startsWith("p2") || gamePhase === "encounter" || gamePhase === "shelter") ? 2 :
     exchangePhase >= 10 ? 2 : 1;
   const contactStatus = (dayThree || ["p2_ai_cross","shelter"].includes(gamePhase))
@@ -3809,7 +3853,7 @@ export default function DeadSignal() {
     return (
       <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", padding:"clamp(1.25rem,5vw,2.5rem) clamp(1rem,4vw,2rem)", userSelect:"none", overflowY:"auto" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-        <button className="rb" onClick={withMenuSound(()=>{ setScreen("chat"); })}
+        <button className="rb" onClick={withMenuSound(closeCaseFile)}
           style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
@@ -3997,63 +4041,18 @@ export default function DeadSignal() {
     </div>
   );
 
-  // ─── Resting — the real-time day gate. The night passes in wall-clock time; the next day stays
-  // locked until the timer elapses (persisted, so closing the app can't skip it). ──────────────
-  if (screen === "resting") {
-    const remaining = Math.max(0, (gateWakeAt || 0) - (nowTick || Date.now()));
-    const ready = remaining <= 0;
-    return (
-      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
-        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.9rem", textAlign:"center", animation:"fi 1s ease forwards" }}>
-          <p style={{ color:"#3a3a3a", fontSize:"0.62rem", letterSpacing:"0.22em", margin:0 }}>— NIGHT —</p>
-          <p style={{ color:"#c8b98a", fontSize:"0.95rem", letterSpacing:"0.06em", margin:0, fontWeight:300 }}>you sleep.</p>
-          {ready ? (
-            <p style={{ color:"#6aba8a", fontSize:"0.9rem", letterSpacing:"0.1em", margin:"0.4rem 0 0", textShadow:"0 0 10px rgba(74,158,107,0.4)" }}>morning.</p>
-          ) : (
-            <>
-              <p style={{ color:"#d8c79b", fontSize:"0.78rem", letterSpacing:"0.04em", opacity:0.75, margin:0, fontStyle:"italic" }}>ellie: get some rest. i'll wake you.</p>
-              <div style={{ marginTop:"0.6rem", color:"#4a9e6b", fontSize:"1.6rem", letterSpacing:"0.14em", fontVariantNumeric:"tabular-nums", textShadow:"0 0 12px rgba(74,158,107,0.3)" }}>{fmtCountdown(remaining)}</div>
-              <p style={{ color:"#3a3a3a", fontSize:"0.58rem", letterSpacing:"0.1em", margin:"0.2rem 0 0", maxWidth:"22rem", lineHeight:1.6 }}>the night passes in real time. you can close the app — it'll hold until morning.</p>
-            </>
-          )}
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"2.8rem" }}>
-          {ready && (
-            <button className="rb" onClick={withMenuSound(wakeFromGate)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.6rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", cursor:"pointer", animation:"pu 1.4s ease infinite", transition:"all 0.2s" }}>▸&nbsp;&nbsp;wake — continue</button>
-          )}
-          {!ready && GATE_BYPASS && (
-            <button className="rb" onClick={withMenuSound(wakeFromGate)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>skip (dev)</button>
-          )}
-          <button className="rb" onClick={withMenuSound(()=>{ setScreen("menu"); })} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#505050", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>◂ exit to title</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (screen === "offline" || screen === "phase2_complete" || screen === "dead" || screen === "ending") {
-    const lines  = screen === "offline" ? offlineLines : screen === "dead" ? deathLines : screen === "ending" ? endingLines : completeLines;
+  if (screen === "offline" || screen === "dead" || screen === "ending") {
+    const lines  = screen === "offline" ? offlineLines : screen === "dead" ? deathLines : endingLines;
     const colors = screen === "offline"
       ? (i) => i === 0 ? "#2a2a2a" : "#8b2020"
       : screen === "dead"
       ? (i) => i === 0 ? "#a83232" : "#7a1f1f"
-      : screen === "ending"
-      ? () => (endingKind === "accept" ? "#6a9a78" : "#7a7a82")
-      : () => "#c8b98a";
+      : () => (endingKind === "accept" ? "#6a9a78" : "#7a7a82");
     return (
       <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
           {lines.map((l,i) => <p key={i} style={{ color:colors(i), fontSize:"0.9rem", lineHeight:"2.2", letterSpacing:"0.06em", animation:"fi 1s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
-          {screen === "phase2_complete" && showRestart && (
-            <p style={{ color:"#505050", fontSize:"0.72rem", marginTop:"1.5rem", letterSpacing:"0.14em", animation:"fi 1s ease forwards" }}>— to be continued —</p>
-          )}
-          {screen === "phase2_complete" && showRestart && winProfile && (
-            <p style={{ marginTop:"1rem", fontSize:"0.66rem", letterSpacing:"0.1em", animation:"fi 1s ease forwards", color:"#6a6a6a" }}>
-              playthrough {winProfile.playthroughs} · <span style={{ color: winProfile.frags > 0 ? "#4a9e6b" : "#3a5a44" }}>◈ {winProfile.frags}/9</span> · <span style={{ color: winProfile.clues > 0 ? "#4ab5c8" : "#2d4a52" }}>◉ {winProfile.clues}/3</span>
-              {winProfile.complete && <><br/><span style={{ color:"#4a9e6b", letterSpacing:"0.16em", textShadow:"0 0 8px rgba(74,158,107,0.45)" }}>— 100% · everything recovered —</span></>}
-            </p>
-          )}
           {screen === "offline" && lastMessage && lines.length >= 3 && (
             <p style={{ color:"#1a1a1a", fontSize:"0.68rem", marginTop:"1.5rem", letterSpacing:"0.06em", fontWeight:300 }}>last sent: "{lastMessage}"</p>
           )}
@@ -4063,11 +4062,6 @@ export default function DeadSignal() {
         </div>
         {(showRestart || screen === "ending") && (
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"3rem", ...(screen === "ending" ? { opacity:0, animation:"fi 1.4s ease 3s forwards" } : {}) }}>
-            {/* Win: the slot is saved with updated progress. Play again (keeps the profile,
-                unless 100% — then it's locked and you return to title to Reset from the slot). */}
-            {screen === "phase2_complete" && !(winProfile && winProfile.complete) && (
-              <button className="rb" onClick={withMenuSound(()=>{ const i = activeSlotRef.current; if (i != null) beginRun(i, { fresh:false }); else handleRestart(); })} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;play again</button>
-            )}
             {/* Ending: step back to the gate and pick the other choice without replaying the game. */}
             {screen === "ending" && (
               <button className="rb" onClick={withMenuSound(resumeAfterEnding)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.65rem 1.5rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;back to the gate — choose again</button>
@@ -4086,7 +4080,7 @@ export default function DeadSignal() {
         <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
       </div>
       <div className="ds-hud-mid">
-        <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
+        <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file"
           style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
         <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
           style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
@@ -4161,7 +4155,7 @@ export default function DeadSignal() {
       )}
 
       {/* Messages */}
-      <div style={{ flex:1, overflowY:"auto", padding:"0.6rem 0.9rem", display:"flex", flexDirection:"column", gap:"0.4rem", minHeight:0 }}>
+      <div ref={chatScrollRef} style={{ flex:1, overflowY:"auto", padding:"0.6rem 0.9rem", display:"flex", flexDirection:"column", gap:"0.4rem", minHeight:0 }}>
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
         {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
