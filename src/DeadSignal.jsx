@@ -32,7 +32,13 @@ const DAY1_FLAGS = {
 };
 const DAY1_REQUIRED = [DAY1_FLAGS.CHARGER, DAY1_FLAGS.SUPPLIES, DAY1_FLAGS.DOOR, DAY1_FLAGS.ELLIE, DAY1_FLAGS.BROADCAST];
 const DAY1_ROUTE_CHOICES = ["Mercy General Hospital [power still on]", "Harwick Metro [underground]", "Route 9 [open highway]"];
+// Two caps, two jobs. MAX_VISIBLE_CHOICES (4) is the Day-1 menu DESIGN target — those menus
+// are built to fit it by construction. HARD_CHOICE_CAP (5) is the runtime safety limit: the
+// Phase-3 map legitimately presents 5 (gate_yard, fully-unlocked outer_road, room+search),
+// so the enforcement layer must never truncate below that — a cut exit is an unreachable
+// node (the 4-cap made Phase 3 unwinnable: gate_yard's "Out to the road." was dropped).
 const MAX_VISIBLE_CHOICES = 4;
+const HARD_CHOICE_CAP = 5;
 
 const PATH_BEATS = {
   hospital: [
@@ -802,6 +808,20 @@ const validatePhase3Map = () => {
     const seen = new Set(), stack = [region.entryNode];
     while (stack.length) { const n = stack.pop(); if (seen.has(n) || !nodes[n]) continue; seen.add(n); (nodes[n].exits || []).forEach(e => e.to && stack.push(e.to)); }
     ids.forEach(id => { if (!seen.has(id)) console.warn(`[Phase3] ${region.id}.${id}: unreachable from entryNode "${region.entryNode}"`); });
+    // Choice-cap audit (mirrors showPhase3Exits): worst case per node = all exits visible
+    // (hidden ones unlock) + finale (haven gate_yard) + bed-down (shelter at dusk). The
+    // display layer may hide plain in-region rooms when over HARD_CHOICE_CAP, but region
+    // exits / doors to them (dest kind "exit") / priority beats never cut — so that
+    // protected set has to fit, and local rooms must stay reachable some other way.
+    ids.forEach(id => {
+      const exits = nodes[id].exits || [];
+      const priority = (region.id === "haven" && id === "gate_yard" ? 1 : 0) + (nodes[id].shelter ? 1 : 0);
+      const protectedCount = priority + exits.filter(e => e.region || (e.to && nodes[e.to]?.kind === "exit")).length;
+      if (protectedCount > HARD_CHOICE_CAP)
+        console.warn(`[Phase3] ${region.id}.${id}: ${protectedCount} never-cut choices exceed the ${HARD_CHOICE_CAP}-choice cap — exits would be unreachable`);
+      else if (exits.length > HARD_CHOICE_CAP)
+        console.warn(`[Phase3] ${region.id}.${id}: ${exits.length} exits — tail rooms permanently hidden by the ${HARD_CHOICE_CAP}-choice cap`);
+    });
   });
 };
 
@@ -1347,6 +1367,7 @@ const PHASE3_FINAL_DAY = 7;   // the last day of the week — the ending; no nig
 const PHASE3_DAYLIGHT  = 14;  // node-moves of daylight per investigation day (tuning knob)
 const PHASE3_ENCOUNTER_RATE = 0.34; // chance the half-connected block a Phase-3 move (tuning knob)
 const DAY_GATE_MS = 17 * 60 * 1000;
+const EARLY_WAKE_MIN_MS = 2 * 60 * 1000; // "force yourself up" appears after this much of the night
 const GATE_BYPASS = (() => {
   try { return !!import.meta.env?.DEV || (typeof location !== "undefined" && /[?&]debug/.test(location.search)); }
   catch (e) { return false; }
@@ -1661,6 +1682,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const daylightRef            = useRef(PHASE3_DAYLIGHT);  // daylight remaining today (mirror)
   const gateWakeAtRef          = useRef(null);             // day-gate unlock timestamp (mirror)
   const gateReasonRef          = useRef(null);             // day-gate continuation target (mirror)
+  const gateHealRef            = useRef(0);                // dawn heal deferred behind the gate (early wake forfeits)
   const lastPhase3EncounterIdRef = useRef(null);          // last half-connected encounter (dedupe)
   const phase3PendingDestRef     = useRef(null);          // node to enter after a Phase-3 encounter resolves
   const phase3SearchedRef        = useRef(new Set());     // "region:node" rooms already searched this run
@@ -1741,6 +1763,20 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   }, [screen, menuOpen]);
   // Dev-only: validate the Phase 3 invisible map once on mount (warns on broken exits/dead ends).
   useEffect(() => { try { if (import.meta.env?.DEV) validatePhase3Map(); } catch (e) {} }, []);
+  // Dev-only Day-1 router audit (same idiom): every label the Day-1 menus can emit must route
+  // to a real action — detectDay1Action matches on substrings, so a reworded label silently
+  // falls through to OPENING and replays the opening beat instead of its scene. Menu builders
+  // are pure reads (flags empty at mount = the fresh-run variants); the flag-set rewordings
+  // aren't producible here, so they're listed explicitly.
+  useEffect(() => {
+    try {
+      if (!import.meta.env?.DEV) return;
+      [...day1HubChoices(), ...day1InspectChoices(), ...day1RequiredChoices(), ...day1OptionalChoices(),
+       "Sleep until morning.", "Back to sleep prep.", "Text Ellie about the broadcast.",
+       "Found a city map. *It says Harwick.* [pick up map]", ...DAY1_ROUTE_CHOICES,
+      ].forEach(l => { if (detectDay1Action(l) === "OPENING") console.warn(`[Day1] label routes to OPENING (unhandled): "${l}"`); });
+    } catch (e) {}
+  }, []);
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
 
   // Drop a QUESTION card into the chat, staggered so simultaneous raises (e.g. the name
@@ -1869,6 +1905,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     phase3Day: phase3DayRef.current, daylight: daylightRef.current, // Phase 3 day/night clock
     gateWakeAt: gateWakeAtRef.current, // real-time day-gate unlock timestamp (absolute ms)
     gateReason: gateReasonRef.current,
+    gateHeal: gateHealRef.current || 0, // dawn heal riding the gate (survives quit-and-resume)
     phase3Searched: [...phase3SearchedRef.current], phase3PendingDest: phase3PendingDestRef.current,
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
@@ -1878,16 +1915,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const validRun = (r) => !!r && r.gamePhase && r.resources && typeof r.resources.battery === "number"
     && (r.gamePhase !== "phase1" || !!r.gateWakeAt || !!r.day1?.flags?.length || !!r.day1?.visited?.length || !!r.day1?.scene);
   const capVisibleChoices = (choiceList, source = "unknown") => {
-    if (!Array.isArray(choiceList) || choiceList.length <= MAX_VISIBLE_CHOICES) return choiceList;
+    if (!Array.isArray(choiceList) || choiceList.length <= HARD_CHOICE_CAP) return choiceList;
     if (GATE_BYPASS) {
-      console.warn("[DeadSignal] choice list exceeds max visible choices", {
+      console.warn("[DeadSignal] choice list exceeds the hard cap — tail choices are unreachable", {
         source,
         count: choiceList.length,
-        max: MAX_VISIBLE_CHOICES,
+        max: HARD_CHOICE_CAP,
         choices: choiceList,
       });
     }
-    return choiceList.slice(0, MAX_VISIBLE_CHOICES);
+    return choiceList.slice(0, HARD_CHOICE_CAP);
   };
   // Normalize any stored value → { profile, run } (or null). Handles legacy v1 saves.
   const normalizeSlot = (raw) => {
@@ -1976,6 +2013,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     daylightRef.current  = typeof run.daylight  === "number" ? run.daylight  : PHASE3_DAYLIGHT;
     gateWakeAtRef.current = typeof run.gateWakeAt === "number" ? run.gateWakeAt : null;
     gateReasonRef.current = run.gateReason || null;
+    gateHealRef.current = typeof run.gateHeal === "number" ? run.gateHeal : 0;
     day1SceneRef.current = run.day1?.scene || "opening";
     day1VisitedRef.current = Array.isArray(run.day1?.visited) ? run.day1.visited : [];
     day1FlagsRef.current = Array.isArray(run.day1?.flags) ? run.day1.flags : [];
@@ -2753,10 +2791,11 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     return choices;
   };
   const day1InspectChoices = () => {
+    // The door stays on the required hub list only — repeating it here pushed "Back" off the
+    // 4-choice menu exactly when it was fullest. Optionals (≤3) + Back always fit.
     const choices = [...day1OptionalChoices()];
-    if (!day1Has(DAY1_FLAGS.DOOR)) choices.push("Secure the hallway door.");
     choices.push(day1ReadyForSleep() ? "Back to sleep prep." : "Back to essentials.");
-    return choices.slice(0, MAX_VISIBLE_CHOICES);
+    return choices;
   };
   const day1HubChoices = () => {
     if (day1ReadyForSleep()) return ["Sleep until morning.", ...day1OptionalChoices()].slice(0, MAX_VISIBLE_CHOICES);
@@ -2771,9 +2810,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     if (choices.length < MAX_VISIBLE_CHOICES) choices.push("Try to sleep.");
     return choices.slice(0, MAX_VISIBLE_CHOICES);
   };
-  const showDay1Hub = (msgs = ["the apartment waits.", "what do you check?"], from = "narrator") => {
+  const showDay1Hub = (msgs = ["the apartment waits.", "what do you check?"], from = "narrator", onShown = null) => {
     setDay1Scene("apartment"); day1SceneRef.current = "apartment";
-    return scheduleMessages(msgs, day1HubChoices(), from);
+    return scheduleMessages(msgs, day1HubChoices(), from, onShown);
   };
   const nudgeCaseFileHint = () => {
     if (activeProfileRef.current && !activeProfileRef.current.caseFileHintSeen) {
@@ -2784,6 +2823,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const startDay2Morning = () => {
     setGamePhase("phase1"); gamePhaseRef.current = "phase1";
     setExchangePhase(10);
+    // A silent night resets the street's attention — Day-1 noise (the door scrape, the
+    // stairwell) doesn't follow you into the route legs, whose encounter odds were tuned
+    // from a noise-0 start. The in-the-moment scares already landed.
+    setNoise(0);
     setDay1Scene("day2_map"); day1SceneRef.current = "day2_map";
     setChoices([]); setIsTyping(true);
     scheduleMessages(["morning. still there?", "we need to move toward those coordinates.", "find out where you are first."], ["Found a city map. *It says Harwick.* [pick up map]"], "ellie");
@@ -2928,8 +2971,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       if (!day1Has(DAY1_FLAGS.ELLIE)) {
         markDay1Flag(DAY1_FLAGS.ELLIE); markDay1Flag(DAY1_FLAGS.BROADCAST);
         raiseQuestion("kim"); raiseQuestion("ellie"); raiseQuestion("call");
-        setContactName("ELLIE");
-        showDay1Hub(["okay.", "name's ellie.", "found this phone in our stairwell two days ago. she was already gone.", "there's a broadcast. shortwave. been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left.", "don't open your door tonight. i don't care what you hear."], "ellie");
+        // P6d — the header flips KIM→ELLIE the instant "name's ellie" actually renders,
+        // tied to the message text (not the tap that asked the question).
+        showDay1Hub(["okay.", "name's ellie.", "found this phone in our stairwell two days ago. she was already gone.", "there's a broadcast. shortwave. been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left.", "don't open your door tonight. i don't care what you hear."], "ellie",
+          (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); });
       } else {
         showDay1Hub(["same loop.", "same voice. same coordinates.", "someone put real effort into it.", "we move when it's light."], "ellie");
       }
@@ -3025,7 +3070,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       ? ["the compound spreads out around you.", "where do you look?"]
       : ["you've walked all of it.", "only one place left."];
     const labels = remaining.length
-      ? [...remaining.slice(0, MAX_VISIBLE_CHOICES - 1).map(d => d.label), HEART_LABEL]
+      ? [...remaining.slice(0, HARD_CHOICE_CAP - 1).map(d => d.label), HEART_LABEL]
       : [HEART_LABEL];
     const t = scheduleMessages(prompt, labels, "narrator");
     return t + delay;
@@ -3044,11 +3089,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     // shelter rule). The final day has no clock, so dusk never triggers there.
     const dusk = phase3DayRef.current < PHASE3_FINAL_DAY && daylightRef.current <= PHASE3_DUSK;
     // Hidden region exits (places not yet heard of) appear once their region is unlocked.
-    const exitLabels = (node.exits || [])
+    const entries = (node.exits || [])
       .filter(e => !e.hidden || (e.region && phase3UnlockedRef.current.includes(e.region)))
       .map(e => {
         const dest = e.to ? phase3Node(region, e.to) : null;
-        return dusk && dest?.shelter ? `${e.label} [shelter]` : e.label;
+        return {
+          label: dusk && dest?.shelter ? `${e.label} [shelter]` : e.label,
+          // A cut exit is an unreachable place. Region exits and the doors that lead to them
+          // (dest kind "exit") are load-bearing — only plain in-region rooms may be hidden.
+          droppable: !!e.to && dest?.kind !== "exit",
+        };
       });
     const priorityLabels = [];
     // The finale call — at the Haven hub, once all 4 truths are uncovered, the phone rings.
@@ -3057,10 +3107,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     }
     // Bed down — only at a shelter, only as the light fails (resting early at one is safe).
     if (dusk && node.shelter) priorityLabels.push(BED_DOWN_LABEL(phase3DayRef.current));
-    const labels = [...priorityLabels, ...exitLabels].slice(0, MAX_VISIBLE_CHOICES);
+    // Over the cap → drop droppable exits from the tail (validatePhase3Map audits the worst case).
+    let overflow = priorityLabels.length + entries.length - HARD_CHOICE_CAP;
+    for (let i = entries.length - 1; i >= 0 && overflow > 0; i--) {
+      if (!entries[i].droppable) continue;
+      if (GATE_BYPASS) console.warn(`[Phase3] ${region}.${currentPhase3NodeRef.current}: cap hides "${entries[i].label}"`);
+      entries.splice(i, 1); overflow--;
+    }
+    const labels = [...priorityLabels, ...entries.map(en => en.label)].slice(0, HARD_CHOICE_CAP);
     // Optional search — a room you haven't picked over yet, while there's daylight to spare.
     const searched = phase3SearchedRef.current.has(`${region}:${currentPhase3NodeRef.current}`);
-    if (!dusk && node.kind === "room" && !node.truth && !searched && labels.length < MAX_VISIBLE_CHOICES) labels.push("▸ Search the room [1 light]");
+    if (!dusk && node.kind === "room" && !node.truth && !searched && labels.length < HARD_CHOICE_CAP) labels.push("▸ Search the room [1 light]");
     return scheduleMessages([], labels, "narrator");
   };
 
@@ -3209,12 +3266,12 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     const seg = [];
     seg.push(r.food  > 0 ? "food -1"  : "no food · hp -1");
     seg.push(r.water > 0 ? "water -1" : "no water · hp -1");
-    seg.push(caught ? `caught out · hp -${PHASE3_CAUGHT_HP}` : `rested · hp +${PHASE3_REST_HEAL}`);
+    if (caught) seg.push(`caught out · hp -${PHASE3_CAUGHT_HP}`);
     setResources(p => {
       let f = p.food, w = p.water, h = p.hp;
       if (f > 0) f -= 1; else h = Math.max(1, h - 1);
       if (w > 0) w -= 1; else h = Math.max(1, h - 1);
-      h = caught ? Math.max(1, h - PHASE3_CAUGHT_HP) : Math.min(10, h + PHASE3_REST_HEAL);
+      if (caught) h = Math.max(1, h - PHASE3_CAUGHT_HP);
       return { ...p, food: f, water: w, hp: h };
     });
     addMsg("system", "shelter · " + seg.join(" · "), t); t += 500;
@@ -3223,15 +3280,18 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     const nextDay = day + 1;
     phase3DayRef.current = nextDay; setPhase3Day(nextDay);
     daylightRef.current = PHASE3_DAYLIGHT; setDaylight(PHASE3_DAYLIGHT);
-    // The night passes instantly; the dawn beat for the new day plays via wakeFromGate.
-    pendingRef.current.push(setT(() => startDayGate("phase3_night"), t + 900));
+    // The night passes in real time behind the gate; the dawn beat plays via wakeFromGate.
+    // The rest heal is the night's REWARD — it rides the gate and lands at dawn, so waking
+    // early forfeits it. Caught-out nights have no heal to forfeit (the penalty landed above).
+    pendingRef.current.push(setT(() => startDayGate("phase3_night", caught ? 0 : PHASE3_REST_HEAL), t + 900));
   };
 
   // ─── Day transition ────────────────────────────────────────────────────────────────
-  const startDayGate = (reason = "phase3_night") => {
+  const startDayGate = (reason = "phase3_night", heal = 0) => {
     const wakeAt = Date.now() + DAY_GATE_MS;
     gateWakeAtRef.current = wakeAt; setGateWakeAt(wakeAt);
     gateReasonRef.current = reason; setGateReason(reason);
+    gateHealRef.current = heal; // the dawn heal riding on this gate (0 = nothing deferred)
     setNowTick(Date.now());
     setChoices([]); setIsTyping(false);
     setScreen("resting");
@@ -3239,11 +3299,22 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   // Wake from a day-gate and continue. The continuation is derived from state (not a stored
   // callback): the prologue→Phase-3 gate has no node yet → start Day 4 at the gate yard; a night
   // gate → the dawn beat for the (already-advanced) day, then the current node's exits.
-  const wakeFromGate = () => {
+  const wakeFromGate = (early = false) => {
     const reason = gateReasonRef.current;
+    const heal = gateHealRef.current || 0;
+    gateHealRef.current = 0;
     gateWakeAtRef.current = null; setGateWakeAt(null);
     gateReasonRef.current = null; setGateReason(null);
     setScreen("chat"); setIsTyping(true);
+    // The deferred rest heal lands at dawn; forcing yourself up early forfeits it.
+    if (early && heal) {
+      addMsg("system", "short sleep · no rest", 400);
+    } else if (heal) {
+      setResources(p => ({ ...p, hp: Math.min(10, p.hp + heal) }));
+      addMsg("system", `rested · hp +${heal}`, 400);
+    } else if (early) {
+      addMsg("narrator", "you barely slept.", 400); // day-1 / handoff / caught nights: no heal at stake
+    }
     if (reason === "day1") {
       startDay2Morning();
       return;
@@ -3512,49 +3583,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
 
     if (gamePhaseRef.current === "phase1") {
       handleDay1Choice(choice, newBattery);
-      return;
-      const cur  = SCRIPTED_EXCHANGES[exchangePhase];
-      const next = exchangePhase + 1;
-      setExchangePhase(next);
-      // Case-file questions surface as their beat is reached.
-      if (exchangePhase === 1) {
-        raiseQuestion("memory");                                                // the amnesia beat
-        // Discoverability nudge — point the player at the Case File the first time a slot logs
-        // a question. Once per slot: the flag rides on the persisted profile (committed at the
-        // first save after phase1), so it never nags on replays of that slot.
-        if (activeProfileRef.current && !activeProfileRef.current.caseFileHintSeen) {
-          activeProfileRef.current.caseFileHintSeen = true;
-          addMsg("system", "▤ new in your case file — tap FILE to review", 1500);
-        }
-      }
-      if (cur?.onChoice === "NAME_REVEAL") { raiseQuestion("kim"); raiseQuestion("ellie"); raiseQuestion("call"); } // "she was already gone" + "i called her"
-      if (cur?.onChoice === "CHARGER")     { const ch = Math.min(100, newBattery + CHARGER_FIND); setResources(p => ({ ...p, battery: ch, charger: 0 })); addMsg("system", `portable charger drained into phone · battery ${ch}%`, 700); addMsg("system", "charger empty — recharge it at a power source", 1400); }
-      if (cur?.onChoice === "SUPPLIES")    { setResources(p => ({ ...p, food: START_SUPPLY, water: START_SUPPLY })); addMsg("system", `supplies gathered · food ${START_SUPPLY} · water ${START_SUPPLY}`, 700); }
-      if (cur?.onChoice === "MAP_FOUND")   { addMsg("system", "city map found — harwick", 700); }
-      let detected = null;
-      if (cur?.onChoice === "BRANCH") { detected = detectPath(choice); setCurrentPath(detected); setChosenPath(choice); }
-      // CHARGER emits two staggered captions; hold the next exchange until both have
-      // landed so they read as a pair (the typing indicator from line 1421 bridges the
-      // gap). Other choices have at most one caption, so they start the reply at once.
-      const startNext = () => {
-        if (next < SCRIPTED_EXCHANGES.length) {
-          const nx = SCRIPTED_EXCHANGES[next];
-          // P6d — flip KIM→ELLIE the instant the name-reveal message actually renders,
-          // tied to the message text (not a magic 3040ms delay). Only the reveal
-          // exchange (onChoice NAME_REVEAL) gets the hook.
-          const onShown = nx.onChoice === "NAME_REVEAL"
-            ? (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); }
-            : null;
-          scheduleMessages(nx.msgs, nx.choices, nx.from || "ellie", onShown);
-        } else {
-          const path = detected || currentPathRef.current || "hospital"; // H4
-          setGamePhase("p2_scripted"); setP2BeatIndex(0);
-          scheduleMessages(PATH_BEATS[path][0].msgs, PATH_BEATS[path][0].choices, "ellie");
-        }
-      };
-      const nextDelay = cur?.onChoice === "CHARGER" ? 1700 : 0;
-      if (nextDelay > 0) pendingRef.current.push(setT(startNext, nextDelay));
-      else startNext();
       return;
     }
 
@@ -3896,6 +3924,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     setDaylight(PHASE3_DAYLIGHT);   daylightRef.current  = PHASE3_DAYLIGHT;
     setGateWakeAt(null);            gateWakeAtRef.current = null;
     setGateReason(null);            gateReasonRef.current = null;
+    gateHealRef.current = 0;
     phase3SearchedRef.current = new Set(); phase3PendingDestRef.current = null; lastPhase3EncounterIdRef.current = null;
     setEndingLines([]); setEndingKind(null);
     // recoveredMemories intentionally NOT reset — persists across runs
@@ -4371,17 +4400,36 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   if (screen === "resting") {
     const remaining = Math.max(0, (gateWakeAt || 0) - (nowTick || Date.now()));
     const ready = remaining <= 0;
+    const canForceWake = !ready && DAY_GATE_MS - remaining >= EARLY_WAKE_MIN_MS;
+    // gateHeal is fixed for the life of the gate, so a render-time ref read is stable here.
+    // Phase-3 nights defer a heal unless nightfall caught you in the open — its absence
+    // doubles as the caught-out discriminator (for the flavor and the [no rest] tag).
+    const healAtStake = gateHealRef.current > 0;
+    const caughtOut = gateReason === "phase3_night" && !healAtStake;
+    const dayLabel = gateReason === "day1" ? "day two" : `day ${phase3Day}`;
+    const flavor =
+      gateReason === "day1" ? "ellie: get some rest. i'll wake you."
+      : gateReason === "phase3" ? "three days awake. the bunk takes you before you finish the thought."
+      : caughtOut ? "a doorway is not a shelter. you keep your eyes open."
+      : remaining > (DAY_GATE_MS * 2) / 3 ? "first watch. the building settles around you."
+      : remaining > DAY_GATE_MS / 3 ? "the small hours. nothing moves."
+      : "near dawn. the dark starts to thin.";
     return (
-      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-top)) clamp(1rem, 4vw, 2rem) calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-bottom))", userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <button onClick={toggleMute} title={muted ? "unmute" : "mute"} aria-label={muted ? "unmute" : "mute"}
+          style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", right:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #1c1c1c", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0.3rem 0.45rem", cursor:"pointer" }}>
+          {speakerIcon(muted ? "#5a5a5a" : "#4a9e6b")}
+        </button>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.9rem", textAlign:"center", animation:"fi 1s ease forwards" }}>
           <p style={{ color:"#3a3a3a", fontSize:"0.62rem", letterSpacing:"0.22em", margin:0 }}>-- NIGHT --</p>
-          <p style={{ color:"#c8b98a", fontSize:"0.95rem", letterSpacing:"0.06em", margin:0, fontWeight:300 }}>you sleep.</p>
+          <p style={{ color:"#c8b98a", fontSize:"0.95rem", letterSpacing:"0.06em", margin:0, fontWeight:300 }}>{caughtOut ? "you wait it out." : "you sleep."}</p>
+          <p style={{ color:"#4a4a4a", fontSize:"0.6rem", letterSpacing:"0.14em", margin:0 }}>{dayLabel} waits.</p>
           {ready ? (
             <p style={{ color:"#6aba8a", fontSize:"0.9rem", letterSpacing:"0.1em", margin:"0.4rem 0 0", textShadow:"0 0 10px rgba(74,158,107,0.4)" }}>morning.</p>
           ) : (
             <>
-              <p style={{ color:"#d8c79b", fontSize:"0.78rem", letterSpacing:"0.04em", opacity:0.75, margin:0, fontStyle:"italic" }}>ellie: get some rest. i'll wake you.</p>
+              <p style={{ color:"#d8c79b", fontSize:"0.78rem", letterSpacing:"0.04em", opacity:0.75, margin:0, fontStyle:"italic" }}>{flavor}</p>
               <div style={{ marginTop:"0.6rem", color:"#4a9e6b", fontSize:"1.6rem", letterSpacing:"0.14em", fontVariantNumeric:"tabular-nums", textShadow:"0 0 12px rgba(74,158,107,0.3)" }}>{fmtCountdown(remaining)}</div>
               <p style={{ color:"#3a3a3a", fontSize:"0.58rem", letterSpacing:"0.1em", margin:"0.2rem 0 0", maxWidth:"22rem", lineHeight:1.6 }}>the night passes in real time. you can close the app.</p>
             </>
@@ -4389,10 +4437,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
         </div>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"2.8rem" }}>
           {ready && (
-            <button className="rb" onClick={withMenuSound(wakeFromGate)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.6rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", cursor:"pointer", animation:"pu 1.4s ease infinite", transition:"all 0.2s" }}>wake - continue</button>
+            <button className="rb" onClick={withMenuSound(()=>wakeFromGate(false))} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.6rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", cursor:"pointer", animation:"pu 1.4s ease infinite", transition:"all 0.2s" }}>wake - continue</button>
+          )}
+          {canForceWake && (
+            <button className="rb" onClick={withMenuSound(()=>wakeFromGate(true))} style={{ background:"transparent", border:"1px solid #3a331d", color:"#8a7a50", padding:"0.55rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>{healAtStake ? "force yourself up [no rest]" : "force yourself up"}</button>
           )}
           {!ready && GATE_BYPASS && (
-            <button className="rb" onClick={withMenuSound(wakeFromGate)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>skip (dev)</button>
+            <button className="rb" onClick={withMenuSound(()=>wakeFromGate(false))} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>skip (dev)</button>
           )}
           <button className="rb" onClick={withMenuSound(()=>{ setScreen("menu"); })} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#505050", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>exit to title</button>
         </div>
