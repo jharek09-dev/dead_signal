@@ -13,33 +13,25 @@ const INTRO_LINES = [
 ];
 const NOTIF_DELAY = 11400;
 
-const SCRIPTED_EXCHANGES = [
-  { msgs: ["found a phone. don't know whose.", "you were the last call on it. you still alive?"],
-    choices: ["Yeah. I'm here. I don't remember anything.", "Alive. I don't know where I am or what happened."], onChoice: null },
-  { msgs: ["no memory at all?", "like you just woke up there with no idea how you got in?"],
-    choices: ["Yeah. Nothing. Just woke up.", "I remember calling someone. That's it."], onChoice: null },
-  { msgs: ["how much battery you got right now?", "look around. anything to charge with?"],
-    choices: ["9%. There's a charger right here. [collect charger]"], onChoice: "CHARGER" },
-  { msgs: ["good. that buys us time.", "been three days. power went out the first night.", "stay away from the windows. what's out there now isn't the same."],
-    choices: ["How bad is it out there?", "I can hear something outside my door."], onChoice: null },
-  { msgs: ["forget outside. what's in that apartment?", "food. water. go look. tell me."],
-    choices: ["Grabbed everything. Cans and water. [collect supplies]"], onChoice: "SUPPLIES" },
-  { msgs: ["okay.", "name's ellie. found this in our stairwell two days ago. she was already gone."],
-    choices: ["I called her right before this. I don't know why.", "Okay Ellie. What do I do?"], onChoice: "NAME_REVEAL" },
-  { msgs: ["don't open your door tonight. i don't care what you hear.", "something moves in the building after dark. just let it."],
-    choices: ["Staying put. Not making a sound.", "Something's right outside my door."], onChoice: null },
-  { msgs: ["there's a broadcast. shortwave. been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left."],
-    choices: ["You think it's real?", "That's where we're going."], onChoice: null },
-  { msgs: ["don't know. but it's been running two days straight. same loop.", "same voice. same coordinates. someone put real effort into it."],
-    choices: ["What if it's a trap?", "Then we move toward it."], onChoice: null },
-  { from: "narrator", msgs: ["night falls.", "day one ends."], choices: ["·"], onChoice: null },
-  { msgs: ["morning. still there?", "we need to move toward those coordinates. find out where you are first."],
-    choices: ["Found a city map. *It says Harwick.* [pick up map]"], onChoice: "MAP_FOUND" },
-  { from: "narrator",
-    msgs: ["you study the map.", "where do you go?"],
-    choices: ["Mercy General Hospital [power still on]", "Harwick Metro [underground]", "Route 9 [open highway]"],
-    onChoice: "BRANCH" },
-];
+const DAY1_OPENING = {
+  msgs: ["found a phone. don't know whose.", "you were the last call on it. you still alive?"],
+  choices: ["Yeah. I'm here. I don't remember anything.", "Alive. I don't know where I am or what happened."],
+};
+
+const DAY1_FLAGS = {
+  STARTED: "started",
+  CHARGER: "charger",
+  SUPPLIES: "supplies",
+  BATHROOM: "bathroom",
+  WINDOW: "window",
+  DOOR: "door_secured",
+  STAIRWELL: "stairwell",
+  ELLIE: "ellie",
+  BROADCAST: "broadcast",
+  MAP: "map",
+};
+const DAY1_REQUIRED = [DAY1_FLAGS.CHARGER, DAY1_FLAGS.SUPPLIES, DAY1_FLAGS.DOOR, DAY1_FLAGS.ELLIE, DAY1_FLAGS.BROADCAST];
+const DAY1_ROUTE_CHOICES = ["Mercy General Hospital [power still on]", "Harwick Metro [underground]", "Route 9 [open highway]"];
 
 const PATH_BEATS = {
   hospital: [
@@ -1353,6 +1345,17 @@ const PHASE3_START_DAY = 4;   // Phase 3 opens on Day 4 (the prologue ends Day 3
 const PHASE3_FINAL_DAY = 7;   // the last day of the week — the ending; no nightfall clock
 const PHASE3_DAYLIGHT  = 14;  // node-moves of daylight per investigation day (tuning knob)
 const PHASE3_ENCOUNTER_RATE = 0.34; // chance the half-connected block a Phase-3 move (tuning knob)
+const DAY_GATE_MS = 17 * 60 * 1000;
+const GATE_BYPASS = (() => {
+  try { return !!import.meta.env?.DEV || (typeof location !== "undefined" && /[?&]debug/.test(location.search)); }
+  catch (e) { return false; }
+})();
+const fmtCountdown = (ms) => {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return `${m}:${s}`;
+};
 const PHASE3_DUSK      = 3;   // daylight ≤ this → "the light is failing"; shelter/bed-down offered
 const PHASE3_REST_HEAL = 2;   // HP recovered by a safe night's rest at a shelter
 const PHASE3_CAUGHT_HP = 2;   // HP lost (clamped ≥1) when nightfall catches you in the open
@@ -1539,7 +1542,8 @@ const MessageRow = memo(function MessageRow({ m }) {
   );
 });
 
-export default function DeadSignal() {
+export default function DeadSignal({ presentation = "mobile", edition = "full" } = {}) {
+  const isDesktopDemo = presentation === "desktopDemo";
   const [screen, setScreen]             = useState("menu");
   const [shownLines, setShownLines]     = useState([]);
   const [showNotif, setShowNotif]       = useState(false);
@@ -1573,6 +1577,9 @@ export default function DeadSignal() {
   const [weapon, setWeapon]             = useState(null);
   const [noise, setNoise]               = useState(0);
   const [exchangePhase, setExchangePhase]       = useState(0);
+  const [day1Scene, setDay1Scene]               = useState("opening");
+  const [day1Visited, setDay1Visited]           = useState([]);
+  const [day1Flags, setDay1Flags]               = useState([]);
   const [chosenPath, setChosenPath]             = useState(null);
   const [gamePhase, setGamePhase]               = useState("phase1");
   const [currentPath, setCurrentPath]           = useState(null);
@@ -1596,6 +1603,9 @@ export default function DeadSignal() {
   const [phase3UnlockedRegions, setPhase3UnlockedRegions] = useState([]);   // region ids the player can travel to
   const [phase3Day, setPhase3Day] = useState(PHASE3_START_DAY);             // Phase 3 day-of-week (4–7)
   const [daylight, setDaylight]   = useState(PHASE3_DAYLIGHT);              // node-moves of light left today
+  const [gateWakeAt, setGateWakeAt] = useState(null);                      // real-time day-gate unlock timestamp (null = none)
+  const [gateReason, setGateReason] = useState(null);                      // "day1" | "phase3" | "phase3_night"
+  const [nowTick, setNowTick]       = useState(0);                         // 1s clock that drives the resting-screen countdown
 
   const pendingRef          = useRef([]);
   const dialogueRef         = useRef([]);   // timers owned by scheduleMessages (C3 — kept separate from pendingRef)
@@ -1611,6 +1621,9 @@ export default function DeadSignal() {
   const weaponRef           = useRef(weapon);
   const noiseRef            = useRef(noise);
   const gamePhaseRef        = useRef(gamePhase);
+  const day1SceneRef        = useRef(day1Scene);
+  const day1VisitedRef      = useRef(day1Visited);
+  const day1FlagsRef        = useRef(day1Flags);
   const currentPathRef      = useRef(currentPath);
   const aiCountRef          = useRef(aiExchangeCount);
   const aiTargetRef         = useRef(aiExchangeTarget);
@@ -1645,6 +1658,8 @@ export default function DeadSignal() {
   const phase3UnlockedRef      = useRef([]);
   const phase3DayRef           = useRef(PHASE3_START_DAY); // Phase 3 day clock (mirror)
   const daylightRef            = useRef(PHASE3_DAYLIGHT);  // daylight remaining today (mirror)
+  const gateWakeAtRef          = useRef(null);             // day-gate unlock timestamp (mirror)
+  const gateReasonRef          = useRef(null);             // day-gate continuation target (mirror)
   const lastPhase3EncounterIdRef = useRef(null);          // last half-connected encounter (dedupe)
   const phase3PendingDestRef     = useRef(null);          // node to enter after a Phase-3 encounter resolves
   const phase3SearchedRef        = useRef(new Set());     // "region:node" rooms already searched this run
@@ -1654,6 +1669,9 @@ export default function DeadSignal() {
   weaponRef.current         = weapon;
   noiseRef.current          = noise;
   gamePhaseRef.current      = gamePhase;
+  day1SceneRef.current      = day1Scene;
+  day1VisitedRef.current    = day1Visited;
+  day1FlagsRef.current      = day1Flags;
   currentPathRef.current    = currentPath;
   aiCountRef.current        = aiExchangeCount;
   aiTargetRef.current       = aiExchangeTarget;
@@ -1669,6 +1687,8 @@ export default function DeadSignal() {
   phase3UnlockedRef.current       = phase3UnlockedRegions;
   phase3DayRef.current            = phase3Day;
   daylightRef.current             = daylight;
+  gateWakeAtRef.current           = gateWakeAt;
+  gateReasonRef.current           = gateReason;
 
   // ── Pausable timers ────────────────────────────────────────────────────────────
   // Every gameplay timer goes through setT() instead of raw setTimeout, so the dialogue
@@ -1825,6 +1845,7 @@ export default function DeadSignal() {
     resources, weapon, noise, contactName,
     gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
     aiExchangeCount, aiExchangeTarget, fragFired, calmFired,
+    day1: { scene: day1SceneRef.current, visited: day1VisitedRef.current, flags: day1FlagsRef.current },
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
     recoveredMemories, // this run's cumulative collection (profile + new this run)
     raisedQuestions: raisedQuestionsRef.current, // case-file OPEN QUESTIONS surfaced so far
@@ -1844,13 +1865,16 @@ export default function DeadSignal() {
     discoveredTruths: discoveredTruthsRef.current,
     phase3Unlocked: phase3UnlockedRef.current,
     phase3Day: phase3DayRef.current, daylight: daylightRef.current, // Phase 3 day/night clock
+    gateWakeAt: gateWakeAtRef.current, // real-time day-gate unlock timestamp (absolute ms)
+    gateReason: gateReasonRef.current,
     phase3Searched: [...phase3SearchedRef.current], phase3PendingDest: phase3PendingDestRef.current,
     meta: { day: snapshotDay(), location: locationLabel(), hp: resources.hp, battery: resources.battery, savedAt: Date.now() },
   });
   // The full per-slot record written to storage.
   const buildSlotData = (profile, run) => ({ v: 2, profile: profile || emptyProfile(), run: run || null });
   // A run body is resumable only if it's real progress with a sane schema.
-  const validRun = (r) => !!r && r.gamePhase && r.gamePhase !== "phase1" && r.resources && typeof r.resources.battery === "number";
+  const validRun = (r) => !!r && r.gamePhase && r.resources && typeof r.resources.battery === "number"
+    && (r.gamePhase !== "phase1" || !!r.gateWakeAt || !!r.day1?.flags?.length || !!r.day1?.visited?.length || !!r.day1?.scene);
   // Normalize any stored value → { profile, run } (or null). Handles legacy v1 saves.
   const normalizeSlot = (raw) => {
     if (!raw) return null;
@@ -1893,8 +1917,6 @@ export default function DeadSignal() {
     setSlots(next);
   };
   const saveRun = async () => {
-    // Resume is only offered for a run with real progress — never the Day 1 intro.
-    if (gamePhaseRef.current === "phase1") return false;
     const i = activeSlotRef.current;
     if (i == null) return false; // no slot claimed for this run
     const profile = activeProfileRef.current || emptyProfile();
@@ -1938,6 +1960,11 @@ export default function DeadSignal() {
     phase3UnlockedRef.current      = Array.isArray(run.phase3Unlocked) ? run.phase3Unlocked : [];
     phase3DayRef.current = typeof run.phase3Day === "number" ? run.phase3Day : PHASE3_START_DAY;
     daylightRef.current  = typeof run.daylight  === "number" ? run.daylight  : PHASE3_DAYLIGHT;
+    gateWakeAtRef.current = typeof run.gateWakeAt === "number" ? run.gateWakeAt : null;
+    gateReasonRef.current = run.gateReason || null;
+    day1SceneRef.current = run.day1?.scene || "opening";
+    day1VisitedRef.current = Array.isArray(run.day1?.visited) ? run.day1.visited : [];
+    day1FlagsRef.current = Array.isArray(run.day1?.flags) ? run.day1.flags : [];
     phase3SearchedRef.current = new Set(Array.isArray(run.phase3Searched) ? run.phase3Searched : []);
     phase3PendingDestRef.current = run.phase3PendingDest || null;
     lastPhase3EncounterIdRef.current = null;
@@ -1959,6 +1986,7 @@ export default function DeadSignal() {
     setContactName(run.contactName || "KIM");
     setGamePhase(run.gamePhase || "phase1"); setChosenPath(run.chosenPath || null);
     setCurrentPath(run.currentPath || null); setExchangePhase(run.exchangePhase || 0);
+    setDay1Scene(day1SceneRef.current); setDay1Visited(day1VisitedRef.current); setDay1Flags(day1FlagsRef.current);
     setP2BeatIndex(run.p2BeatIndex || 0); setAiExchangeCount(run.aiExchangeCount || 0);
     setAiExchangeTarget(run.aiExchangeTarget || 7);
     setFragFired(!!run.fragFired); setCalmFired(!!run.calmFired); setCurrentEncounter(run.currentEncounter || null);
@@ -1968,11 +1996,12 @@ export default function DeadSignal() {
     setVisitedPhase3Nodes(visitedPhase3NodesRef.current); setDiscoveredTruths(discoveredTruthsRef.current);
     setPhase3UnlockedRegions(phase3UnlockedRef.current);
     setPhase3Day(phase3DayRef.current); setDaylight(daylightRef.current);
+    setGateWakeAt(gateWakeAtRef.current); setGateReason(gateReasonRef.current);
     // memories: prefer the run's own cumulative set; else committed profile; else legacy global
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
-    setScreen("chat");
+    setScreen(gateWakeAtRef.current ? "resting" : "chat");
   };
 
   // ─── Pause menu actions (manual save / load / exit) ────────────────────────────
@@ -2087,7 +2116,9 @@ export default function DeadSignal() {
   useEffect(() => {
     if (screen !== "chat" || chatStartedRef.current) return;
     chatStartedRef.current = true;
-    const first = SCRIPTED_EXCHANGES[0];
+    setDay1Scene("opening"); day1SceneRef.current = "opening";
+    markDay1Flag(DAY1_FLAGS.STARTED);
+    const first = DAY1_OPENING;
     setIsTyping(true);
     scheduleMessages(first.msgs, first.choices, first.from || "ellie");
   }, [screen]);
@@ -2137,6 +2168,16 @@ export default function DeadSignal() {
     }
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isTyping, choices, screen]);
+
+  useEffect(() => {
+    if (screen !== "resting") return;
+    setNowTick(Date.now());
+    const id = setInterval(() => setNowTick(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [screen]);
+  // Persist the gate from a post-render effect (NOT synchronously in startDayGate) so the snapshot
+  // captures the fresh, post-night state (resources/day already applied) rather than a stale closure.
+  useEffect(() => { if (screen === "resting" && gateWakeAtRef.current) saveRun(); }, [screen, gateWakeAt]);
 
   // P4 — on mount, migrate any legacy single-slot save into slot 0, then read all slots.
   // refreshSlots() validates each slot and cleans up zero-progress / malformed saves.
@@ -2657,6 +2698,211 @@ export default function DeadSignal() {
     setWeapon(w); addMsg("system", `${w.name} equipped · ${w.damage}dmg`, delay); return true;
   };
 
+  const markDay1Flag = (flag) => {
+    if (!flag || day1FlagsRef.current.includes(flag)) return false;
+    day1FlagsRef.current = [...day1FlagsRef.current, flag];
+    setDay1Flags(day1FlagsRef.current);
+    return true;
+  };
+  const markDay1Visited = (place) => {
+    if (!place || day1VisitedRef.current.includes(place)) return false;
+    day1VisitedRef.current = [...day1VisitedRef.current, place];
+    setDay1Visited(day1VisitedRef.current);
+    return true;
+  };
+  const day1Has = (flag) => day1FlagsRef.current.includes(flag);
+  const day1ReadyForSleep = () => DAY1_REQUIRED.every(day1Has);
+  const day1MissingPrep = () => {
+    const miss = [];
+    if (!day1Has(DAY1_FLAGS.CHARGER)) miss.push("charge the phone");
+    if (!day1Has(DAY1_FLAGS.SUPPLIES)) miss.push("pack food and water");
+    if (!day1Has(DAY1_FLAGS.DOOR)) miss.push("secure the door");
+    if (!day1Has(DAY1_FLAGS.ELLIE)) miss.push("answer ellie");
+    if (!day1Has(DAY1_FLAGS.BROADCAST)) miss.push("learn where the broadcast points");
+    return miss;
+  };
+  const day1HubChoices = () => [
+    day1Has(DAY1_FLAGS.CHARGER) ? "Check the bedroom again." : "Search the bedroom.",
+    day1Has(DAY1_FLAGS.SUPPLIES) ? "Check the kitchen again." : "Search the kitchen.",
+    day1Has(DAY1_FLAGS.BATHROOM) ? "Check the bathroom again." : "Search the bathroom.",
+    day1Has(DAY1_FLAGS.WINDOW) ? "Stay away from the window." : "Look through the window.",
+    day1Has(DAY1_FLAGS.DOOR) ? "Check the hallway door." : "Secure the hallway door.",
+    day1Has(DAY1_FLAGS.STAIRWELL) ? "Listen at the stairwell." : "Crack the door to the stairwell.",
+    day1Has(DAY1_FLAGS.ELLIE) ? "Text Ellie about the broadcast." : "Ask who is texting you.",
+    day1ReadyForSleep() ? "Sleep until morning." : "Try to sleep.",
+  ];
+  const showDay1Hub = (msgs = ["the apartment waits.", "what do you check?"], from = "narrator") => {
+    setDay1Scene("apartment"); day1SceneRef.current = "apartment";
+    return scheduleMessages(msgs, day1HubChoices(), from);
+  };
+  const nudgeCaseFileHint = () => {
+    if (activeProfileRef.current && !activeProfileRef.current.caseFileHintSeen) {
+      activeProfileRef.current.caseFileHintSeen = true;
+      addMsg("system", "▤ new in your case file — tap FILE to review", 1500);
+    }
+  };
+  const startDay2Morning = () => {
+    setGamePhase("phase1"); gamePhaseRef.current = "phase1";
+    setExchangePhase(10);
+    setDay1Scene("day2_map"); day1SceneRef.current = "day2_map";
+    setChoices([]); setIsTyping(true);
+    scheduleMessages(["morning. still there?", "we need to move toward those coordinates.", "find out where you are first."], ["Found a city map. *It says Harwick.* [pick up map]"], "ellie");
+  };
+  const detectDay1Action = (choice) => {
+    const c = stripMarkers(choice).toLowerCase();
+    if (DAY1_ROUTE_CHOICES.includes(choice)) return "BRANCH";
+    if (c.includes("city map") || c.includes("harwick")) return "MAP";
+    if (c.includes("bedroom")) return "BEDROOM";
+    if (c.includes("kitchen")) return "KITCHEN";
+    if (c.includes("bathroom")) return "BATHROOM";
+    if (c.includes("window")) return "WINDOW";
+    if (c.includes("hallway door")) return "DOOR";
+    if (c.includes("stairwell")) return "STAIRWELL";
+    if (c.includes("who is texting") || c.includes("ellie")) return "ELLIE";
+    if (c.includes("broadcast")) return "BROADCAST";
+    if (c.includes("sleep")) return "SLEEP";
+    return "OPENING";
+  };
+  const handleDay1Choice = (choice, newBattery) => {
+    const action = detectDay1Action(choice);
+    markDay1Flag(DAY1_FLAGS.STARTED);
+
+    if (day1SceneRef.current === "day2_route" || action === "BRANCH") {
+      const detected = detectPath(choice);
+      setCurrentPath(detected); setChosenPath(choice);
+      setGamePhase("p2_scripted"); gamePhaseRef.current = "p2_scripted";
+      setP2BeatIndex(0);
+      scheduleMessages(PATH_BEATS[detected][0].msgs, PATH_BEATS[detected][0].choices, "ellie");
+      return;
+    }
+
+    if (day1SceneRef.current === "day2_map" || action === "MAP") {
+      markDay1Flag(DAY1_FLAGS.MAP);
+      addMsg("system", "city map found — harwick", 700);
+      setDay1Scene("day2_route"); day1SceneRef.current = "day2_route";
+      pendingRef.current.push(setT(() => scheduleMessages(["you study the map.", "where do you go?"], DAY1_ROUTE_CHOICES, "narrator"), 950));
+      return;
+    }
+
+    if (action === "OPENING") {
+      raiseQuestion("memory");
+      nudgeCaseFileHint();
+      showDay1Hub(["no memory at all?", "like you just woke up there with no idea how you got in?", "look around. charger, food, water, door. start there."], "ellie");
+      return;
+    }
+
+    if (action === "BEDROOM") {
+      const first = markDay1Visited("bedroom");
+      if (!day1Has(DAY1_FLAGS.CHARGER)) {
+        markDay1Flag(DAY1_FLAGS.CHARGER);
+        const ch = Math.min(100, newBattery + CHARGER_FIND);
+        setResources(p => ({ ...p, battery: ch, charger: 0 }));
+        addMsg("system", `portable charger drained into phone · battery ${ch}%`, 700);
+        addMsg("system", "charger empty — recharge it at a power source", 1400);
+        pendingRef.current.push(setT(() => showDay1Hub(["the bedroom is not yours.", "a coat on the chair. shoes by the bed. none of it fits the blank in your head.", "under the bed: a portable charger, warm like it was just used."], "narrator"), 1700));
+      } else {
+        showDay1Hub(first ? ["the bedroom holds still.", "nothing here knows you."] : ["the bedroom again.", "the charger cable is already in your bag."], "narrator");
+      }
+      return;
+    }
+
+    if (action === "KITCHEN") {
+      const first = markDay1Visited("kitchen");
+      if (!day1Has(DAY1_FLAGS.SUPPLIES)) {
+        markDay1Flag(DAY1_FLAGS.SUPPLIES);
+        setResources(p => ({ ...p, food: START_SUPPLY, water: START_SUPPLY }));
+        addMsg("system", `supplies gathered · food ${START_SUPPLY} · water ${START_SUPPLY}`, 700);
+        pendingRef.current.push(setT(() => showDay1Hub(["the kitchen smells like dust and old metal.", "cans in the lower cabinet. bottled water under the sink.", "enough to leave, if you have to."], "narrator"), 1100));
+      } else {
+        showDay1Hub(first ? ["the kitchen is stripped quiet."] : ["the kitchen again.", "you already packed what would carry."], "narrator");
+      }
+      return;
+    }
+
+    if (action === "BATHROOM") {
+      const first = markDay1Visited("bathroom");
+      if (!day1Has(DAY1_FLAGS.BATHROOM)) {
+        markDay1Flag(DAY1_FLAGS.BATHROOM);
+        raiseQuestion("memory");
+        showDay1Hub(["the bathroom mirror is cracked.", "your reflection looks like someone warned it and left.", "an empty prescription bottle sits in the sink. the label has been soaked clean."], "narrator");
+      } else {
+        showDay1Hub(first ? ["the bathroom light never comes on."] : ["the bathroom again.", "the blank label gives you nothing back."], "narrator");
+      }
+      return;
+    }
+
+    if (action === "WINDOW") {
+      const first = markDay1Visited("window");
+      if (!day1Has(DAY1_FLAGS.WINDOW)) {
+        markDay1Flag(DAY1_FLAGS.WINDOW);
+        raiseQuestion("harwick");
+        showDay1Hub(["you lift the curtain with two fingers.", "harwick below: cars left open, traffic lights dead, a shape standing in the crosswalk too long.", "then it turns its head.", "you let the curtain fall."], "narrator");
+      } else {
+        showDay1Hub(first ? ["you keep back from the glass."] : ["the curtain stays closed.", "good."], "narrator");
+      }
+      return;
+    }
+
+    if (action === "DOOR") {
+      const first = markDay1Visited("door");
+      if (!day1Has(DAY1_FLAGS.DOOR)) {
+        markDay1Flag(DAY1_FLAGS.DOOR);
+        setNoise(n => Math.min(5, n + 1));
+        addMsg("system", "door secured · noise +1", 700);
+        pendingRef.current.push(setT(() => showDay1Hub(["you drag the table across the hall-facing door.", "the legs scrape louder than you want.", "something in the building knocks once. not at your door. near it."], "narrator"), 1050));
+      } else {
+        showDay1Hub(first ? ["the hallway door is thin."] : ["the table holds against the door.", "for now."], "narrator");
+      }
+      return;
+    }
+
+    if (action === "STAIRWELL") {
+      const first = markDay1Visited("stairwell");
+      if (!day1Has(DAY1_FLAGS.STAIRWELL)) {
+        markDay1Flag(DAY1_FLAGS.STAIRWELL);
+        setNoise(n => Math.min(5, n + 1));
+        raiseQuestion("kim"); raiseQuestion("call");
+        addMsg("system", "risk taken · noise +1", 700);
+        pendingRef.current.push(setT(() => showDay1Hub(["you open the door only a handspan.", "cold stairwell air slides in.", "below, on the landing, a woman lies very still.", "you do not go down."], "narrator"), 1050));
+      } else {
+        showDay1Hub(first ? ["the stairwell breathes cold through the frame."] : ["you listen at the stairwell.", "nothing moves. that is not better."], "narrator");
+      }
+      return;
+    }
+
+    if (action === "ELLIE" || action === "BROADCAST") {
+      if (!day1Has(DAY1_FLAGS.ELLIE)) {
+        markDay1Flag(DAY1_FLAGS.ELLIE); markDay1Flag(DAY1_FLAGS.BROADCAST);
+        raiseQuestion("kim"); raiseQuestion("ellie"); raiseQuestion("call");
+        setContactName("ELLIE");
+        showDay1Hub(["okay.", "name's ellie.", "found this phone in our stairwell two days ago. she was already gone.", "there's a broadcast. shortwave. been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left.", "don't open your door tonight. i don't care what you hear."], "ellie");
+      } else {
+        showDay1Hub(["same loop.", "same voice. same coordinates.", "someone put real effort into it.", "we move when it's light."], "ellie");
+      }
+      return;
+    }
+
+    if (action === "SLEEP") {
+      if (!day1ReadyForSleep()) {
+        const missing = day1MissingPrep();
+        showDay1Hub(["you lie down.", "the door feels too thin. the phone too close to dying.", `not yet: ${missing.join(", ")}.`], "narrator");
+        return;
+      }
+      clearPending(); setChoices([]); setIsTyping(false);
+      setDay1Scene("sleep"); day1SceneRef.current = "sleep";
+      setExchangePhase(10);
+      let t = 600;
+      addMsg("narrator", "you make the apartment as quiet as you can.", t); t += 1600;
+      addMsg("ellie", "get some rest. i'll wake you.", t); t += 1800;
+      addMsg("narrator", "night falls.", t); t += 1500;
+      addMsg("narrator", "day one ends.", t); t += 1500;
+      pendingRef.current.push(setT(() => startDayGate("day1"), t + 900));
+      return;
+    }
+
+    showDay1Hub();
+  };
+
   // Pick the encounter for a revealed "encounter" lead (plan = power/search/hazard).
   // Reuses the pool-filter + seen-dedupe logic; returns a pendingStoryBeat or null.
   const pickEncounterBeat = (section, path, plan) => {
@@ -2919,15 +3165,30 @@ export default function DeadSignal() {
     phase3DayRef.current = nextDay; setPhase3Day(nextDay);
     daylightRef.current = PHASE3_DAYLIGHT; setDaylight(PHASE3_DAYLIGHT);
     // The night passes instantly; the dawn beat for the new day plays via wakeFromGate.
-    pendingRef.current.push(setT(() => wakeFromGate(), t + 900));
+    pendingRef.current.push(setT(() => startDayGate("phase3_night"), t + 900));
   };
 
   // ─── Day transition ────────────────────────────────────────────────────────────────
-  // The dawn/entry beat. The continuation is derived from state (not a stored callback):
-  // no Phase-3 node yet (the prologue→Phase-3 handoff) → start Day 4 at the gate yard;
-  // otherwise → the dawn beat for the (already-advanced) day, then the current node's exits.
+  const startDayGate = (reason = "phase3_night") => {
+    const wakeAt = Date.now() + DAY_GATE_MS;
+    gateWakeAtRef.current = wakeAt; setGateWakeAt(wakeAt);
+    gateReasonRef.current = reason; setGateReason(reason);
+    setNowTick(Date.now());
+    setChoices([]); setIsTyping(false);
+    setScreen("resting");
+  };
+  // Wake from a day-gate and continue. The continuation is derived from state (not a stored
+  // callback): the prologue→Phase-3 gate has no node yet → start Day 4 at the gate yard; a night
+  // gate → the dawn beat for the (already-advanced) day, then the current node's exits.
   const wakeFromGate = () => {
+    const reason = gateReasonRef.current;
+    gateWakeAtRef.current = null; setGateWakeAt(null);
+    gateReasonRef.current = null; setGateReason(null);
     setScreen("chat"); setIsTyping(true);
+    if (reason === "day1") {
+      startDay2Morning();
+      return;
+    }
     if (currentPhase3NodeRef.current == null) {
       const t = scheduleMessages(["day 4.", "you wake at haven. the floodlights never went out.", "you start remembering by looking. so look."], null, "narrator");
       pendingRef.current.push(setT(() => {
@@ -3056,7 +3317,7 @@ export default function DeadSignal() {
     const t = scheduleMessages(["the screen goes dark.", "then it doesn't.", "you're still here.", "alone, in the light of the place that called you.", "you've been awake for three days.", "you find a bunk. you let yourself sleep."], null, "narrator");
     // The night passes instantly; the dawn beat plays via wakeFromGate
     // (Day 4 begins at the gate yard, since no Phase-3 node is set yet).
-    pendingRef.current.push(setT(() => wakeFromGate(), t + 900));
+    pendingRef.current.push(setT(() => startDayGate("phase3"), t + 900));
   };
 
   // ─── Phase 3F — the finale flow (mirrors the prologue's call cadence) ────────────────
@@ -3191,6 +3452,8 @@ export default function DeadSignal() {
     }
 
     if (gamePhaseRef.current === "phase1") {
+      handleDay1Choice(choice, newBattery);
+      return;
       const cur  = SCRIPTED_EXCHANGES[exchangePhase];
       const next = exchangePhase + 1;
       setExchangePhase(next);
@@ -3557,6 +3820,9 @@ export default function DeadSignal() {
     setResources({ battery: 9, water: 0, food: 0, charger: null, hp: 10 });
     setWeapon(null); setNoise(0);
     setExchangePhase(0); setContactName("KIM"); setChosenPath(null);
+    setDay1Scene("opening"); day1SceneRef.current = "opening";
+    setDay1Visited([]); day1VisitedRef.current = [];
+    setDay1Flags([]); day1FlagsRef.current = [];
     setGamePhase("phase1"); setCurrentPath(null); setP2BeatIndex(0);
     setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false); setCalmFired(false);
     setCurrentEncounter(null); setSelectedFragment(null); setDayThree(false);
@@ -3569,6 +3835,8 @@ export default function DeadSignal() {
     setPhase3UnlockedRegions([]); phase3UnlockedRef.current = [];
     setPhase3Day(PHASE3_START_DAY); phase3DayRef.current = PHASE3_START_DAY;
     setDaylight(PHASE3_DAYLIGHT);   daylightRef.current  = PHASE3_DAYLIGHT;
+    setGateWakeAt(null);            gateWakeAtRef.current = null;
+    setGateReason(null);            gateReasonRef.current = null;
     phase3SearchedRef.current = new Set(); phase3PendingDestRef.current = null; lastPhase3EncounterIdRef.current = null;
     setEndingLines([]); setEndingKind(null);
     // recoveredMemories intentionally NOT reset — persists across runs
@@ -4041,6 +4309,38 @@ export default function DeadSignal() {
     </div>
   );
 
+  if (screen === "resting") {
+    const remaining = Math.max(0, (gateWakeAt || 0) - (nowTick || Date.now()));
+    const ready = remaining <= 0;
+    return (
+      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.9rem", textAlign:"center", animation:"fi 1s ease forwards" }}>
+          <p style={{ color:"#3a3a3a", fontSize:"0.62rem", letterSpacing:"0.22em", margin:0 }}>-- NIGHT --</p>
+          <p style={{ color:"#c8b98a", fontSize:"0.95rem", letterSpacing:"0.06em", margin:0, fontWeight:300 }}>you sleep.</p>
+          {ready ? (
+            <p style={{ color:"#6aba8a", fontSize:"0.9rem", letterSpacing:"0.1em", margin:"0.4rem 0 0", textShadow:"0 0 10px rgba(74,158,107,0.4)" }}>morning.</p>
+          ) : (
+            <>
+              <p style={{ color:"#d8c79b", fontSize:"0.78rem", letterSpacing:"0.04em", opacity:0.75, margin:0, fontStyle:"italic" }}>ellie: get some rest. i'll wake you.</p>
+              <div style={{ marginTop:"0.6rem", color:"#4a9e6b", fontSize:"1.6rem", letterSpacing:"0.14em", fontVariantNumeric:"tabular-nums", textShadow:"0 0 12px rgba(74,158,107,0.3)" }}>{fmtCountdown(remaining)}</div>
+              <p style={{ color:"#3a3a3a", fontSize:"0.58rem", letterSpacing:"0.1em", margin:"0.2rem 0 0", maxWidth:"22rem", lineHeight:1.6 }}>the night passes in real time. you can close the app.</p>
+            </>
+          )}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.7rem", marginTop:"2.8rem" }}>
+          {ready && (
+            <button className="rb" onClick={withMenuSound(wakeFromGate)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.6rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", cursor:"pointer", animation:"pu 1.4s ease infinite", transition:"all 0.2s" }}>wake - continue</button>
+          )}
+          {!ready && GATE_BYPASS && (
+            <button className="rb" onClick={withMenuSound(wakeFromGate)} style={{ background:"transparent", border:"1px solid #3a3a3a", color:"#606060", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>skip (dev)</button>
+          )}
+          <button className="rb" onClick={withMenuSound(()=>{ setScreen("menu"); })} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#505050", padding:"0.5rem 1.3rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>exit to title</button>
+        </div>
+      </div>
+    );
+  }
+
   if (screen === "offline" || screen === "dead" || screen === "ending") {
     const lines  = screen === "offline" ? offlineLines : screen === "dead" ? deathLines : endingLines;
     const colors = screen === "offline"
@@ -4133,8 +4433,39 @@ export default function DeadSignal() {
     <div className={`ds-battwarn${resources.battery<=5 ? " ds-crit" : ""}`} style={{ animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>
   ) : null;
 
+  const gameRootStyle = {
+    background:"#070707",
+    height:isDesktopDemo ? "100%" : "100dvh",
+    minHeight:0,
+    fontFamily:font,
+    color:"#d8c79b",
+    display:"flex",
+    flexDirection:"column",
+    width:"100%",
+    maxWidth:isDesktopDemo ? "none" : "620px",
+    margin:"0 auto",
+    overflow:"hidden",
+  };
+  const messagePaneStyle = {
+    flex:1,
+    overflowY:"auto",
+    padding:isDesktopDemo ? "0.9rem clamp(1rem, 2.2vw, 2rem)" : "0.6rem 0.9rem",
+    display:"flex",
+    flexDirection:"column",
+    gap:isDesktopDemo ? "0.55rem" : "0.4rem",
+    minHeight:0,
+  };
+  const choicesPaneStyle = {
+    padding:isDesktopDemo ? "0.8rem clamp(1rem, 2.2vw, 2rem) 1rem" : "0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))",
+    borderTop:"1px solid #111",
+    display:"flex",
+    flexDirection:"column",
+    gap:isDesktopDemo ? "0.65rem" : "0.5rem",
+    flexShrink:0,
+  };
+
   return (
-    <div style={{ background:"#070707", height:"100dvh", fontFamily:font, color:"#d8c79b", display:"flex", flexDirection:"column", maxWidth:"620px", margin:"0 auto", overflow:"hidden" }}>
+    <div className={isDesktopDemo ? "demo-game--desktop" : undefined} data-edition={edition} style={gameRootStyle}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}`}</style>
       <AudioDebug />
 
@@ -4155,7 +4486,7 @@ export default function DeadSignal() {
       )}
 
       {/* Messages */}
-      <div ref={chatScrollRef} style={{ flex:1, overflowY:"auto", padding:"0.6rem 0.9rem", display:"flex", flexDirection:"column", gap:"0.4rem", minHeight:0 }}>
+      <div ref={chatScrollRef} style={messagePaneStyle}>
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
         {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
@@ -4164,7 +4495,7 @@ export default function DeadSignal() {
       {BatteryWarning()}
 
       {choices.length>0 && !isTyping && (
-        <div style={{ padding:"0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))", borderTop:"1px solid #111", display:"flex", flexDirection:"column", gap:"0.5rem", flexShrink:0 }}>
+        <div style={choicesPaneStyle}>
           {canUseCharger && (
             <button className="cb" onClick={useCharger}
               style={{ background:"transparent", border:"1px solid #244a2c", color:"#3a6b40", padding:"clamp(0.5rem, 2vw, 0.65rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.72rem, 3vw, 0.78rem)", fontWeight:300, letterSpacing:"0.04em", transition:"border-color 0.15s, color 0.15s" }}>
