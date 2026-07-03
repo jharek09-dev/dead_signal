@@ -306,3 +306,10 @@ Holes found and the locked fixes, for the record:
    an untagged gamble gets a tag injected only when its odds degrade to MED/HIGH, so the quiet
    option stays quiet while it's genuinely favorable. Display-only — deltas, dispatch, and
    route tuning untouched. The tag is HUD register (like `[+1 Noise]`); Ellie never speaks it.
+10. **The drain loop had no relief** — the legs are a continuous squeeze (transition drain, noise,
+    encounters) with nothing quiet before the Haven cache. → The **calm beat** (2026-07-02): one
+    guaranteed breather per run, mid path-leg (the lead-queue slot between the two encounter
+    leads) — no drain, no encounter, no loot, no battery (choiceless; it auto-flows back to the
+    nav screen). Three narrator stillness lines + one Ellie line that deliberately breaks her
+    clipped register (warmth, not information). One-shot (`calmFired`, save-persisted); never
+    fires in Phase 3 — lead queues exist only in the prologue legs.

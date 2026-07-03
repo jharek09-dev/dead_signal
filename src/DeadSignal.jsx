@@ -998,6 +998,8 @@ const HAVEN_SUPPLY_FLOOR  = 5;  // pantry tops food/water up to at least this
 //   kind "atmo"      → a free atmospheric beat (drain? = applyTransitionDrain key fired)
 //        "encounter" → an encounter; plan "power" (POWER_SOURCES) | "search" | "hazard"
 //        "memory" | "discovery" → that scripted story beat (path legs only)
+//        "calm"      → the one-per-run breather (CALM_BEAT): no drain, no encounter,
+//                      no loot, no battery — pure pacing relief (path legs only)
 const buildLeadQueue = (section) => {
   if (section === "crossing") return [
     { kind: "atmo" },
@@ -1015,7 +1017,7 @@ const buildLeadQueue = (section) => {
            // find, so it sits after the discovery (skippable by leaving once the gate opens).
     { kind: "atmo" },
     { kind: "encounter", plan: "power" },
-    { kind: "atmo" },
+    { kind: "calm" },
     { kind: "encounter", plan: "hazard" },
     { kind: "atmo", drain: "path_mid" },
     { kind: "encounter", plan: "search" },
@@ -1092,6 +1094,19 @@ const EXPLORE_DONE = {
   path:     ["you've been through all of it.", "nothing else here."],
   crossing: ["you've covered the area.", "no reason to stay."],
   haven:    ["you've walked all of it.", "haven holds nothing else."],
+};
+
+// ─── The calm beat — one guaranteed breather per run (pacing, not resources) ──
+// A held breath mid path-leg (the lead-queue slot between the two encounter
+// leads): no drain, no encounter, no loot, and no battery — the beat is
+// choiceless, so the per-tap charge site never sees it. Ellie's line
+// deliberately breaks her clipped register — warmth, not information. Never
+// fires in Phase 3 (lead queues exist only in the prologue legs).
+const CALM_BEAT = {
+  hospital: { msgs: ["a waiting room. dust thick on the chairs, sun through the blinds.", "for a minute, nothing moves.", "just your own breathing."] },
+  metro:    { msgs: ["a stretch of empty platform. the rails hum, low and steady.", "for a minute, nothing moves.", "just your own breathing."] },
+  route9:   { msgs: ["the road crests a rise. the valley below, still as a photograph.", "for a minute, nothing moves.", "just your own breathing."] },
+  ellie: ["...you're doing okay. i mean it.", "...take a second. i'm not going anywhere."],
 };
 
 // ─── ENCOUNTER POOLS (8 per path, 9 crossing) ─────────────────────────────────
@@ -1565,6 +1580,7 @@ export default function DeadSignal() {
   const [aiExchangeCount, setAiExchangeCount]   = useState(0);
   const [aiExchangeTarget, setAiExchangeTarget] = useState(7);
   const [fragFired, setFragFired]               = useState(false);
+  const [calmFired, setCalmFired]               = useState(false);
   const [currentEncounter, setCurrentEncounter] = useState(null);
   const [selectedFragment, setSelectedFragment] = useState(null);
   const [recoveredMemories, setRecoveredMemories] = useState([]);
@@ -1595,6 +1611,7 @@ export default function DeadSignal() {
   const aiCountRef          = useRef(aiExchangeCount);
   const aiTargetRef         = useRef(aiExchangeTarget);
   const fragFiredRef        = useRef(fragFired);
+  const calmFiredRef        = useRef(calmFired);
   const currentEncounterRef = useRef(currentEncounter);
   const selectedFragmentRef  = useRef(selectedFragment);
   const recoveredMemoriesRef = useRef(recoveredMemories);
@@ -1637,6 +1654,7 @@ export default function DeadSignal() {
   aiCountRef.current        = aiExchangeCount;
   aiTargetRef.current       = aiExchangeTarget;
   fragFiredRef.current      = fragFired;
+  calmFiredRef.current      = calmFired;
   currentEncounterRef.current  = currentEncounter;
   selectedFragmentRef.current  = selectedFragment;
   recoveredMemoriesRef.current = recoveredMemories;
@@ -1802,7 +1820,7 @@ export default function DeadSignal() {
     messages, choices, lastMessage,
     resources, weapon, noise, contactName,
     gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
-    aiExchangeCount, aiExchangeTarget, fragFired,
+    aiExchangeCount, aiExchangeTarget, fragFired, calmFired,
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
     recoveredMemories, // this run's cumulative collection (profile + new this run)
     raisedQuestions: raisedQuestionsRef.current, // case-file OPEN QUESTIONS surfaced so far
@@ -1939,7 +1957,7 @@ export default function DeadSignal() {
     setCurrentPath(run.currentPath || null); setExchangePhase(run.exchangePhase || 0);
     setP2BeatIndex(run.p2BeatIndex || 0); setAiExchangeCount(run.aiExchangeCount || 0);
     setAiExchangeTarget(run.aiExchangeTarget || 7);
-    setFragFired(!!run.fragFired); setCurrentEncounter(run.currentEncounter || null);
+    setFragFired(!!run.fragFired); setCalmFired(!!run.calmFired); setCurrentEncounter(run.currentEncounter || null);
     setSelectedFragment(run.selectedFragment || null); setDayThree(!!run.dayThree);
     setHavenFinalIndex(run.havenFinalIndex || 0);
     setCurrentPhase3Region(currentPhase3RegionRef.current); setCurrentPhase3Node(currentPhase3NodeRef.current);
@@ -2437,6 +2455,14 @@ export default function DeadSignal() {
             setGamePhase("encounter");
             scheduleMessages(enc.msgs, tagEncounterChoices(enc), "narrator");
           }, bridgeTime + 300));
+
+        } else if (pending.type === "calm") {
+          // The one-per-run breather: choiceless (no tap → no battery charge),
+          // auto-flows back to the nav screen after the held breath.
+          const calm = CALM_BEAT[path] || CALM_BEAT.hospital;
+          const ct = scheduleMessages(calm.msgs, null, "narrator");
+          addMsg("ellie", pickRandom(CALM_BEAT.ellie), ct + 900);
+          pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(); }, ct + 2600));
         }
 
       }, aiMsgTime + 600));
@@ -3223,7 +3249,7 @@ export default function DeadSignal() {
         // exploration cursor and the one-shot memory guard, then show the first nav screen.
         const startLeg = () => {
           applyTransitionDrain("path_start");
-          setFragFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
+          setFragFired(false); setCalmFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
           leadQueueRef.current = buildLeadQueue("path"); leadCursorRef.current = 0; // explore at your pace
           localBeat(null, "p2_ai"); // first nav screen of the path leg
         };
@@ -3420,11 +3446,13 @@ export default function DeadSignal() {
       const drain = lead?.drain ? applyTransitionDrain(lead.drain) : { food: 0, water: 0 }; // mid-leg squeeze
 
       let pendingBeat = null;
-      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "encounter")) {
+      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "calm" || lead.kind === "encounter")) {
         // Loud → they found you. Forced fight (never overrides a memory/discovery beat).
         // The planned lead is NOT consumed — rewind the cursor so it replays on the next
         // explore (otherwise a cornered fight could silently eat the leg's guaranteed
         // power-source lead, the battery lifeline). No loop risk: the fight resets noise to 0.
+        // A calm lead also yields: the fight fires first, then the breather replays after —
+        // earned relief, and the one-per-run beat can't be eaten.
         leadCursorRef.current = idx; setAiExchangeCount(idx);
         pendingBeat = { type: "encounter", enc: CORNERED_ENCOUNTER };
       } else if (lead?.kind === "memory" && !fragFiredRef.current) {
@@ -3432,6 +3460,9 @@ export default function DeadSignal() {
         pendingBeat = { type: "memory" };
       } else if (lead?.kind === "discovery") {
         pendingBeat = { type: "discovery" };
+      } else if (lead?.kind === "calm" && !calmFiredRef.current) {
+        setCalmFired(true);
+        pendingBeat = { type: "calm" };
       } else if (lead?.kind === "encounter") {
         pendingBeat = pickEncounterBeat(section, path, lead.plan);
       }
@@ -3509,7 +3540,7 @@ export default function DeadSignal() {
     setWeapon(null); setNoise(0);
     setExchangePhase(0); setContactName("KIM"); setChosenPath(null);
     setGamePhase("phase1"); setCurrentPath(null); setP2BeatIndex(0);
-    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false);
+    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false); setCalmFired(false);
     setCurrentEncounter(null); setSelectedFragment(null); setDayThree(false);
     setHavenFinalIndex(0); shelterForcedRef.current = false;
     // Phase 3 — clear the investigation so a fresh prologue run starts clean.
