@@ -32,6 +32,7 @@ const DAY1_FLAGS = {
 };
 const DAY1_REQUIRED = [DAY1_FLAGS.CHARGER, DAY1_FLAGS.SUPPLIES, DAY1_FLAGS.DOOR, DAY1_FLAGS.ELLIE, DAY1_FLAGS.BROADCAST];
 const DAY1_ROUTE_CHOICES = ["Mercy General Hospital [power still on]", "Harwick Metro [underground]", "Route 9 [open highway]"];
+const MAX_VISIBLE_CHOICES = 4;
 
 const PATH_BEATS = {
   hospital: [
@@ -1813,6 +1814,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     if (currentPath === "hospital")  return "Hospital";
     if (currentPath === "metro")     return "Metro tunnels";
     if (currentPath === "route9")    return "Highway checkpoint";
+    if (gamePhase === "phase1" && exchangePhase < 10) return "Harwick apartment";
     return "Harwick";
   };
   // Uppercase current-area name for the in-chat location strip (null = don't show the
@@ -1875,6 +1877,18 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   // A run body is resumable only if it's real progress with a sane schema.
   const validRun = (r) => !!r && r.gamePhase && r.resources && typeof r.resources.battery === "number"
     && (r.gamePhase !== "phase1" || !!r.gateWakeAt || !!r.day1?.flags?.length || !!r.day1?.visited?.length || !!r.day1?.scene);
+  const capVisibleChoices = (choiceList, source = "unknown") => {
+    if (!Array.isArray(choiceList) || choiceList.length <= MAX_VISIBLE_CHOICES) return choiceList;
+    if (GATE_BYPASS) {
+      console.warn("[DeadSignal] choice list exceeds max visible choices", {
+        source,
+        count: choiceList.length,
+        max: MAX_VISIBLE_CHOICES,
+        choices: choiceList,
+      });
+    }
+    return choiceList.slice(0, MAX_VISIBLE_CHOICES);
+  };
   // Normalize any stored value → { profile, run } (or null). Handles legacy v1 saves.
   const normalizeSlot = (raw) => {
     if (!raw) return null;
@@ -1981,7 +1995,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     }
     chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
     // state
-    setMessages(run.messages || []); setChoices(run.choices || []); setLastMessage(run.lastMessage || "");
+    setMessages(run.messages || []); setChoices(capVisibleChoices(run.choices || [], "resumeSlot")); setLastMessage(run.lastMessage || "");
     setResources(run.resources); setWeapon(run.weapon || null); setNoise(run.noise || 0);
     setContactName(run.contactName || "KIM");
     setGamePhase(run.gamePhase || "phase1"); setChosenPath(run.chosenPath || null);
@@ -2249,7 +2263,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       }, t));
       t += msgType === "narrator" ? 400 : 280;
     });
-    if (choiceList?.length) dialogueRef.current.push(setT(() => setChoices(choiceList), t + 80));
+    const visibleChoices = capVisibleChoices(choiceList, `scheduleMessages:${msgType}`);
+    if (visibleChoices?.length) dialogueRef.current.push(setT(() => setChoices(visibleChoices), t + 80));
     return t;
   };
 
@@ -2721,16 +2736,41 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     if (!day1Has(DAY1_FLAGS.BROADCAST)) miss.push("learn where the broadcast points");
     return miss;
   };
-  const day1HubChoices = () => [
-    day1Has(DAY1_FLAGS.CHARGER) ? "Check the bedroom again." : "Search the bedroom.",
-    day1Has(DAY1_FLAGS.SUPPLIES) ? "Check the kitchen again." : "Search the kitchen.",
-    day1Has(DAY1_FLAGS.BATHROOM) ? "Check the bathroom again." : "Search the bathroom.",
-    day1Has(DAY1_FLAGS.WINDOW) ? "Stay away from the window." : "Look through the window.",
-    day1Has(DAY1_FLAGS.DOOR) ? "Check the hallway door." : "Secure the hallway door.",
-    day1Has(DAY1_FLAGS.STAIRWELL) ? "Listen at the stairwell." : "Crack the door to the stairwell.",
-    day1Has(DAY1_FLAGS.ELLIE) ? "Text Ellie about the broadcast." : "Ask who is texting you.",
-    day1ReadyForSleep() ? "Sleep until morning." : "Try to sleep.",
-  ];
+  const day1RequiredChoices = () => {
+    const choices = [];
+    if (!day1Has(DAY1_FLAGS.CHARGER)) choices.push("Search the bedroom.");
+    if (!day1Has(DAY1_FLAGS.SUPPLIES)) choices.push("Search the kitchen.");
+    if (!day1Has(DAY1_FLAGS.ELLIE)) choices.push("Ask who is texting you.");
+    else if (!day1Has(DAY1_FLAGS.BROADCAST)) choices.push("Text Ellie about the broadcast.");
+    if (!day1Has(DAY1_FLAGS.DOOR)) choices.push("Secure the hallway door.");
+    return choices;
+  };
+  const day1OptionalChoices = () => {
+    const choices = [];
+    if (!day1Has(DAY1_FLAGS.BATHROOM)) choices.push("Search the bathroom.");
+    if (!day1Has(DAY1_FLAGS.WINDOW)) choices.push("Look through the window.");
+    if (!day1Has(DAY1_FLAGS.STAIRWELL)) choices.push("Crack the door to the stairwell.");
+    return choices;
+  };
+  const day1InspectChoices = () => {
+    const choices = [...day1OptionalChoices()];
+    if (!day1Has(DAY1_FLAGS.DOOR)) choices.push("Secure the hallway door.");
+    choices.push(day1ReadyForSleep() ? "Back to sleep prep." : "Back to essentials.");
+    return choices.slice(0, MAX_VISIBLE_CHOICES);
+  };
+  const day1HubChoices = () => {
+    if (day1ReadyForSleep()) return ["Sleep until morning.", ...day1OptionalChoices()].slice(0, MAX_VISIBLE_CHOICES);
+
+    const untouchedOpening = !day1Has(DAY1_FLAGS.CHARGER) && !day1Has(DAY1_FLAGS.SUPPLIES) && !day1Has(DAY1_FLAGS.ELLIE);
+    if (untouchedOpening) {
+      return ["Search the bedroom.", "Search the kitchen.", "Ask who is texting you.", "Inspect the apartment."];
+    }
+
+    const choices = day1RequiredChoices().slice(0, MAX_VISIBLE_CHOICES);
+    if (choices.length < MAX_VISIBLE_CHOICES && day1OptionalChoices().length) choices.push("Inspect the apartment.");
+    if (choices.length < MAX_VISIBLE_CHOICES) choices.push("Try to sleep.");
+    return choices.slice(0, MAX_VISIBLE_CHOICES);
+  };
   const showDay1Hub = (msgs = ["the apartment waits.", "what do you check?"], from = "narrator") => {
     setDay1Scene("apartment"); day1SceneRef.current = "apartment";
     return scheduleMessages(msgs, day1HubChoices(), from);
@@ -2752,6 +2792,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     const c = stripMarkers(choice).toLowerCase();
     if (DAY1_ROUTE_CHOICES.includes(choice)) return "BRANCH";
     if (c.includes("city map") || c.includes("harwick")) return "MAP";
+    if (c.includes("inspect the apartment")) return "INSPECT";
+    if (c.includes("back to essentials") || c.includes("back to sleep prep") || c.includes("keep working")) return "HUB";
     if (c.includes("bedroom")) return "BEDROOM";
     if (c.includes("kitchen")) return "KITCHEN";
     if (c.includes("bathroom")) return "BATHROOM";
@@ -2788,6 +2830,18 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       raiseQuestion("memory");
       nudgeCaseFileHint();
       showDay1Hub(["no memory at all?", "like you just woke up there with no idea how you got in?", "look around. charger, food, water, door. start there."], "ellie");
+      return;
+    }
+
+    if (action === "HUB") {
+      showDay1Hub(["you pull the list back into order.", "one thing at a time."], "narrator");
+      return;
+    }
+
+    if (action === "INSPECT") {
+      markDay1Visited("apartment");
+      setDay1Scene("inspect"); day1SceneRef.current = "inspect";
+      scheduleMessages(["you move through the apartment slowly.", "small rooms. bad angles. too many sounds from the hall.", "what do you check?"], day1InspectChoices(), "narrator");
       return;
     }
 
@@ -2970,7 +3024,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     const prompt = remaining.length
       ? ["the compound spreads out around you.", "where do you look?"]
       : ["you've walked all of it.", "only one place left."];
-    const t = scheduleMessages(prompt, [...remaining.map(d => d.label), HEART_LABEL], "narrator");
+    const labels = remaining.length
+      ? [...remaining.slice(0, MAX_VISIBLE_CHOICES - 1).map(d => d.label), HEART_LABEL]
+      : [HEART_LABEL];
+    const t = scheduleMessages(prompt, labels, "narrator");
     return t + delay;
   };
 
@@ -2987,21 +3044,23 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     // shelter rule). The final day has no clock, so dusk never triggers there.
     const dusk = phase3DayRef.current < PHASE3_FINAL_DAY && daylightRef.current <= PHASE3_DUSK;
     // Hidden region exits (places not yet heard of) appear once their region is unlocked.
-    const labels = (node.exits || [])
+    const exitLabels = (node.exits || [])
       .filter(e => !e.hidden || (e.region && phase3UnlockedRef.current.includes(e.region)))
       .map(e => {
         const dest = e.to ? phase3Node(region, e.to) : null;
         return dusk && dest?.shelter ? `${e.label} [shelter]` : e.label;
       });
-    // Bed down — only at a shelter, only as the light fails (resting early at one is safe). Goes first.
-    if (dusk && node.shelter) labels.unshift(BED_DOWN_LABEL(phase3DayRef.current));
-    // Optional search — a room you haven't picked over yet, while there's daylight to spare.
-    const searched = phase3SearchedRef.current.has(`${region}:${currentPhase3NodeRef.current}`);
-    if (!dusk && node.kind === "room" && !node.truth && !searched) labels.push("▸ Search the room [1 light]");
+    const priorityLabels = [];
     // The finale call — at the Haven hub, once all 4 truths are uncovered, the phone rings.
     if (region === "haven" && currentPhase3NodeRef.current === "gate_yard" && discoveredTruthsRef.current.length >= 4) {
-      labels.push(FINALE_CHOICE);
+      priorityLabels.push(FINALE_CHOICE);
     }
+    // Bed down — only at a shelter, only as the light fails (resting early at one is safe).
+    if (dusk && node.shelter) priorityLabels.push(BED_DOWN_LABEL(phase3DayRef.current));
+    const labels = [...priorityLabels, ...exitLabels].slice(0, MAX_VISIBLE_CHOICES);
+    // Optional search — a room you haven't picked over yet, while there's daylight to spare.
+    const searched = phase3SearchedRef.current.has(`${region}:${currentPhase3NodeRef.current}`);
+    if (!dusk && node.kind === "room" && !node.truth && !searched && labels.length < MAX_VISIBLE_CHOICES) labels.push("▸ Search the room [1 light]");
     return scheduleMessages([], labels, "narrator");
   };
 
