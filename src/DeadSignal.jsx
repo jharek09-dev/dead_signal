@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, memo } from "react";
 import audioEngine from "./audio.js";
 
 const INTRO_LINES = [
@@ -1601,6 +1601,10 @@ export default function DeadSignal() {
   const dialogueRef         = useRef([]);   // timers owned by scheduleMessages (C3 — kept separate from pendingRef)
   const idRef               = useRef(0);    // monotonic id source (H1 — avoids Date.now() key collisions)
   const bottomRef           = useRef(null);
+  const chatScrollRef       = useRef(null);
+  const chatScrollTopRef    = useRef(0);
+  const restoreChatScrollRef = useRef(false);
+  const suppressNextAutoScrollRef = useRef(false);
   const chatStartedRef      = useRef(false);
   const resourcesRef        = useRef(resources);
   const screenRef           = useRef(screen);
@@ -2118,7 +2122,21 @@ export default function DeadSignal() {
     return () => ids.forEach(clearTimeout);
   }, [screen, deathCause]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, isTyping, choices]);
+  useLayoutEffect(() => {
+    if (screen !== "chat" || !restoreChatScrollRef.current) return;
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = Math.min(chatScrollTopRef.current, Math.max(0, el.scrollHeight - el.clientHeight));
+    restoreChatScrollRef.current = false;
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen !== "chat") return;
+    if (suppressNextAutoScrollRef.current) {
+      suppressNextAutoScrollRef.current = false;
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, isTyping, choices, screen]);
 
   // P4 — on mount, migrate any legacy single-slot save into slot 0, then read all slots.
   // refreshSlots() validates each slot and cleans up zero-progress / malformed saves.
@@ -3561,6 +3579,15 @@ export default function DeadSignal() {
 
   // audio — wrap a menu-button handler so it plays the distinct menu-tap click.
   const withMenuSound = (fn) => () => { audioEngine.tapMenu(); fn?.(); };
+  const openCaseFile = () => {
+    if (chatScrollRef.current) chatScrollTopRef.current = chatScrollRef.current.scrollTop;
+    setScreen("board");
+  };
+  const closeCaseFile = () => {
+    restoreChatScrollRef.current = true;
+    suppressNextAutoScrollRef.current = true;
+    setScreen("chat");
+  };
 
   // audio — small mute toggle glyph (line-through ♪ when muted). Reused on every screen.
   // audio — speaker icon (line style matches the HUD battery glyph). Sound waves
@@ -3826,7 +3853,7 @@ export default function DeadSignal() {
     return (
       <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", padding:"clamp(1.25rem,5vw,2.5rem) clamp(1rem,4vw,2rem)", userSelect:"none", overflowY:"auto" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-        <button className="rb" onClick={withMenuSound(()=>{ setScreen("chat"); })}
+        <button className="rb" onClick={withMenuSound(closeCaseFile)}
           style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
@@ -4053,7 +4080,7 @@ export default function DeadSignal() {
         <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
       </div>
       <div className="ds-hud-mid">
-        <button className="cb" onClick={withMenuSound(()=>{ setScreen("board"); })} title="case file" aria-label="case file"
+        <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file"
           style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
         <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
           style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
@@ -4128,7 +4155,7 @@ export default function DeadSignal() {
       )}
 
       {/* Messages */}
-      <div style={{ flex:1, overflowY:"auto", padding:"0.6rem 0.9rem", display:"flex", flexDirection:"column", gap:"0.4rem", minHeight:0 }}>
+      <div ref={chatScrollRef} style={{ flex:1, overflowY:"auto", padding:"0.6rem 0.9rem", display:"flex", flexDirection:"column", gap:"0.4rem", minHeight:0 }}>
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
         {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
