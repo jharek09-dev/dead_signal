@@ -10,6 +10,8 @@ export default defineConfig(({ command }) => ({
   // `npm run dev` and the preview tooling are unaffected.
   base: command === "build" ? "/dead_signal/" : "/",
   plugins: [react()],
+  // Honor an assigned PORT (preview tooling / CI); plain `npm run dev` keeps vite's default.
+  server: process.env.PORT ? { port: Number(process.env.PORT), strictPort: true } : undefined,
   build: {
     rollupOptions: {
       input: {
