@@ -1273,6 +1273,49 @@ const parseResourceMarkers = (choice) => {
   return out;
 };
 
+// ─── Encounter odds — SINGLE SOURCE OF TRUTH ──────────────────────────────────
+// The resolver rolls against these AND the choice-button risk tags are computed
+// from them, so a balance tweak here can never make the tags lie. penalty is the
+// route's noiseCombatPenalty (routeProfile() is component-scope, so it's a param).
+const pSneak = (noise) => noise <= 1 ? 0.92 : noise <= 3 ? 0.68 : 0.38;
+const pRun   = (noise) => noise <= 3 ? 0.75 : 0.48;
+const pFight = (dmg, noise, penalty) =>
+  Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (noise >= 4 ? penalty : 0)));
+
+// Tier vocabulary: LOW/MED/HIGH = a gamble's live odds; COSTLY = a guaranteed
+// price (no roll). Boundaries land clean on today's numbers (bat FIGHT .69 → MED
+// by intent; nothing computes to exactly 0.70), so no epsilon.
+const tierForP = (p) => (p >= 0.70 ? "LOW" : p >= 0.45 ? "MED" : "HIGH");
+
+// null = no tag (safe/neutral options stay visually quiet so the tagged ones
+// carry the tension).
+const riskTier = (action, { noise, dmg, penalty }) => {
+  switch (action) {
+    case "SNEAK":  return tierForP(pSneak(noise));
+    case "RUN":    return tierForP(pRun(noise));
+    case "FIGHT":  return tierForP(pFight(dmg, noise, penalty));
+    case "SEARCH": return "MED";    // flat 0.80 payout, but the 0.20 fail bites
+    case "FORCE":  return "COSTLY"; // no roll — a guaranteed price, not a gamble
+    default:       return null;     // WAIT / AVOID / OBSERVE / DISTRACT
+  }
+};
+
+// Display-only decoration: swap an authored [risk] for the live tier; inject a
+// trailing tag on an untagged gamble (SNEAK/RUN/FIGHT) only when its odds have
+// degraded to MED/HIGH — the quiet option stays quiet while it's genuinely
+// favorable. stripMarkers removes ALL [...] tokens, so the resolver's
+// stripped-text action dispatch is unaffected by any of this.
+const RISK_TOKEN_RE = /\s*\[risk\]/i; // data carries at most one [risk] per choice
+const decorateChoiceText = (text, action, odds) => {
+  const tier = riskTier(action, odds);
+  if (!tier) return RISK_TOKEN_RE.test(text) // defensive: no null-tier action carries [risk] today
+    ? text.replace(RISK_TOKEN_RE, "").replace(/\s{2,}/g, " ").trim()
+    : text;
+  if (RISK_TOKEN_RE.test(text)) return text.replace(RISK_TOKEN_RE, ` [${tier}]`).trim();
+  const gamble = action === "SNEAK" || action === "RUN" || action === "FIGHT";
+  return gamble && (tier === "MED" || tier === "HIGH") ? `${text} [${tier}]` : text;
+};
+
 // Battery is the master clock. The phone is on the whole game, so advancing a beat
 // costs power — one place owns the rate. Exceptions: phase1 is a pre-charger set-piece
 // (not a clock yet), and pure story beats (memory flash, discovery) aren't traversal.
@@ -1342,7 +1385,13 @@ const parseText = (text, ctx = "button") => {
       // Story / discovery
       else if (low.includes("memory fragment") || low === "memory") color = "#4a9e6b";
       else if (low.includes("project haven") || low.includes("discovery") || low.includes("examine") || low.includes("clue")) color = "#4ab5c8";
-      // Risk / warning
+      // Risk tiers — EXACT match only: "[open highway]" contains "high", so
+      // substring matching here would repaint the route-branch button.
+      else if (low === "low")                      color = "#4a9e6b";
+      else if (low === "med" || low === "costly")  color = "#c8a020";
+      else if (low === "high")                     color = "#8b4a4a";
+      // Risk / warning (legacy [risk] kept as fallback: pre-feature saves can
+      // restore literal [risk] choice strings — they should still render sanely)
       else if (low.includes("risk") || low.includes("attracts")) color = "#c8a020";
       // Neutral actions (collect, pick up, equip) + default
       else color = ctx === "button" ? "#4a9e6b" : "#8fba8f";
@@ -2148,6 +2197,17 @@ export default function DeadSignal() {
   // holds the chosen route through the crossing too. Defaults to hospital for an unset route.
   const routeProfile = () => ROUTE_PROFILE[currentPathRef.current] || ROUTE_PROFILE.hospital;
 
+  // Risk legibility — an encounter's choices mapped to their tagged display
+  // strings, from the SAME inputs the resolver will read at the tap (nothing
+  // mutates noise/weapon between presentation and resolution). Pure map: never
+  // mutates c.text — the pools are module-scope objects shared across runs.
+  const tagEncounterChoices = (enc) =>
+    enc.choices.map(c => decorateChoiceText(c.text, c.action, {
+      noise:   noiseRef.current,
+      dmg:     weaponRef.current ? weaponRef.current.damage : 0,
+      penalty: routeProfile().noiseCombatPenalty,
+    }));
+
   // Resource drain at section transitions and mid-legs. The steady squeeze that
   // makes searching matter (supply economy). Code owns every number.
   // Returns the {food, water} deltas it applied so a same-tick caller can fold them
@@ -2375,7 +2435,7 @@ export default function DeadSignal() {
             setCurrentEncounter(enc);
             returnToPhaseRef.current = gamePhaseRef.current;
             setGamePhase("encounter");
-            scheduleMessages(enc.msgs, enc.choices.map(c => c.text), "narrator");
+            scheduleMessages(enc.msgs, tagEncounterChoices(enc), "narrator");
           }, bridgeTime + 300));
         }
 
@@ -2416,7 +2476,7 @@ export default function DeadSignal() {
 
     switch (action) {
       case "SNEAK": {
-        const ok = Math.random() < (curNoise <= 1 ? 0.92 : curNoise <= 3 ? 0.68 : 0.38);
+        const ok = Math.random() < pSneak(curNoise);
         if (ok) { outcome = "you slipped past unnoticed."; reactionKey = "sneak_success"; }
         else    { outcome = "it heard you."; reactionKey = "sneak_fail"; dNoise = 1; dHp = -1; }
         break;
@@ -2453,7 +2513,7 @@ export default function DeadSignal() {
       case "WAIT":    { outcome = "you waited. it passed."; reactionKey = "wait"; break; }
       case "DISTRACT":{ if (curRes.food > 0) { dFood = -1; outcome = "it goes for the food. you slip past."; } else { outcome = "nothing to throw. you slip past anyway."; } reactionKey = "distract"; dNoise = 1; break; }
       case "RUN": {
-        const ok = Math.random() < (curNoise <= 3 ? 0.75 : 0.48);
+        const ok = Math.random() < pRun(curNoise);
         if (ok) { outcome = "you ran. made it."; reactionKey = "run_success"; dNoise = 1; }
         else    { outcome = "you got away. dropped something."; reactionKey = "run_fail"; dFood = -1; dWater = -1; dNoise = 2; }
         break;
@@ -2464,7 +2524,7 @@ export default function DeadSignal() {
         // Weapon-driven combat. Damage raises the odds of a clean kill and cuts the
         // bleed on a loss. Unarmed is desperate. Fighting is loud either way.
         const dmg = weaponRef.current ? weaponRef.current.damage : 0;
-        const ok  = Math.random() < Math.max(0.1, Math.min(0.95, 0.45 + dmg * 0.08 - (curNoise >= 4 ? routeProfile().noiseCombatPenalty : 0)));
+        const ok  = Math.random() < pFight(dmg, curNoise, routeProfile().noiseCombatPenalty);
         dNoise = dmg ? 1 : 2;
         if (ok) { outcome = dmg ? "you put it down." : "you fight it off. barely."; reactionKey = "fight_win";  dHp = dmg ? 0  : -1; }
         else    { outcome = dmg ? "it gets a hit in."  : "it gets to you. bad.";    reactionKey = "fight_loss"; dHp = dmg ? -1 : -3; }
@@ -2863,7 +2923,7 @@ export default function DeadSignal() {
     setCurrentEncounter(enc); currentEncounterRef.current = enc;
     setGamePhase("encounter"); gamePhaseRef.current = "encounter";
     setIsTyping(true);
-    scheduleMessages(enc.msgs, enc.choices.map(c => c.text), "narrator");
+    scheduleMessages(enc.msgs, tagEncounterChoices(enc), "narrator");
     return true;
   };
 

@@ -299,3 +299,10 @@ Holes found and the locked fixes, for the record:
    **dropped** for smooth prologue→Phase-3 flow; the inert scaffolding was removed from the build
    (2026-07-01). The win screen it replaced (`phase2_complete`) was culled the same day — the
    prologue auto-flows into Phase 3.
+9. **Encounter risk was illegible** — every dangerous choice wore the same static yellow `[risk]`
+   while the resolver computed live odds from noise + weapon. → Computed tier tags (2026-07-02):
+   `[LOW]`/`[MED]`/`[HIGH]` from the resolver's own odds functions (`pSneak`/`pRun`/`pFight`,
+   single source of truth shared by the roll and the tag), `[COSTLY]` for the no-roll FORCE;
+   an untagged gamble gets a tag injected only when its odds degrade to MED/HIGH, so the quiet
+   option stays quiet while it's genuinely favorable. Display-only — deltas, dispatch, and
+   route tuning untouched. The tag is HUD register (like `[+1 Noise]`); Ellie never speaks it.
