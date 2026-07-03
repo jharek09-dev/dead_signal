@@ -1451,28 +1451,26 @@ const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{
 // lives here so the header can shrink on phones via media queries; state-driven bits (colors,
 // animations, conditional borders) stay inline. Desktop ≈ current look; mobile = compact phone strip.
 const HUD_CSS = `
-.ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:0.5rem;padding:calc(0.4rem + env(safe-area-inset-top)) 1rem 0.25rem;flex-shrink:0}
+.ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:0.5rem;padding:calc(0.4rem + env(safe-area-inset-top)) 1rem 0.45rem;border-bottom:1px solid #111;flex-shrink:0}
 .ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
 .ds-hud-right{justify-content:flex-end}
-.ds-hud-mid{display:flex;align-items:center;gap:0.4rem}
+.ds-hud-mid{display:flex;flex-direction:column;align-items:center;gap:0.15rem}
 .ds-batt-pct{font-size:0.7rem;letter-spacing:0.03em}
-.ds-contact{display:flex;flex-direction:column;align-items:center;gap:0.1rem;padding:0.4rem 1rem 0.5rem;border-bottom:1px solid #111;flex-shrink:0}
-.ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
+.ds-contact-id{display:flex;align-items:center;gap:0.45rem}
 .ds-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0a0f0a;font-size:0.78rem;transition:border-color .8s,color .8s,box-shadow .8s;flex-shrink:0}
 .ds-name{color:#c8b896;font-size:0.7rem;letter-spacing:0.16em;transition:color .8s,text-shadow .8s}
 .ds-status{color:#6a6a6a;font-size:0.56rem;letter-spacing:0.07em}
 .ds-vitals{display:flex;gap:1rem;padding:0.38rem 1rem;align-items:center;flex-wrap:wrap;font-size:0.66rem;letter-spacing:0.09em;flex-shrink:0}
 .ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
 .ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
+.ds-actionbar{display:flex;gap:0.5rem;padding:0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));border-top:1px solid #111;flex-shrink:0}
+.ds-actionbar button{flex:1;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
 @media(max-width:480px){
 .ds-hud{padding-left:0.6rem;padding-right:0.6rem;gap:0.35rem}
-.ds-contact{padding:0.3rem 0.75rem 0.35rem;gap:0.05rem}
-.ds-contact-id{flex-direction:row;gap:0.45rem}
 .ds-avatar{width:20px;height:20px;font-size:0.62rem}
 .ds-vitals{gap:0.55rem;font-size:0.62rem;padding:0.34rem 0.6rem;flex-wrap:wrap}
 .ds-equip{gap:0.6rem;font-size:0.56rem;padding:0.22rem 0.75rem}
 .ds-battwarn{font-size:0.6rem;padding:0.32rem 0.75rem}
-.ds-battwarn:not(.ds-crit){display:none}
 .choice-btn{padding:0.65rem 0.75rem!important;font-size:0.78rem!important;line-height:1.45!important}
 }`;
 
@@ -4528,16 +4526,19 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   }
 
   // ─── Gameplay header pieces (responsive via HUD_CSS classes; state-driven bits stay inline) ──
+  // The header's center slot is the contact identity (FILE/menu moved to the bottom action
+  // bar): nothing competes for the slot, so the avatar/name/status stay dead-centered.
   const TopHud = () => (
     <div className="ds-hud">
       <div className="ds-hud-side">
         <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
       </div>
       <div className="ds-hud-mid">
-        <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file"
-          style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.58rem", letterSpacing:"0.12em", lineHeight:1, padding:"0.28rem 0.5rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>▤&nbsp;FILE</button>
-        <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu"
-          style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#6a6a6a", fontFamily:"inherit", fontSize:"0.7rem", lineHeight:1, padding:"0.2rem 0.55rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>☰</button>
+        <div className="ds-contact-id">
+          <div className="ds-avatar" style={{ border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
+          <span className="ds-name" style={{ textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
+        </div>
+        <span className="ds-status">{contactStatus}</span>
       </div>
       <div className="ds-hud-side ds-hud-right">
         <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
@@ -4552,13 +4553,12 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     </div>
   );
 
-  const ContactHeader = () => (
-    <div className="ds-contact">
-      <div className="ds-contact-id">
-        <div className="ds-avatar" style={{ border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
-        <span className="ds-name" style={{ textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
-      </div>
-      <span className="ds-status">{contactStatus}</span>
+  // The bottom action bar — case file + pause, thumb-sized, always visible on the chat
+  // screen (dialogue can stream for a while; menu access must not depend on choices).
+  const BottomBar = () => (
+    <div className="ds-actionbar">
+      <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file">▤&nbsp;&nbsp;CASE FILE</button>
+      <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu">☰&nbsp;&nbsp;MENU</button>
     </div>
   );
 
@@ -4613,7 +4613,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)",
   };
   const choicesPaneStyle = {
-    padding:isDesktopDemo ? "0.8rem clamp(1rem, 2.2vw, 2rem) 1rem" : "0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))",
+    // The action bar below owns the bottom safe-area now.
+    padding:isDesktopDemo ? "0.8rem clamp(1rem, 2.2vw, 2rem) 1rem" : "0.6rem 1rem 0.7rem",
     borderTop:"1px solid #111",
     display:"flex",
     flexDirection:"column",
@@ -4626,10 +4627,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}`}</style>
       <AudioDebug />
 
-      {/* Gameplay header — responsive pieces (see HUD_CSS). TopHud = signal+counters · FILE/menu
-          (centered) · battery. Then contact, vitals, optional equipment. Mobile compacts via @media. */}
+      {/* Gameplay header — responsive pieces (see HUD_CSS). TopHud = signal · contact identity
+          (centered) · battery. Then vitals, optional equipment. Mobile compacts via @media. */}
       {TopHud()}
-      {ContactHeader()}
       {ResourceStrip()}
       {EquipmentStrip()}
 
@@ -4668,6 +4668,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
           )}
         </div>
       )}
+
+      {BottomBar()}
 
       {/* Pause menu — save / load / exit / restart. Sits above the chat as an overlay. */}
       {menuOpen && (
