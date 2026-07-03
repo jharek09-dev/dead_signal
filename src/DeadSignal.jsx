@@ -1532,24 +1532,33 @@ const MessageRow = memo(function MessageRow({ m }) {
         {m.kind==="fragment" && <div style={{ color:"#2a6a3a", fontSize:"0.58rem", letterSpacing:"0.1em" }}>{m.count} of 9 recovered</div>}
       </div>
     );
-  if (m.from === "question_note")
+  if (m.from === "question_note") {
+    // One box for however many threads a beat opened: kind "batch" carries cards[];
+    // legacy single cards (and old saves) render through the same path as a batch of one.
+    const cards = m.kind === "batch" ? m.cards || [] : [m];
+    const allNew = cards.every(c => c.kind === "new");
+    const header = allNew ? (cards.length > 1 ? "NEW QUESTIONS" : "NEW QUESTION")
+      : cards.every(c => c.kind !== "new") ? (cards.length > 1 ? "QUESTIONS UPDATED" : "QUESTION UPDATED")
+      : "CASE FILE UPDATED";
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.8s ease" }}>
-        {m.kind === "new" ? (
-          <>
-            <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>NEW QUESTION</div>
-            <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.25rem" }}>{m.newText}</div>
-          </>
-        ) : (
-          <>
-            <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>QUESTION UPDATED</div>
-            <div style={{ color:"#5a5246", fontSize:"0.72rem", fontStyle:"italic", margin:"0.3rem 0 0", textDecoration:"line-through" }}>{m.oldText}</div>
-            <div style={{ color:"#6a5a48", fontSize:"0.74rem", lineHeight:1.1 }}>↓</div>
-            <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.05rem" }}>{m.newText}</div>
-          </>
-        )}
+        <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>{header}</div>
+        {cards.map((c, i) => (
+          <div key={i} style={i === 0 ? { marginTop:"0.25rem" } : { marginTop:"0.4rem", paddingTop:"0.4rem", borderTop:"1px solid #241d10" }}>
+            {c.kind === "new" ? (
+              <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic" }}>{c.newText}</div>
+            ) : (
+              <>
+                <div style={{ color:"#5a5246", fontSize:"0.72rem", fontStyle:"italic", textDecoration:"line-through" }}>{c.oldText}</div>
+                <div style={{ color:"#c8b896", fontSize:"0.8rem", fontStyle:"italic", marginTop:"0.1rem" }}>{c.newText}</div>
+              </>
+            )}
+          </div>
+        ))}
+        {m.hint && <div style={{ color:"#6a5a30", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.5rem" }}>▤ tap FILE to review</div>}
       </div>
     );
+  }
   if (m.from === "truth_note")
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.7rem 1.4rem", border:"1px solid #5a3a1a", background:"#0d0703", boxShadow:"0 0 18px rgba(200,120,40,0.18)", animation:"fi 1s ease" }}>
@@ -1661,7 +1670,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const havenFinalRef       = useRef(HAVEN_FINAL_SEQUENCE); // P5 — path-aware final sequence for this run
   const havenVisitedRef     = useRef([]); // Haven hub — destination ids already investigated this run
   const discoveryFoundRef   = useRef(false); // route discovery found this run — gates "move on" off the first route
-  const qQueueRef           = useRef(0);  // pending QUESTION cards (stagger so simultaneous raises don't stack)
+  const pendingQuestionCardsRef = useRef([]);   // QUESTION cards awaiting the batch flush (simultaneous raises share one box)
+  const qFlushArmedRef          = useRef(false); // fallback flush timer armed (choiceless flows; the stable-point effect is primary)
+  const pendingCaseFileHintRef  = useRef(false); // once-per-slot "tap FILE" nudge rides the next flushed card
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
   const seenBeatsRef        = useRef(new Set()); // exploration beats shown this run (prefer unseen)
   const seenBridgesRef      = useRef(new Set()); // encounter-bridge variants shown this run (prefer unseen)
@@ -1751,7 +1762,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const clearPending = () => {
     pendingRef.current.forEach(clearT); pendingRef.current = [];
     dialogueRef.current.forEach(clearT); dialogueRef.current = [];
-    qQueueRef.current = 0; // cleared question-card timers won't decrement; reset the stagger baseline
+    // Pending question cards deliberately survive this: the fallback flush timer may die here,
+    // but the stable-point effect re-flushes them — a fast tap can no longer lose a card.
+    qFlushArmedRef.current = false;
   };
 
   // Freeze the dialogue whenever the bare chat isn't the foreground — the pause menu, or a
@@ -1781,13 +1794,35 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
 
   // Drop a QUESTION card into the chat, staggered so simultaneous raises (e.g. the name
   // reveal opening three threads) appear ~1.4s apart instead of stacking in one frame.
-  const announceQuestion = (card) => {
-    const delay = 500 + Math.min(qQueueRef.current, 4) * 800;
-    qQueueRef.current += 1;
+  // Question cards coalesce: simultaneous raises (the name reveal opens three threads at once;
+  // signal_core raises three; the 143 record fires two updates) share ONE box instead of a
+  // staggered stack splitting the dialogue. The flush lands at the stable point (choices shown,
+  // typing settled — the same trigger as the autosave), so the burst reads uninterrupted; the
+  // armed setT is only a fallback for choiceless flows.
+  const flushQuestionCards = () => {
+    const cards = pendingQuestionCardsRef.current;
+    if (!cards.length) return;
+    pendingQuestionCardsRef.current = [];
+    qFlushArmedRef.current = false;
+    const hint = pendingCaseFileHintRef.current;
+    pendingCaseFileHintRef.current = false;
+    const body = cards.length === 1 ? { ...cards[0] } : { kind: "batch", cards };
+    setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...body, ...(hint ? { hint: true } : {}) }]);
+  };
+  const armQuestionFlushFallback = () => {
+    qFlushArmedRef.current = true;
     pendingRef.current.push(setT(() => {
-      setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...card }]);
-      qQueueRef.current = Math.max(0, qQueueRef.current - 1);
-    }, delay));
+      if (!pendingQuestionCardsRef.current.length) { qFlushArmedRef.current = false; return; }
+      // Unfired timers = the burst (or a chained beat) is still streaming — hold the box so it
+      // lands after the dialogue, not through it. isTyping can't gate this: it flickers false
+      // between messages mid-burst.
+      if (timersRef.current.size > 0) { armQuestionFlushFallback(); return; }
+      flushQuestionCards();
+    }, 3000));
+  };
+  const announceQuestion = (card) => {
+    pendingQuestionCardsRef.current = [...pendingQuestionCardsRef.current, card];
+    if (!qFlushArmedRef.current) armQuestionFlushFallback();
   };
 
   // Drop a TRUTH UNCOVERED card — a region's earned payoff (Phase 3). Caller schedules the timing
@@ -2251,6 +2286,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       await refreshSlots();
     })();
   }, []);
+
+  // Question-card flush at the stable point — the burst is done, choices are up, so the
+  // batched box lands after the dialogue instead of splitting it. Runs before the autosave
+  // effect; the flushed message itself gets persisted at the next stable point.
+  useEffect(() => {
+    if (screen === "chat" && choices.length > 0 && !isTyping) flushQuestionCards();
+  }, [screen, choices, isTyping]);
 
   // P4 — save at stable decision points (choices shown, animation settled).
   useEffect(() => {
@@ -2817,7 +2859,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const nudgeCaseFileHint = () => {
     if (activeProfileRef.current && !activeProfileRef.current.caseFileHintSeen) {
       activeProfileRef.current.caseFileHintSeen = true;
-      addMsg("system", "▤ new in your case file — tap FILE to review", 1500);
+      // Rides the next flushed question card as an in-box footer (the nudge site always
+      // raises a question in the same beat, so a card is always pending).
+      pendingCaseFileHintRef.current = true;
     }
   };
   const startDay2Morning = () => {
@@ -4564,6 +4608,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     flexDirection:"column",
     gap:isDesktopDemo ? "0.55rem" : "0.4rem",
     minHeight:0,
+    // Messages fade as they scroll under the HUD instead of hard-clipping mid-line.
+    maskImage:"linear-gradient(to bottom, transparent 0, black 14px)",
+    WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)",
   };
   const choicesPaneStyle = {
     padding:isDesktopDemo ? "0.8rem clamp(1rem, 2.2vw, 2rem) 1rem" : "0.6rem 1rem calc(1rem + env(safe-area-inset-bottom))",
