@@ -1450,8 +1450,59 @@ const parseText = (text, ctx = "button") => {
 };
 
 // Shared style fragments (L2 — hoisted so the three screens don't duplicate them)
+const getChoiceKind = (choice) => {
+  const text = stripMarkers(choice).toLowerCase();
+  if (choice === "·") return "continue";
+  if (
+    /\[(?:risk|\+noise)\]/i.test(choice) ||
+    text.includes("loud") ||
+    text.includes("force through") ||
+    text.includes("run.") ||
+    text.includes("stand and fight") ||
+    text.includes("take it on") ||
+    text.includes("put it down")
+  ) return "risk";
+  if (
+    text.endsWith("?") ||
+    text.startsWith("ask ") ||
+    text.startsWith("text back") ||
+    text.startsWith("text ellie") ||
+    text.startsWith("how do you know") ||
+    text === "ellie"
+  ) return "dialogue";
+  if (text.includes("charger") || text.includes("save") || text.includes("load")) return "utility";
+  return "action";
+};
+
+const choiceButtonStyle = (kind, index = 0, overrides = {}) => {
+  const tones = {
+    dialogue: { border:"#244a32", color:"#8fca9a", shadow:"0 0 11px rgba(74,158,107,0.16)" },
+    risk:     { border:"#4a351b", color:"#c89a58", shadow:"0 0 11px rgba(200,154,88,0.12)" },
+    utility:  { border:"#244a2c", color:"#3a8a50", shadow:"0 0 10px rgba(74,158,107,0.10)" },
+    action:   { border:"#1c1c1c", color:"#c8b98a", shadow:"none" },
+  };
+  const tone = tones[kind] || tones.action;
+  return {
+    background:"transparent",
+    border:`1px solid ${tone.border}`,
+    color:tone.color,
+    boxShadow:tone.shadow,
+    padding:"clamp(0.6rem, 2.4vw, 0.75rem) 0.9rem",
+    textAlign:"left",
+    cursor:"pointer",
+    fontFamily:"inherit",
+    fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)",
+    fontWeight:300,
+    letterSpacing:"0.04em",
+    lineHeight:"1.5",
+    transition:"border-color 0.15s, color 0.15s, box-shadow 0.15s",
+    animation:`choiceIn 0.24s ease ${Math.min(index, 5) * 45}ms both`,
+    ...overrides,
+  };
+};
+
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
-const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
+const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@keyframes choiceIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
 
 // Responsive gameplay-HUD styles (injected into the chat screen's <style>). Static sizing/spacing
 // lives here so the header can shrink on phones via media queries; state-driven bits (colors,
@@ -2843,8 +2894,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const choices = [];
     if (!day1Has(DAY1_FLAGS.CHARGER)) choices.push("Search the bedroom.");
     if (!day1Has(DAY1_FLAGS.SUPPLIES)) choices.push("Search the kitchen.");
-    if (!day1Has(DAY1_FLAGS.ELLIE)) choices.push("Ask who is texting you.");
-    else if (!day1Has(DAY1_FLAGS.BROADCAST)) choices.push("Text Ellie about the broadcast.");
+    if (!day1Has(DAY1_FLAGS.ELLIE)) choices.push("Text back: who are you?");
+    else if (!day1Has(DAY1_FLAGS.BROADCAST)) choices.push("Ask about the broadcast.");
     if (!day1Has(DAY1_FLAGS.DOOR)) choices.push("Secure the hallway door.");
     return choices;
   };
@@ -2867,7 +2918,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
     const untouchedOpening = !day1Has(DAY1_FLAGS.CHARGER) && !day1Has(DAY1_FLAGS.SUPPLIES) && !day1Has(DAY1_FLAGS.ELLIE);
     if (untouchedOpening) {
-      return ["Search the bedroom.", "Search the kitchen.", "Ask who is texting you.", "Inspect the apartment."];
+      return ["Search the bedroom.", "Search the kitchen.", "Text back: who are you?", "Inspect the apartment."];
     }
 
     const choices = day1RequiredChoices().slice(0, MAX_VISIBLE_CHOICES);
@@ -2909,9 +2960,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     if (c.includes("bathroom")) return "BATHROOM";
     if (c.includes("window")) return "WINDOW";
     if (c.includes("hallway door")) return "DOOR";
-    if (c.includes("stairwell")) return "STAIRWELL";
-    if (c.includes("who is texting") || c.includes("ellie")) return "ELLIE";
     if (c.includes("broadcast")) return "BROADCAST";
+    if (c.includes("stairwell")) return "STAIRWELL";
+    if (c.includes("who is texting") || c.includes("who are you") || c.includes("text back") || c.includes("ellie")) return "ELLIE";
     if (c.includes("sleep")) return "SLEEP";
     return "OPENING";
   };
@@ -3034,17 +3085,23 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       return;
     }
 
-    if (action === "ELLIE" || action === "BROADCAST") {
+    if (action === "ELLIE") {
       if (!day1Has(DAY1_FLAGS.ELLIE)) {
-        markDay1Flag(DAY1_FLAGS.ELLIE); markDay1Flag(DAY1_FLAGS.BROADCAST);
+        markDay1Flag(DAY1_FLAGS.ELLIE);
         raiseQuestion("kim"); raiseQuestion("ellie"); raiseQuestion("call");
         // P6d — the header flips KIM→ELLIE the instant "name's ellie" actually renders,
         // tied to the message text (not the tap that asked the question).
-        showDay1Hub(["okay.", "name's ellie.", "found this phone in our stairwell two days ago. she was already gone.", "there's a broadcast. shortwave. been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left.", "don't open your door tonight. i don't care what you hear."], "ellie",
+        showDay1Hub(["okay.", "name's ellie.", "i found this phone in our stairwell two days ago.", "it belonged to kim. she was already gone.", "i didn't think anyone was going to answer it."], "ellie",
           (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); });
       } else {
-        showDay1Hub(["same loop.", "same voice. same coordinates.", "someone put real effort into it.", "we move when it's light."], "ellie");
+        showDay1Hub(["still me.", "still not a great time for introductions.", "ask about the broadcast. that's the part that matters tonight."], "ellie");
       }
+      return;
+    }
+
+    if (action === "BROADCAST") {
+      markDay1Flag(DAY1_FLAGS.BROADCAST);
+      showDay1Hub(["there's a broadcast. shortwave.", "been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left.", "we move when it's light.", "don't open your door tonight. i don't care what you hear."], "ellie");
       return;
     }
 
@@ -4932,17 +4989,21 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         <div className="ds-choices-pane" style={choicesPaneStyle}>
           {canUseCharger && (
             <button className="cb" onClick={useCharger}
-              style={{ background:"transparent", border:"1px solid #244a2c", color:"#3a6b40", padding:"clamp(0.5rem, 2vw, 0.65rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.72rem, 3vw, 0.78rem)", fontWeight:300, letterSpacing:"0.04em", transition:"border-color 0.15s, color 0.15s" }}>
-              ⌁&nbsp;&nbsp;Use the charger [+{chargerAmt}% Battery]
+              style={choiceButtonStyle("utility", 0, { fontSize:"clamp(0.72rem, 3vw, 0.78rem)" })}>
+              Use the charger [+{chargerAmt}% Battery]
             </button>
           )}
-          {choices.map((c,i) =>
-            c==="·"
-              ? <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>
-              : <button key={i} className="cb choice-btn" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"clamp(0.6rem, 2.4vw, 0.75rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)", fontWeight:300, letterSpacing:"0.04em", lineHeight:"1.5", transition:"border-color 0.15s, color 0.15s" }}>
-                  {i+1}.&nbsp;&nbsp;{parseText(c,"button")}
-                </button>
-          )}
+          {choices.map((c,i) => {
+            if (c === "·") {
+              return <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>;
+            }
+            const kind = getChoiceKind(c);
+            return (
+              <button key={i} className={`cb choice-btn choice-${kind}`} onClick={()=>handleChoice(c)} style={choiceButtonStyle(kind, i + (canUseCharger ? 1 : 0))}>
+                {parseText(c,"button")}
+              </button>
+            );
+          })}
         </div>
       )}
 
