@@ -1533,12 +1533,11 @@ const HUD_CSS = `
 .ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:start;gap:0.5rem;padding:calc(0.4rem + env(safe-area-inset-top)) 1rem 0.55rem;border-bottom:1px solid #111;flex-shrink:0}
 .ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0;margin-top:0.2rem}
 .ds-hud-right{justify-content:flex-end}
-.ds-hud-mid{display:flex;flex-direction:column;align-items:center;gap:0.15rem}
+.ds-hud-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
 .ds-batt-pct{font-size:0.7rem;letter-spacing:0.03em}
 .ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
 .ds-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0a0f0a;font-size:0.78rem;transition:border-color .8s,color .8s,box-shadow .8s;flex-shrink:0}
 .ds-name{color:#c8b896;font-size:0.7rem;letter-spacing:0.16em;transition:color .8s,text-shadow .8s}
-.ds-status{color:#6a6a6a;font-size:0.56rem;letter-spacing:0.07em}
 .ds-vitals{display:flex;gap:1rem;padding:0.38rem 1rem;align-items:center;flex-wrap:wrap;font-size:0.66rem;letter-spacing:0.09em;flex-shrink:0}
 .ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
 .ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
@@ -4399,9 +4398,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     dayThree ? 3 :
     (gamePhase.startsWith("p2") || gamePhase === "encounter" || gamePhase === "shelter") ? 2 :
     exchangePhase >= 10 ? 2 : 1;
-  const contactStatus = (dayThree || ["p2_ai_cross","shelter"].includes(gamePhase))
-    ? "unknown · unstable"
-    : "unknown · unverified";
   const font       = "'IBM Plex Mono', 'Courier New', monospace";
   const flashAnim  = "flash 0.9s ease infinite";
   const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
@@ -4423,7 +4419,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       <h2>Day {displayDay} / {area || "Apartment"}</h2>
       <div className="rail-stats">
         {railRow("contact", contactName)}
-        {railRow("status", contactStatus, "#8d927f")}
         <span>signal</span>
         <strong><SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} /></strong>
         {railRow("battery", `${resources.battery}%`, battColor)}
@@ -4960,7 +4955,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
   // ─── Gameplay header pieces (responsive via HUD_CSS classes; state-driven bits stay inline) ──
   // The header's center slot is the contact identity (FILE/menu moved to the bottom action
-  // bar): nothing competes for the slot, so the avatar/name/status stay dead-centered.
+  // bar): nothing competes for the slot, so the avatar/name stay dead-centered.
   const TopHud = () => (
     <div className="ds-hud">
       <div className="ds-hud-side">
@@ -4971,7 +4966,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           <div className="ds-avatar" style={{ border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
           <span className="ds-name" style={{ textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
         </div>
-        <span className="ds-status">{contactStatus}</span>
       </div>
       <div className="ds-hud-side ds-hud-right">
         <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
