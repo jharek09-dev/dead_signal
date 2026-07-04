@@ -1876,18 +1876,24 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   }, []);
   const nextId = (prefix) => `${prefix}${idRef.current++}`;
 
-  // Drop a QUESTION card into the chat, staggered so simultaneous raises (e.g. the name
-  // reveal opening three threads) appear ~1.4s apart instead of stacking in one frame.
   // Question cards coalesce: simultaneous raises (the name reveal opens three threads at once;
   // signal_core raises three; the 143 record fires two updates) share ONE box instead of a
-  // staggered stack splitting the dialogue. The flush lands at the stable point (choices shown,
-  // typing settled — the same trigger as the autosave), so the burst reads uninterrupted; the
-  // armed setT is only a fallback for choiceless flows.
-  const queuePostQuestionNarration = (text, delay = 500) => {
-    pendingPostQuestionNarrationRef.current = [...pendingPostQuestionNarrationRef.current, { text, delay }];
+  // staggered stack splitting the dialogue. If a reveal needs atmospheric narration after that
+  // box, append both in one ordered React update so timers cannot reorder them visually.
+  const POST_QUESTION_CHOICE_DELAY_MS = 450;
+  const queuePostQuestionNarration = (text) => {
+    pendingPostQuestionNarrationRef.current = [...pendingPostQuestionNarrationRef.current, text];
   };
 
-  const flushDeferredChoices = (delay = 0) => {
+  const takePostQuestionNarrationMessages = () => {
+    const lines = pendingPostQuestionNarrationRef.current;
+    pendingPostQuestionNarrationRef.current = [];
+    return lines
+      .map(text => (text ? { id: nextId("narrator"), from: "narrator", text } : null))
+      .filter(Boolean);
+  };
+
+  const flushDeferredChoices = (delay = POST_QUESTION_CHOICE_DELAY_MS) => {
     const deferredChoices = pendingDeferredChoicesRef.current;
     pendingDeferredChoicesRef.current = null;
     if (!deferredChoices?.length) return;
@@ -1895,19 +1901,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   };
 
   const flushPostQuestionNarration = () => {
-    const lines = pendingPostQuestionNarrationRef.current;
-    pendingPostQuestionNarrationRef.current = [];
-    if (!lines.length) {
-      flushDeferredChoices(100);
-      return;
-    }
-    let t = 0;
-    lines.forEach(({ text, delay = 500 }, i) => {
-      t += delay;
-      addMsg("narrator", text, t);
-      t += i === lines.length - 1 ? 900 : 650;
-    });
-    flushDeferredChoices(t + 100);
+    const postQuestionMessages = takePostQuestionNarrationMessages();
+    if (postQuestionMessages.length) setMessages(p => [...p, ...postQuestionMessages]);
+    flushDeferredChoices();
   };
 
   const flushQuestionCards = () => {
@@ -1918,8 +1914,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const hint = pendingCaseFileHintRef.current;
     pendingCaseFileHintRef.current = false;
     const body = cards.length === 1 ? { ...cards[0] } : { kind: "batch", cards };
-    setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...body, ...(hint ? { hint: true } : {}) }]);
-    flushPostQuestionNarration();
+    const questionMessage = { id: nextId("q"), from: "question_note", ...body, ...(hint ? { hint: true } : {}) };
+    const postQuestionMessages = takePostQuestionNarrationMessages();
+    setMessages(p => [...p, questionMessage, ...postQuestionMessages]);
+    flushDeferredChoices();
   };
   const armQuestionFlushFallback = () => {
     qFlushArmedRef.current = true;
