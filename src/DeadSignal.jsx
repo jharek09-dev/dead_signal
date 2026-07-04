@@ -2135,6 +2135,11 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const saveRun = async () => {
     const i = activeSlotRef.current;
     if (i == null) return false; // no slot claimed for this run
+    // Mid-beat states don't resume: a snapshot with no choices up and no parked gate
+    // restores into a chat with nothing to click (the beat's timers are gone with the
+    // session). Refuse, so the previous stable-point autosave survives instead of
+    // being overwritten by a save that would soft-lock on load.
+    if (!choices.length && !gateWakeAtRef.current) return false;
     const profile = activeProfileRef.current || emptyProfile();
     try { await window.storage.set(slotKey(i), JSON.stringify(buildSlotData(profile, buildRunSnapshot()))); await refreshSlots(); return true; } catch (e) { return false; }
   };
@@ -2236,7 +2241,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // ─── Pause menu actions (manual save / load / exit) ────────────────────────────
   const menuSave = async () => {
     const ok = await saveRun();
-    setMenuMsg(ok ? "game saved." : "nothing to save yet.");
+    // Paused mid-beat (no choices up): the run is already autosaved at the last
+    // stable choice — say so instead of pretending there's nothing to save.
+    const midBeat = activeSlotRef.current != null && !choices.length && !gateWakeAtRef.current;
+    setMenuMsg(ok ? "game saved." : midBeat ? "autosaved at your last choice." : "nothing to save yet.");
     pendingRef.current.push(setT(() => setMenuMsg(""), 1800));
   };
   const menuSaveExit = async () => {
