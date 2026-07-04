@@ -31,7 +31,7 @@ const DAY1_FLAGS = {
   MAP: "map",
 };
 const DAY1_REQUIRED = [DAY1_FLAGS.CHARGER, DAY1_FLAGS.SUPPLIES, DAY1_FLAGS.DOOR, DAY1_FLAGS.ELLIE, DAY1_FLAGS.BROADCAST];
-const DAY1_ROUTE_CHOICES = ["Mercy General Hospital [power still on]", "Harwick Metro [underground]", "Route 9 [open highway]"];
+const DAY1_ROUTE_CHOICES = ["Head for Mercy General. [power still on]", "Take Harwick Metro. [underground]", "Follow Route 9. [open highway]"];
 // Two caps, two jobs. MAX_VISIBLE_CHOICES (4) is the Day-1 menu DESIGN target — those menus
 // are built to fit it by construction. HARD_CHOICE_CAP (5) is the runtime safety limit: the
 // Phase-3 map legitimately presents 5 (gate_yard, fully-unlocked outer_road, room+search),
@@ -1278,9 +1278,9 @@ const DEATH_LINES = {
 // Explicit mapping from the BRANCH choice labels to a path id, with a
 // substring fallback so a reworded label still resolves to something valid.
 const BRANCH_PATHS = {
-  "Mercy General Hospital [power still on]": "hospital",
-  "Harwick Metro [underground]": "metro",
-  "Route 9 [open highway]": "route9",
+  "Head for Mercy General. [power still on]": "hospital",
+  "Take Harwick Metro. [underground]": "metro",
+  "Follow Route 9. [open highway]": "route9",
 };
 const detectPath = (c) => BRANCH_PATHS[c]
   || (c.toLowerCase().includes("metro") ? "metro" : c.toLowerCase().includes("route") ? "route9" : "hospital");
@@ -1843,7 +1843,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     try {
       if (!import.meta.env?.DEV) return;
       [...day1HubChoices(), ...day1InspectChoices(), ...day1RequiredChoices(), ...day1OptionalChoices(),
-       "Sleep until morning.", "Back to sleep prep.", "Text Ellie about the broadcast.",
+       "Sleep until morning.", "Back to sleep prep.", "Check the radio static.",
        "Found a city map. *It says Harwick.* [pick up map]", ...DAY1_ROUTE_CHOICES,
       ].forEach(l => { if (detectDay1Action(l) === "OPENING") console.warn(`[Day1] label routes to OPENING (unhandled): "${l}"`); });
     } catch (e) {}
@@ -2887,7 +2887,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     if (!day1Has(DAY1_FLAGS.SUPPLIES)) miss.push("pack food and water");
     if (!day1Has(DAY1_FLAGS.DOOR)) miss.push("secure the door");
     if (!day1Has(DAY1_FLAGS.ELLIE)) miss.push("answer ellie");
-    if (!day1Has(DAY1_FLAGS.BROADCAST)) miss.push("learn where the broadcast points");
+    if (!day1Has(DAY1_FLAGS.BROADCAST)) miss.push("find the radio signal");
     return miss;
   };
   const day1RequiredChoices = () => {
@@ -2895,7 +2895,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     if (!day1Has(DAY1_FLAGS.CHARGER)) choices.push("Search the bedroom.");
     if (!day1Has(DAY1_FLAGS.SUPPLIES)) choices.push("Search the kitchen.");
     if (!day1Has(DAY1_FLAGS.ELLIE)) choices.push("Text back: who are you?");
-    else if (!day1Has(DAY1_FLAGS.BROADCAST)) choices.push("Ask about the broadcast.");
+    else if (!day1Has(DAY1_FLAGS.BROADCAST)) choices.push("Check the radio static.");
     if (!day1Has(DAY1_FLAGS.DOOR)) choices.push("Secure the hallway door.");
     return choices;
   };
@@ -2947,7 +2947,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     setNoise(0);
     setDay1Scene("day2_map"); day1SceneRef.current = "day2_map";
     setChoices([]); setIsTyping(true);
-    scheduleMessages(["morning. still there?", "we need to move toward those coordinates.", "find out where you are first."], ["Found a city map. *It says Harwick.* [pick up map]"], "ellie");
+    scheduleMessages(["morning. still there?", "those coordinates from the radio point north through harwick.", "find a map. we need to know what you can reach from here."], ["Found a city map. *It says Harwick.* [pick up map]"], "ellie");
   };
   const detectDay1Action = (choice) => {
     const c = stripMarkers(choice).toLowerCase();
@@ -2960,7 +2960,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     if (c.includes("bathroom")) return "BATHROOM";
     if (c.includes("window")) return "WINDOW";
     if (c.includes("hallway door")) return "DOOR";
-    if (c.includes("broadcast")) return "BROADCAST";
+    if (c.includes("broadcast") || c.includes("radio") || c.includes("static") || c.includes("signal")) return "BROADCAST";
     if (c.includes("stairwell")) return "STAIRWELL";
     if (c.includes("who is texting") || c.includes("who are you") || c.includes("text back") || c.includes("ellie")) return "ELLIE";
     if (c.includes("sleep")) return "SLEEP";
@@ -3092,16 +3092,31 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         // P6d — the header flips KIM→ELLIE the instant "name's ellie" actually renders,
         // tied to the message text (not the tap that asked the question).
         showDay1Hub(["okay.", "name's ellie.", "i found this phone in our stairwell two days ago.", "it belonged to kim. she was already gone.", "i didn't think anyone was going to answer it."], "ellie",
-          (text) => { if (/ellie/i.test(text)) setContactName("ELLIE"); });
+          (text) => {
+            if (/ellie/i.test(text)) setContactName("ELLIE");
+            if (/answer it/i.test(text)) addMsg("narrator", "somewhere in the apartment, under the quiet, a voice repeats through static.", 0);
+          });
       } else {
-        showDay1Hub(["still me.", "still not a great time for introductions.", "ask about the broadcast. that's the part that matters tonight."], "ellie");
+        showDay1Hub(["still me.", "still not a great time for introductions.", "find the static. that's the part that matters tonight."], "ellie");
       }
       return;
     }
 
     if (action === "BROADCAST") {
       markDay1Flag(DAY1_FLAGS.BROADCAST);
-      showDay1Hub(["there's a broadcast. shortwave.", "been looping for two days.", "gps coordinates. someone out there saying there's still somewhere left.", "we move when it's light.", "don't open your door tonight. i don't care what you hear."], "ellie");
+      setDay1Scene("apartment"); day1SceneRef.current = "apartment";
+      setChoices([]); setIsTyping(true);
+      let t = 500;
+      addMsg("narrator", "the sound comes from a little shortwave radio on the shelf.", t); t += 1500;
+      addMsg("narrator", "the volume is almost dead, but the voice keeps looping.", t); t += 1700;
+      addMsg("narrator", "coordinates. a promise of somewhere left.", t); t += 1500;
+      addMsg("ellie", "you hear it too.", t); t += 1200;
+      addMsg("ellie", "that's the signal i've been following.", t); t += 1500;
+      addMsg("ellie", "we move when it's light. tonight, you keep that door shut.", t); t += 1300;
+      pendingRef.current.push(setT(() => {
+        setIsTyping(false);
+        setChoices(capVisibleChoices(day1HubChoices(), "day1:broadcast"));
+      }, t));
       return;
     }
 
