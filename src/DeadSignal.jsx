@@ -1469,8 +1469,8 @@ const HUD_CSS = `
 .ds-vitals{display:flex;gap:1rem;padding:0.38rem 1rem;align-items:center;flex-wrap:wrap;font-size:0.66rem;letter-spacing:0.09em;flex-shrink:0}
 .ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
 .ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
-.ds-actionbar{display:flex;gap:0.5rem;padding:0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));border-top:1px solid #111;flex-shrink:0}
-.ds-actionbar button{flex:1;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
+.ds-actionbar{display:flex;justify-content:center;align-items:center;gap:0.6rem;padding:0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));border-top:1px solid #111;flex-shrink:0}
+.ds-actionbar button{flex:0 0 auto;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
 @media(max-width:480px){
 .ds-hud{padding-left:0.6rem;padding-right:0.6rem;gap:0.35rem}
 .ds-avatar{width:24px;height:24px;font-size:0.72rem}
@@ -1559,7 +1559,7 @@ const MessageRow = memo(function MessageRow({ m }) {
             )}
           </div>
         ))}
-        {m.hint && <div style={{ color:"#6a5a30", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.5rem" }}>▤ tap FILE to review</div>}
+        {m.hint && <div style={{ color:"#6a5a30", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.5rem" }}>tap CASE FILE to review</div>}
       </div>
     );
   }
@@ -1577,9 +1577,10 @@ const MessageRow = memo(function MessageRow({ m }) {
   );
 });
 
-export default function DeadSignal({ presentation = "mobile", edition = "full" } = {}) {
+export default function DeadSignal({ presentation = "mobile", edition = "full", onDemoExit = null } = {}) {
   const isDesktopDemo = presentation === "desktopDemo";
-  const [screen, setScreen]             = useState("menu");
+  const isDay1Demo = edition === "day1Demo";
+  const [screen, setScreen]             = useState(isDay1Demo ? "intro" : "menu");
   const [shownLines, setShownLines]     = useState([]);
   const [showNotif, setShowNotif]       = useState(false);
   const [offlineLines, setOfflineLines] = useState([]);
@@ -1686,7 +1687,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const leadCursorRef       = useRef(0);         // how many leads consumed in the current area (synchronous cursor)
   const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
-  const activeProfileRef    = useRef(null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
+  const activeProfileRef    = useRef(isDay1Demo ? { playthroughs:0, fragments:[], clues:[], complete:false } : null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
   const raisedQuestionsRef  = useRef([]);    // case-file OPEN QUESTIONS raised this run (by story beat)
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
@@ -3052,7 +3053,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       addMsg("ellie", "get some rest. i'll wake you.", t); t += 1800;
       addMsg("narrator", "night falls.", t); t += 1500;
       addMsg("narrator", "day one ends.", t); t += 1500;
-      pendingRef.current.push(setT(() => startDayGate("day1"), t + 900));
+      pendingRef.current.push(setT(() => {
+        if (isDay1Demo) setScreen("demoComplete");
+        else startDayGate("day1");
+      }, t + 900));
       return;
     }
 
@@ -4026,8 +4030,30 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     </svg>
   );
 
+  const renderDesktopSingle = (children) => (
+    <section className="play-stage ds-real-demo-stage ds-real-demo-stage--single" aria-label="Dead Signal playable browser demo">
+      <div className="signal-terminal ds-terminal-game ds-terminal-game--single">
+        {children}
+      </div>
+    </section>
+  );
+
+  const restartDay1Demo = () => {
+    resetRunState();
+    activeSlotRef.current = null;
+    activeProfileRef.current = emptyProfile();
+    setRecoveredMemories([]);
+    setBoardSection(null);
+    setBoardItem(null);
+    setScreen("intro");
+  };
+
   // Return to the title (terminal screens already resolved the slot's profile).
   const handleRestart = () => {
+    if (isDay1Demo) {
+      restartDay1Demo();
+      return;
+    }
     resetRunState();
     setScreen("menu");
   };
@@ -4104,7 +4130,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     setShownLines(INTRO_LINES.map(l => l.text));
     setShowNotif(true);
   };
-  if (screen === "intro") return (
+  if (screen === "intro") {
+    const introScreen = (
     <div onClick={skipIntro}
       style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", cursor: showNotif ? "default" : "pointer" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
@@ -4121,9 +4148,26 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
         </button>
       )}
     </div>
-  );
+    );
+    return isDesktopDemo ? renderDesktopSingle(introScreen) : introScreen;
+  }
 
   // ─── Main Menu — landing hub (Start / Resume / Story) ──────────────────────────
+  if (screen === "demoComplete") {
+    const completeScreen = (
+      <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", textAlign:"center" }}>
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", marginBottom:"0.7rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>DAY 1 COMPLETE</div>
+        <p style={{ color:"#c8b98a", fontSize:"0.92rem", lineHeight:1.8, letterSpacing:"0.04em", maxWidth:"28rem", margin:"0 0 2rem" }}>Night falls over the apartment. The next morning waits in the full version.</p>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:"0.7rem", justifyContent:"center" }}>
+          <button className="rb" onClick={withMenuSound(restartDay1Demo)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>REPLAY DAY 1</button>
+          {onDemoExit && <button className="rb" onClick={withMenuSound(onDemoExit)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>EXIT DEMO</button>}
+        </div>
+      </div>
+    );
+    return isDesktopDemo ? renderDesktopSingle(completeScreen) : completeScreen;
+  }
+
   if (screen === "menu") return (
     <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
@@ -4612,8 +4656,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   // screen (dialogue can stream for a while; menu access must not depend on choices).
   const BottomBar = () => (
     <div className="ds-actionbar">
-      <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file">▤&nbsp;&nbsp;CASE FILE</button>
-      <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu">☰&nbsp;&nbsp;MENU</button>
+      <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file" style={{ padding:"0 1.6rem" }}>CASE FILE</button>
+      <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu" style={{ width:"56px", fontSize:"0.95rem" }}>☰</button>
     </div>
   );
 
@@ -4678,16 +4722,88 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     flexShrink:0,
   };
 
-  return (
+  const railRow = (label, value, color = "#d9c88f") => (
+    <>
+      <span>{label}</span>
+      <strong style={{ color }}>{value}</strong>
+    </>
+  );
+  const missingPrep = day1MissingPrep();
+  const demoObjective = day1ReadyForSleep()
+    ? "sleep until morning"
+    : missingPrep.length ? missingPrep[0] : choices.length ? "answer the phone" : "stay alive";
+  const DesktopStatusRail = () => (
+    <aside className="play-rail play-rail--left ds-status-rail">
+      <p className="eyebrow">demo controls</p>
+      <h2>Day {displayDay} / {area || "Apartment"}</h2>
+      <div className="rail-stats">
+        {railRow("contact", contactName)}
+        {railRow("status", contactStatus, "#8d927f")}
+        <span>signal</span>
+        <strong><SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} /></strong>
+        {railRow("battery", `${resources.battery}%`, battColor)}
+        {railRow("hp", `${resources.hp}/10${injuryLbl ? ` ${injuryLbl}` : ""}`, hpColor)}
+        {railRow("water", resources.water, watColor)}
+        {railRow("food", resources.food, fooColor)}
+        {resources.charger !== null && railRow("charger", resources.charger > 0 ? `${resources.charger}%` : "needs power", resources.charger > 0 ? "#3a6b40" : "#484848")}
+        {noise > 0 && railRow("noise", `${noise}/5`, noiseColor)}
+        {weapon && railRow("weapon", `${weapon.shortName} ${weapon.damage}dmg`, "#8a7a58")}
+        {railRow("objective", demoObjective, "#6aba8a")}
+      </div>
+      <div className="rail-actions">
+        <button type="button" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })}>Menu</button>
+        <button type="button" onClick={withMenuSound(restartDay1Demo)}>Restart Demo</button>
+        {onDemoExit && <button type="button" onClick={withMenuSound(onDemoExit)}>Exit Demo</button>}
+      </div>
+    </aside>
+  );
+  const DesktopCaseRail = () => {
+    const cFrags = new Set(recoveredMemories.filter(m => m.type === "fragment").map(m => m.name));
+    const cClues = new Set(recoveredMemories.filter(m => m.type === "discovery").map(m => m.name));
+    const openQ = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
+    const section = (id, label, count, children) => (
+      <div className="ds-case-section" key={id}>
+        <button className="cb ds-case-section__button" onClick={withMenuSound(()=>{ setBoardItem(null); setBoardSection(boardSection === id ? null : id); })}>
+          <span>{boardSection === id ? "▾" : "▸"} {label}</span>
+          <span>{count}</span>
+        </button>
+        {boardSection === id && <div className="ds-case-section__panel">{children}</div>}
+      </div>
+    );
+    const item = (key, label, body, color = "#c8b896") => (
+      <button className="cb ds-case-item" key={key} onClick={withMenuSound(()=>setBoardItem(boardItem === key ? null : key))}>
+        <span style={{ color }}>{label}</span>
+        {boardItem === key && <small>{body}</small>}
+      </button>
+    );
+    return (
+      <aside className="play-rail play-rail--right ds-case-rail">
+        <div className="ds-case-title">CASE FILE</div>
+        <div className="ds-case-subtitle">what you've pieced together</div>
+        {section("mem", "MEMORIES", `${cFrags.size}/9`, ALL_FRAGMENT_NAMES.map((n, i) =>
+          cFrags.has(n) ? item(`mem:${n}`, n, (FRAGMENT_BY_NAME[n]?.msgs || []).join(" "), "#9aba9a") : <div className="ds-case-locked" key={i}>▧ ---</div>
+        ))}
+        {section("clue", "CLUES", `${cClues.size}/3`, BOARD_CLUES.map((cl, i) =>
+          cClues.has(cl.name) ? item(`clue:${cl.name}`, cl.name, cl.note, "#7accd4") : <div className="ds-case-locked" key={i}>◉ ???</div>
+        ))}
+        {section("world", "PEOPLE & PLACES", "", BOARD_PEOPLE.map(p => item(`person:${p.name}`, p.name, typeof p.note === "function" ? p.note(cClues, false, raisedQuestions, discoveredTruths) : p.note)))}
+        {section("inv", "INVESTIGATION", `${openQ.length}`, openQ.length
+          ? openQ.map(q => item(`q:${q.key}`, `? ${q.text}`, q.evolved && raisedQuestions.includes(q.evolved.key) ? q.evolved.text : q.text, "#c8a878"))
+          : <div className="ds-case-locked">no questions yet.</div>)}
+      </aside>
+    );
+  };
+
+  const gamePanel = (
     <div className={isDesktopDemo ? "demo-game--desktop" : undefined} data-edition={edition} style={gameRootStyle}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}`}</style>
       <AudioDebug />
 
       {/* Gameplay header — responsive pieces (see HUD_CSS). TopHud = signal · contact identity
           (centered) · battery. Then vitals, optional equipment. Mobile compacts via @media. */}
-      {TopHud()}
-      {ResourceStrip()}
-      {EquipmentStrip()}
+      {!isDesktopDemo && TopHud()}
+      {!isDesktopDemo && ResourceStrip()}
+      {!isDesktopDemo && EquipmentStrip()}
 
       {/* Location strip — current area (hidden in the phase-1 apartment) */}
       {area && (
@@ -4725,7 +4841,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
         </div>
       )}
 
-      {BottomBar()}
+      {!isDesktopDemo && BottomBar()}
 
       {/* Pause menu — save / load / exit / restart. Sits above the chat as an overlay. */}
       {menuOpen && (
@@ -4735,15 +4851,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
             style={{ background:"#080a08", border:"1px solid #1d3a22", padding:"1.4rem 1.3rem", width:"260px", display:"flex", flexDirection:"column", gap:"0.55rem", boxShadow:"0 0 40px rgba(0,0,0,0.8)" }}>
             <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); })} style={menuBtn}>Resume</button>
+            {isDay1Demo && <button className="cb" onClick={withMenuSound(restartDay1Demo)} style={menuBtn}>Restart demo</button>}
+            {isDay1Demo && onDemoExit && <button className="cb" onClick={withMenuSound(onDemoExit)} style={menuBtn}>Exit demo</button>}
             {/* Load — opens the save-slots screen in load mode, same as the main-menu LOAD.
                 The run is autosaved at every decision point, so leaving to it is safe. */}
-            <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>
-            <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>
-            <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>
+            {!isDay1Demo && <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>}
+            {!isDay1Demo && <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>}
+            {!isDay1Demo && <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>}
             {/* Phase 3 only — replay the prologue from the start while KEEPING this slot's
                 profile (fragments/clues toward 100%). Two-tap, since it abandons Haven progress.
                 Restores the collect-toward-100% loop the auto-flow handoff otherwise blocks. */}
-            {gamePhase === "phase3" && (
+            {!isDay1Demo && gamePhase === "phase3" && (
               <button className="cb" onClick={withMenuSound(()=>{
                 if (confirmPrologueRestart) { setConfirmPrologueRestart(false); setMenuOpen(false); setMenuMsg(""); const i = activeSlotRef.current; if (i != null) beginRun(i, { fresh:false }); }
                 else { setConfirmPrologueRestart(true); setMenuMsg("this abandons Haven · keeps fragments/clues"); }
