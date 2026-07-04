@@ -1530,22 +1530,23 @@ const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{
 // lives here so the header can shrink on phones via media queries; state-driven bits (colors,
 // animations, conditional borders) stay inline. Desktop ≈ current look; mobile = compact phone strip.
 const HUD_CSS = `
-.ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:start;gap:0.5rem;padding:calc(0.4rem + env(safe-area-inset-top)) 1rem 0.55rem;border-bottom:1px solid #111;flex-shrink:0}
-.ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0;margin-top:0.2rem}
+.ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:0.5rem;min-height:88px;padding:calc(0.65rem + env(safe-area-inset-top)) 1rem 0.75rem;border-bottom:1px solid #111;flex-shrink:0}
+.ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
 .ds-hud-right{justify-content:flex-end}
 .ds-hud-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
 .ds-batt-pct{font-size:0.7rem;letter-spacing:0.03em}
-.ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
-.ds-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0a0f0a;font-size:0.78rem;transition:border-color .8s,color .8s,box-shadow .8s;flex-shrink:0}
-.ds-name{color:#c8b896;font-size:0.7rem;letter-spacing:0.16em;transition:color .8s,text-shadow .8s}
+.ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.35rem}
+.ds-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#0a0f0a;font-size:1.1rem;transition:border-color .8s,color .8s,box-shadow .8s;flex-shrink:0}
+.ds-name{color:#c8b896;font-size:1rem;letter-spacing:0.16em;line-height:1;transition:color .8s,text-shadow .8s}
 .ds-vitals{display:flex;gap:1rem;padding:0.38rem 1rem;align-items:center;flex-wrap:wrap;font-size:0.66rem;letter-spacing:0.09em;flex-shrink:0}
 .ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
 .ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
 .ds-actionbar{display:flex;justify-content:center;align-items:center;gap:0.6rem;padding:0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));border-top:1px solid #111;flex-shrink:0}
 .ds-actionbar button{flex:0 0 auto;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
 @media(max-width:480px){
-.ds-hud{padding-left:0.6rem;padding-right:0.6rem;gap:0.35rem}
-.ds-avatar{width:24px;height:24px;font-size:0.72rem}
+.ds-hud{min-height:84px;padding:calc(0.58rem + env(safe-area-inset-top)) 0.6rem 0.7rem;gap:0.35rem}
+.ds-avatar{width:42px;height:42px;font-size:1.05rem}
+.ds-name{font-size:0.98rem}
 .ds-vitals{gap:0.55rem;font-size:0.62rem;padding:0.34rem 0.6rem;flex-wrap:wrap}
 .ds-equip{gap:0.6rem;font-size:0.56rem;padding:0.22rem 0.75rem}
 .ds-battwarn{font-size:0.6rem;padding:0.32rem 0.75rem}
