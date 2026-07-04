@@ -70,6 +70,10 @@ button {
   backdrop-filter: blur(18px);
 }
 
+.site-header--play {
+  justify-content: flex-start;
+}
+
 .site-brand,
 .site-nav {
   display: flex;
@@ -613,6 +617,142 @@ button {
   gap: clamp(1rem, 1.5vw, 1.6rem);
 }
 
+.ds-real-demo-stage {
+  box-sizing: border-box;
+  align-items: stretch;
+  grid-template-columns: minmax(260px, 0.58fr) minmax(640px, 1.35fr) minmax(280px, 0.72fr);
+  gap: clamp(1.1rem, 1.8vw, 2rem);
+  height: 100vh;
+  width: min(1760px, calc(100% - 4rem));
+  padding: calc(4.6rem + 1.15rem) 0 1.15rem;
+}
+
+.ds-terminal-game {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ds-terminal-game > .demo-game--desktop {
+  height: 100% !important;
+  min-height: 0;
+}
+
+.ds-status-rail,
+.ds-case-rail {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ds-terminal-game--intro > div,
+.ds-terminal-game--complete > div {
+  height: 100% !important;
+}
+
+.ds-terminal-game--chat {
+  background:
+    linear-gradient(180deg, rgba(1, 10, 4, 0.34), rgba(0, 0, 0, 0.18) 48%, rgba(1, 10, 4, 0.28)),
+    rgba(5, 8, 6, 0.82);
+}
+
+.ds-terminal-game--chat .demo-game--desktop {
+  background: transparent !important;
+}
+
+.demo-game--desktop .ds-message-pane {
+  padding-top: clamp(1.8rem, 4vh, 3.4rem) !important;
+}
+
+.demo-game--desktop .ds-message-pane > :first-child {
+  margin-top: auto;
+}
+
+.demo-game--desktop .ds-choices-pane {
+  padding-bottom: clamp(1.1rem, 3vh, 2.3rem) !important;
+}
+
+.ds-status-rail .rail-stats {
+  grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
+}
+
+.ds-status-rail .rail-stats strong {
+  overflow-wrap: anywhere;
+}
+
+.ds-case-rail {
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-case-title {
+  color: #6a6a6a;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-align: center;
+}
+
+.ds-case-subtitle {
+  margin: 0.35rem 0 0.65rem;
+  color: #3a5a44;
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
+.ds-case-section {
+  margin-top: 0.45rem;
+}
+
+.ds-case-section__button {
+  width: 100%;
+  min-height: 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(128, 142, 110, 0.18);
+  background: transparent;
+  color: #7a8a7e;
+  cursor: pointer;
+  letter-spacing: 0.12em;
+  font-size: 0.58rem;
+  text-align: left;
+}
+
+.ds-case-section__panel {
+  max-height: 30vh;
+  overflow: auto;
+  border: 1px solid rgba(128, 142, 110, 0.12);
+  border-top: 0;
+  padding: 0.45rem 0.6rem;
+}
+
+.ds-case-item {
+  width: 100%;
+  display: grid;
+  gap: 0.25rem;
+  border: 0;
+  background: transparent;
+  padding: 0.34rem 0.1rem;
+  color: #8a8a7a;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.62rem;
+}
+
+.ds-case-item small {
+  color: #747866;
+  line-height: 1.55;
+}
+
+.ds-case-locked {
+  padding: 0.34rem 0.1rem;
+  color: #2f2f2f;
+  font-size: 0.62rem;
+}
+
 .play-rail,
 .signal-terminal {
   min-width: 0;
@@ -688,6 +828,16 @@ button {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
+}
+
+.signal-terminal.ds-terminal-game {
+  display: flex;
+  flex-direction: column;
+}
+
+.signal-terminal.ds-terminal-game > .demo-game--desktop {
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .terminal-top {
@@ -843,6 +993,19 @@ button {
   .hero,
   .play-stage {
     grid-template-columns: 1fr;
+  }
+
+  .ds-real-demo-stage {
+    width: min(100% - 1.4rem, 1320px);
+    height: auto;
+    min-height: 100vh;
+    padding-top: calc(4.6rem + 1rem);
+  }
+
+  .ds-status-rail,
+  .ds-case-rail {
+    height: auto;
+    max-height: none;
   }
 
   .hero-card {

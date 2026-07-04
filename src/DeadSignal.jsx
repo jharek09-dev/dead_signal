@@ -1577,9 +1577,10 @@ const MessageRow = memo(function MessageRow({ m }) {
   );
 });
 
-export default function DeadSignal({ presentation = "mobile", edition = "full" } = {}) {
+export default function DeadSignal({ presentation = "mobile", edition = "full", onDemoExit = null } = {}) {
   const isDesktopDemo = presentation === "desktopDemo";
-  const [screen, setScreen]             = useState("menu");
+  const isDay1Demo = edition === "day1Demo";
+  const [screen, setScreen]             = useState(isDay1Demo ? "intro" : "menu");
   const [shownLines, setShownLines]     = useState([]);
   const [showNotif, setShowNotif]       = useState(false);
   const [offlineLines, setOfflineLines] = useState([]);
@@ -1686,7 +1687,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const leadCursorRef       = useRef(0);         // how many leads consumed in the current area (synchronous cursor)
   const lastStateLineRef    = useRef(null);      // last STATE_LINES key fired (avoid back-to-back repeats)
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
-  const activeProfileRef    = useRef(null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
+  const activeProfileRef    = useRef(isDay1Demo ? { playthroughs:0, fragments:[], clues:[], complete:false } : null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
   const raisedQuestionsRef  = useRef([]);    // case-file OPEN QUESTIONS raised this run (by story beat)
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
@@ -2200,6 +2201,15 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     ids.forEach(id => pendingRef.current.push(id));
     return () => ids.forEach(clearTimeout); // C2 — cancel on screen change/unmount
   }, [screen]);
+
+  useEffect(() => {
+    if (!isDay1Demo) return;
+    if (screen === "menu" || screen === "slots" || screen === "story") {
+      clearPending();
+      setMenuOpen(false);
+      setScreen("intro");
+    }
+  }, [isDay1Demo, screen]);
 
   // One-time migration read: fragments/clues are now tracked PER SLOT (in each slot's
   // profile), persisted via saveRun. The legacy global `ds_memories` is read once here
@@ -3052,7 +3062,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       addMsg("ellie", "get some rest. i'll wake you.", t); t += 1800;
       addMsg("narrator", "night falls.", t); t += 1500;
       addMsg("narrator", "day one ends.", t); t += 1500;
-      pendingRef.current.push(setT(() => startDayGate("day1"), t + 900));
+      pendingRef.current.push(setT(() => {
+        if (isDay1Demo) setScreen("demoComplete");
+        else startDayGate("day1");
+      }, t + 900));
       return;
     }
 
@@ -4026,8 +4039,149 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     </svg>
   );
 
+  const renderCaseFileContent = ({ compact = false } = {}) => {
+    const cFrags = new Set(recoveredMemories.filter(m => m.type === "fragment").map(m => m.name));
+    const cClues = new Set(recoveredMemories.filter(m => m.type === "discovery").map(m => m.name));
+    const reached = dayThree || gamePhase.startsWith("haven") || gamePhase === "phase3";
+    const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached, raisedQuestions));
+    const contradictions = BOARD_CONTRADICTIONS.filter(x => x.reveal(cClues, reached, raisedQuestions));
+    const openQ = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
+    const openSection = (id) => { setBoardItem(null); setBoardSection(boardSection === id ? null : id); };
+    const secRow = (id, label, count) => (
+      <button key={id} className="cb" onClick={withMenuSound(()=>openSection(id))}
+        style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"transparent", border:`1px solid ${boardSection===id ? "#1d3a22" : "#1c1c1c"}`, color: boardSection===id ? "#9aba9a" : "#7a8a7e", fontFamily:"inherit", fontSize:compact ? "0.58rem" : "0.62rem", letterSpacing:"0.14em", padding:"0.55rem 0.7rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s", marginTop:"0.4rem", flexShrink:0 }}>
+        <span>{boardSection===id ? "▾" : "▸"}&nbsp;&nbsp;{label}</span>
+        {count != null && <span style={{ color:"#3f4a42", letterSpacing:"0.08em" }}>{count}</span>}
+      </button>
+    );
+    const panel = (children) => (
+      <div style={{ flex:compact ? "0 1 auto" : 1, minHeight:0, maxHeight:compact ? "30vh" : undefined, overflowY:"auto", overscrollBehavior:"contain", border:"1px solid #141a15", borderTop:"none", padding:"0.45rem 0.7rem 0.7rem" }}>{children}</div>
+    );
+    const subHead = (label) => (
+      <div style={{ color:"#5a7a64", fontSize:"0.56rem", letterSpacing:"0.2em", margin:"0.75rem 0 0.35rem" }}>{label}</div>
+    );
+    const itemRow = (id, glyph, label, detail, opts = {}) => {
+      const openIt = boardItem === id;
+      return (
+        <div key={id}>
+          <button className="cb" onClick={withMenuSound(()=>setBoardItem(openIt ? null : id))}
+            style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", background:"transparent", border:"none", color: opts.color || "#c8b896", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem", cursor:"pointer", textAlign:"left", transition:"color 0.15s" }}>
+            <span>{glyph} {label}</span>
+            <span style={{ color:"#333333", flexShrink:0 }}>{openIt ? "▾" : "▸"}</span>
+          </button>
+          {openIt && <div style={{ color: opts.detailColor || "#8a8a7a", fontSize:"0.57rem", lineHeight:1.55, padding:"0.05rem 0.2rem 0.5rem 1.05rem", fontStyle: opts.italic ? "italic" : "normal", animation:"fi 0.35s ease" }}>{detail}</div>}
+        </div>
+      );
+    };
+    const lockedRow = (key, glyph, label = "---") => (
+      <div key={key} style={{ color:"#2f2f2f", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem" }}>{glyph} {label}</div>
+    );
+
+    return (
+      <div style={{ width:compact ? "100%" : "min(380px,100%)", flex:compact ? "initial" : 1, minHeight:0, display:"flex", flexDirection:"column", animation:"fi 0.8s ease forwards" }}>
+        <div style={{ fontSize:compact ? "0.72rem" : "0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem", flexShrink:0 }}>CASE FILE</div>
+        <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em", flexShrink:0 }}>what you've pieced together</div>
+        <div style={{ textAlign:"center", color:"#4f5f55", fontSize:"0.6rem", letterSpacing:"0.12em", margin:"0.55rem 0 0.15rem", flexShrink:0 }}>
+          <span style={{ color:"#7a9a82" }}>● {cFrags.size}/9</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◉ {cClues.size}/3</span>
+          {discoveredTruths.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#a8763f" }}>◆ {discoveredTruths.length}/4</span></>}
+        </div>
+
+        {secRow("mem", "MEMORIES", `${cFrags.size}/9`)}
+        {boardSection === "mem" && panel(<>
+          {ALL_FRAGMENT_NAMES.map((n, i) => cFrags.has(n)
+            ? itemRow(`mem:${n}`, "●", n, (FRAGMENT_BY_NAME[n]?.msgs || []).map((m, j) => <div key={j}>{m}</div>), { color:"#9aba9a", detailColor:"#6a8a72", italic:true })
+            : lockedRow(`memlock${i}`, "▧"))}
+        </>)}
+
+        {secRow("clue", "CLUES", `${cClues.size}/3`)}
+        {boardSection === "clue" && panel(<>
+          {BOARD_CLUES.map((cl, i) => cClues.has(cl.name)
+            ? itemRow(`clue:${cl.name}`, "◉", cl.name, cl.note, { color:"#7accd4", detailColor:"#5a6a6e" })
+            : lockedRow(`cluelock${i}`, "◉", "???"))}
+        </>)}
+
+        {discoveredTruths.length > 0 && secRow("truth", "TRUTHS", `${discoveredTruths.length}/4`)}
+        {boardSection === "truth" && discoveredTruths.length > 0 && panel(<>
+          {discoveredTruths.map(id => itemRow(`truth:${id}`, "◆", PHASE3_TRUTHS[id]?.title || id, PHASE3_TRUTHS[id]?.line || "", { color:"#c87a40", detailColor:"#b89a6a", italic:true }))}
+          {Array.from({ length: Math.max(0, 4 - discoveredTruths.length) }).map((_, i) => lockedRow(`truthlock${i}`, "◇"))}
+        </>)}
+
+        {secRow("world", "PEOPLE & PLACES", null)}
+        {boardSection === "world" && panel(<>
+          {subHead("PEOPLE")}
+          {BOARD_PEOPLE.map(p => itemRow(`person:${p.name}`, "·", p.name,
+            typeof p.note === "function" ? p.note(cClues, reached, raisedQuestions, discoveredTruths) : p.note,
+            { color:"#c8b896", detailColor:"#8a8a7a" }))}
+          {subHead("LOCATIONS")}
+          {(() => {
+            const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath) || phase3UnlockedRegions.includes(r.key));
+            return (<>
+              {shown.length === 0 && <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no leads yet.</div>}
+              {shown.map((r, i) => itemRow(`loc:${r.key || i}`, "▪",
+                <>{r.name}{discoveredTruths.includes(r.truthId || r.truth) && <span style={{ color:"#c87a40" }}>&nbsp;◆</span>}</>,
+                <>
+                  <div style={{ color:"#4a6a54" }}>the truth about {r.truth}{discoveredTruths.includes(r.truthId || r.truth) ? " - uncovered." : "."}</div>
+                  {r.blurb && <div style={{ marginTop:"0.15rem" }}>{r.blurb}</div>}
+                </>,
+                { color:"#c8b896", detailColor:"#8a8a7a" }))}
+              {shown.length < REGIONS.length && <div style={{ color:"#3a3a3a", fontSize:"0.55rem", fontStyle:"italic", marginTop:"0.25rem" }}>more to find.</div>}
+            </>);
+          })()}
+        </>)}
+
+        {secRow("inv", "INVESTIGATION", `${openQ.length}`)}
+        {boardSection === "inv" && panel(<>
+          {subHead("KNOWN FACTS")}
+          {facts.length ? facts.map((f, i) => <div key={i} style={{ color:"#8aaa90", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", lineHeight:1.5 }}>› {f.text}</div>)
+            : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>nothing proven yet.</div>}
+          {contradictions.length > 0 && <>
+            {subHead("CONTRADICTIONS")}
+            {contradictions.map((x, i) => (
+              <div key={i} style={{ border:"1px solid #3a1f1f", background:"#0a0505", padding:"0.45rem 0.6rem", marginBottom:"0.45rem" }}>
+                {x.known.map((k, j) => (
+                  <div key={j} style={{ color:"#8aaa90", fontSize:"0.55rem", letterSpacing:"0.03em" }}>
+                    <span style={{ color:"#4a6a54" }}>KNOWN&nbsp;</span>{k}
+                  </div>
+                ))}
+                <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.04em", marginTop:"0.2rem", fontStyle:"italic" }}>
+                  <span style={{ color:"#8b4a4a", fontStyle:"normal" }}>! CONTRADICTION&nbsp;</span>{x.q}
+                </div>
+              </div>
+            ))}
+          </>}
+          {subHead("OPEN QUESTIONS")}
+          {openQ.length ? openQ.map((q, i) => {
+              const evolved = q.evolved && raisedQuestions.includes(q.evolved.key);
+              return (
+                <div key={i} style={{ color:"#7a6a5a", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", fontStyle:"italic", lineHeight:1.5 }}>
+                  {evolved
+                    ? <><span style={{ color:"#4a463e", textDecoration:"line-through" }}>? {q.text}</span><br/><span style={{ color:"#c8a878" }}>↳ {q.evolved.text}</span></>
+                    : <>? {q.text}</>}
+                </div>
+              );
+            })
+            : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no questions yet.</div>}
+        </>)}
+      </div>
+    );
+  };
+
+  const restartDay1Demo = () => {
+    resetRunState();
+    activeSlotRef.current = null;
+    activeProfileRef.current = emptyProfile();
+    setRecoveredMemories([]);
+    setBoardSection(null);
+    setBoardItem(null);
+    setScreen("intro");
+  };
+
   // Return to the title (terminal screens already resolved the slot's profile).
   const handleRestart = () => {
+    if (isDay1Demo) {
+      restartDay1Demo();
+      return;
+    }
     resetRunState();
     setScreen("menu");
   };
@@ -4096,6 +4250,53 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
   const hasAnySave = slots.some(Boolean); // P4 — at least one occupied slot
 
+  const railRow = (label, value, color = "#d9c88f") => (
+    <>
+      <span>{label}</span>
+      <strong style={{ color }}>{value}</strong>
+    </>
+  );
+  const missingPrep = day1MissingPrep();
+  const demoObjective = day1ReadyForSleep()
+    ? "sleep until morning"
+    : missingPrep.length ? missingPrep[0] : choices.length ? "answer the phone" : "stay alive";
+  const DesktopStatusRail = () => (
+    <aside className="play-rail play-rail--left ds-status-rail">
+      <p className="eyebrow">demo controls</p>
+      <h2>Day {displayDay} / {area || "Apartment"}</h2>
+      <div className="rail-stats">
+        {railRow("contact", contactName)}
+        {railRow("status", contactStatus, "#8d927f")}
+        <span>signal</span>
+        <strong><SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} /></strong>
+        {railRow("battery", `${resources.battery}%`, battColor)}
+        {railRow("hp", `${resources.hp}/10${injuryLbl ? ` ${injuryLbl}` : ""}`, hpColor)}
+        {railRow("water", resources.water, watColor)}
+        {railRow("food", resources.food, fooColor)}
+        {resources.charger !== null && railRow("charger", resources.charger > 0 ? `${resources.charger}%` : "needs power", resources.charger > 0 ? "#3a6b40" : "#484848")}
+        {noise > 0 && railRow("noise", `${noise}/5`, noiseColor)}
+        {weapon && railRow("weapon", `${weapon.shortName} ${weapon.damage}dmg`, "#8a7a58")}
+        {railRow("objective", demoObjective, "#6aba8a")}
+      </div>
+      <div className="rail-actions">
+        <button type="button" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })}>Menu</button>
+        <button type="button" onClick={withMenuSound(restartDay1Demo)}>Restart Demo</button>
+        {onDemoExit && <button type="button" onClick={withMenuSound(onDemoExit)}>Exit Demo</button>}
+      </div>
+    </aside>
+  );
+  const renderDesktopFrame = (children, { mode = "chat" } = {}) => (
+    <section className="play-stage ds-real-demo-stage" data-demo-mode={mode} aria-label="Dead Signal playable browser demo">
+      <DesktopStatusRail />
+      <div className={`signal-terminal ds-terminal-game ds-terminal-game--${mode}`}>
+        {children}
+      </div>
+      <aside className="play-rail play-rail--right ds-case-rail">
+        {renderCaseFileContent({ compact:true })}
+      </aside>
+    </section>
+  );
+
   // Intro cinematic skip: cancel the pending line timers and jump straight to the
   // NEW MESSAGE prompt. Helps the replay loop (the intro plays on every new run).
   const skipIntro = () => {
@@ -4104,9 +4305,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     setShownLines(INTRO_LINES.map(l => l.text));
     setShowNotif(true);
   };
-  if (screen === "intro") return (
+  if (screen === "intro") {
+    const introScreen = (
     <div onClick={skipIntro}
-      style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", cursor: showNotif ? "default" : "pointer" }}>
+      style={{ background:"#070707", height:isDesktopDemo ? "100%" : "100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", cursor: showNotif ? "default" : "pointer" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
         {shownLines.map((l,i) => <p key={i} style={{ color:"#c8b98a", fontSize:"0.9rem", lineHeight:"2.1", letterSpacing:"0.05em", animation:"fi 0.9s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
@@ -4121,9 +4323,28 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
         </button>
       )}
     </div>
-  );
+    );
+    return isDesktopDemo ? renderDesktopFrame(introScreen, { mode:"intro" }) : introScreen;
+  }
 
   // ─── Main Menu — landing hub (Start / Resume / Story) ──────────────────────────
+  if (screen === "demoComplete") {
+    const completeScreen = (
+      <div style={{ background:"#070707", height:isDesktopDemo ? "100%" : "100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", textAlign:"center" }}>
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", marginBottom:"0.7rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>DAY 1 COMPLETE</div>
+        <p style={{ color:"#c8b98a", fontSize:"0.92rem", lineHeight:1.8, letterSpacing:"0.04em", maxWidth:"28rem", margin:"0 0 2rem" }}>Night falls over the apartment. The next morning waits in the full version.</p>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:"0.7rem", justifyContent:"center" }}>
+          <button className="rb" onClick={withMenuSound(restartDay1Demo)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>REPLAY DAY 1</button>
+          {onDemoExit && (
+            <button className="rb" onClick={withMenuSound(onDemoExit)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>EXIT DEMO</button>
+          )}
+        </div>
+      </div>
+    );
+    return isDesktopDemo ? renderDesktopFrame(completeScreen, { mode:"complete" }) : completeScreen;
+  }
+
   if (screen === "menu") return (
     <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
@@ -4678,16 +4899,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     flexShrink:0,
   };
 
-  return (
+  const gamePanel = (
     <div className={isDesktopDemo ? "demo-game--desktop" : undefined} data-edition={edition} style={gameRootStyle}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}`}</style>
       <AudioDebug />
 
       {/* Gameplay header — responsive pieces (see HUD_CSS). TopHud = signal · contact identity
           (centered) · battery. Then vitals, optional equipment. Mobile compacts via @media. */}
-      {TopHud()}
-      {ResourceStrip()}
-      {EquipmentStrip()}
+      {!isDesktopDemo && TopHud()}
+      {!isDesktopDemo && ResourceStrip()}
+      {!isDesktopDemo && EquipmentStrip()}
 
       {/* Location strip — current area (hidden in the phase-1 apartment) */}
       {area && (
@@ -4699,7 +4920,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       )}
 
       {/* Messages */}
-      <div ref={chatScrollRef} style={messagePaneStyle}>
+      <div ref={chatScrollRef} className="ds-message-pane" style={messagePaneStyle}>
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
         {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
@@ -4708,7 +4929,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       {BatteryWarning()}
 
       {choices.length>0 && !isTyping && (
-        <div style={choicesPaneStyle}>
+        <div className="ds-choices-pane" style={choicesPaneStyle}>
           {canUseCharger && (
             <button className="cb" onClick={useCharger}
               style={{ background:"transparent", border:"1px solid #244a2c", color:"#3a6b40", padding:"clamp(0.5rem, 2vw, 0.65rem) 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"clamp(0.72rem, 3vw, 0.78rem)", fontWeight:300, letterSpacing:"0.04em", transition:"border-color 0.15s, color 0.15s" }}>
@@ -4725,7 +4946,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
         </div>
       )}
 
-      {BottomBar()}
+      {!isDesktopDemo && BottomBar()}
 
       {/* Pause menu — save / load / exit / restart. Sits above the chat as an overlay. */}
       {menuOpen && (
@@ -4735,15 +4956,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
             style={{ background:"#080a08", border:"1px solid #1d3a22", padding:"1.4rem 1.3rem", width:"260px", display:"flex", flexDirection:"column", gap:"0.55rem", boxShadow:"0 0 40px rgba(0,0,0,0.8)" }}>
             <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); })} style={menuBtn}>Resume</button>
+            {isDay1Demo && <button className="cb" onClick={withMenuSound(restartDay1Demo)} style={menuBtn}>Restart demo</button>}
+            {isDay1Demo && onDemoExit && <button className="cb" onClick={withMenuSound(onDemoExit)} style={menuBtn}>Exit demo</button>}
             {/* Load — opens the save-slots screen in load mode, same as the main-menu LOAD.
                 The run is autosaved at every decision point, so leaving to it is safe. */}
-            <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>
-            <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>
-            <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>
+            {!isDay1Demo && <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>}
+            {!isDay1Demo && <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>}
+            {!isDay1Demo && <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>}
             {/* Phase 3 only — replay the prologue from the start while KEEPING this slot's
                 profile (fragments/clues toward 100%). Two-tap, since it abandons Haven progress.
                 Restores the collect-toward-100% loop the auto-flow handoff otherwise blocks. */}
-            {gamePhase === "phase3" && (
+            {!isDay1Demo && gamePhase === "phase3" && (
               <button className="cb" onClick={withMenuSound(()=>{
                 if (confirmPrologueRestart) { setConfirmPrologueRestart(false); setMenuOpen(false); setMenuMsg(""); const i = activeSlotRef.current; if (i != null) beginRun(i, { fresh:false }); }
                 else { setConfirmPrologueRestart(true); setMenuMsg("this abandons Haven · keeps fragments/clues"); }
@@ -4759,4 +4982,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       )}
     </div>
   );
+  if (isDesktopDemo) return renderDesktopFrame(gamePanel, { mode:"chat" });
+  return gamePanel;
 }

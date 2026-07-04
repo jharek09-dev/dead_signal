@@ -184,16 +184,18 @@ export default function BrowserDemo() {
 
 function Header({ onPlay, isPlaying = false }) {
   return (
-    <header className="site-header">
+    <header className={`site-header${isPlaying ? " site-header--play" : ""}`}>
       <a className="site-brand" href="#home" aria-label="Dead Signal home">
         <DeadSignalLogo variant="header" />
       </a>
-      <nav className="site-nav" aria-label="site navigation">
-        <a href="#home">Home</a>
-        <a href="#about">About</a>
-        <a href="#case-file">Case File</a>
-        {!isPlaying && <button type="button" onClick={onPlay}>Play Demo</button>}
-      </nav>
+      {!isPlaying && (
+        <nav className="site-nav" aria-label="site navigation">
+          <a href="#home">Home</a>
+          <a href="#about">About</a>
+          <a href="#case-file">Case File</a>
+          <button type="button" onClick={onPlay}>Play Demo</button>
+        </nav>
+      )}
     </header>
   );
 }
