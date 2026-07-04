@@ -4087,7 +4087,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   };
   if (screen === "intro") return (
     <div onClick={skipIntro}
-      style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", cursor: showNotif ? "default" : "pointer" }}>
+      style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", cursor: showNotif ? "default" : "pointer" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.2}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
         {shownLines.map((l,i) => <p key={i} style={{ color:"#c8b98a", fontSize:"0.9rem", lineHeight:"2.1", letterSpacing:"0.05em", animation:"fi 0.9s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
@@ -4106,7 +4106,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
 
   // ─── Main Menu — landing hub (Start / Resume / Story) ──────────────────────────
   if (screen === "menu") return (
-    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
       {/* Logo: DEAD (powered-down grey) + SIGNAL (live green glow), one word */}
       <div style={{ fontSize:"2.4rem", fontWeight:700, letterSpacing:"0.12em", marginBottom:"3rem", animation:"fi 1.2s ease forwards" }}>
@@ -4144,13 +4144,15 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     );
     const body = { color:"#c8b98a", fontSize:"0.74rem", lineHeight:1.75, fontWeight:300, letterSpacing:"0.01em", margin:0, opacity:0.92 };
     return (
-      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", padding:"clamp(1.25rem,5vw,2.5rem) clamp(1rem,4vw,2rem)", userSelect:"none", overflowY:"auto" }}>
+      <div style={{ background:"#070707", height:"100dvh", position:"relative", overflow:"hidden", fontFamily:font, userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        {/* BACK sits OUTSIDE the masked scroller (an ancestor mask would capture a fixed child). */}
         <button className="rb" onClick={withMenuSound(()=>{ setScreen("menu"); })}
-          style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
-        <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards", paddingTop:"1.6rem", paddingBottom:"1.5rem" }}>
+        <div style={{ height:"100%", overflowY:"auto", overscrollBehavior:"contain", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(1.5rem + env(safe-area-inset-bottom))", maskImage:"linear-gradient(to bottom, transparent 0, black 14px)", WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)" }}>
+        <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards", paddingTop:"0.4rem", paddingBottom:"0.5rem" }}>
           {/* Transmission header — styled like a recovered signal log */}
           <div style={{ border:"1px solid #1d3a22", background:"#010a04", padding:"0.85rem 1rem", textAlign:"center" }}>
             <div style={{ color:"#4a9e6b", fontSize:"0.62rem", letterSpacing:"0.22em", textShadow:"0 0 8px rgba(74,158,107,0.35)" }}>— TRANSMISSION RECOVERED —</div>
@@ -4171,6 +4173,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
             …carrier lost…&nbsp;&nbsp;·&nbsp;&nbsp;keep the signal alive.
           </div>
         </div>
+        </div>
       </div>
     );
   }
@@ -4186,7 +4189,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       else setScreen("menu");
     });
     return (
-    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.dz:hover{border-color:#7a2424!important;color:#ff8a8a!important}`}</style>
       <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>OPTIONS</div>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(300px, 100%)" }}>
@@ -4249,13 +4252,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       <div style={{ color:"#5a7a64", fontSize:"0.6rem", letterSpacing:"0.2em", marginTop:"1.1rem", marginBottom:"0.45rem" }}>{label}{count != null ? `  ${count}` : ""}</div>
     );
     return (
-      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", padding:"clamp(1.25rem,5vw,2.5rem) clamp(1rem,4vw,2rem)", userSelect:"none", overflowY:"auto" }}>
+      <div style={{ background:"#070707", height:"100dvh", position:"relative", overflow:"hidden", fontFamily:font, userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        {/* BACK sits OUTSIDE the masked scroller (an ancestor mask would capture a fixed child). */}
         <button className="rb" onClick={withMenuSound(closeCaseFile)}
-          style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
-        <div style={{ width:"min(380px,100%)", animation:"fi 0.8s ease forwards" }}>
+        {/* The screen's own scroller — a short early-game board centers (margin auto), a full
+            late-game one top-aligns and scrolls in here; the page itself never moves. */}
+        <div style={{ height:"100%", overflowY:"auto", overscrollBehavior:"contain", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(1.5rem + env(safe-area-inset-bottom))", maskImage:"linear-gradient(to bottom, transparent 0, black 14px)", WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)" }}>
+        <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards" }}>
           <div style={{ fontSize:"0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem" }}>CASE FILE</div>
           <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em" }}>what you've pieced together</div>
 
@@ -4344,13 +4351,14 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
           })()}
           <div style={{ height:"1rem" }} />
         </div>
+        </div>
       </div>
     );
   }
 
   // ─── Slot screen — 3 save profiles. Each tracks playthroughs + fragments/clues.
   if (screen === "slots") return (
-    <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.del:hover{border-color:#5a2020!important;color:#e08a8a!important}`}</style>
       <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>
         {slotMode === "load" ? "LOAD GAME" : "NEW RUN — SELECT SLOT"}
@@ -4457,7 +4465,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       : remaining > DAY_GATE_MS / 3 ? "the small hours. nothing moves."
       : "near dawn. the dark starts to thin.";
     return (
-      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-top)) clamp(1rem, 4vw, 2rem) calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-bottom))", userSelect:"none" }}>
+      <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-top)) clamp(1rem, 4vw, 2rem) calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-bottom))", userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <button onClick={toggleMute} title={muted ? "unmute" : "mute"} aria-label={muted ? "unmute" : "mute"}
           style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", right:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #1c1c1c", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0.3rem 0.45rem", cursor:"pointer" }}>
@@ -4501,7 +4509,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
       ? (i) => i === 0 ? "#a83232" : "#7a1f1f"
       : () => (endingKind === "accept" ? "#6a9a78" : "#7a7a82");
     return (
-      <div style={{ background:"#070707", minHeight:"100dvh", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+      <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
           {lines.map((l,i) => <p key={i} style={{ color:colors(i), fontSize:"0.9rem", lineHeight:"2.2", letterSpacing:"0.06em", animation:"fi 1s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
@@ -4603,6 +4611,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const messagePaneStyle = {
     flex:1,
     overflowY:"auto",
+    overscrollBehavior:"contain", // transcript scroll never chains into a page bounce
     padding:isDesktopDemo ? "0.9rem clamp(1rem, 2.2vw, 2rem)" : "0.6rem 0.9rem",
     display:"flex",
     flexDirection:"column",
