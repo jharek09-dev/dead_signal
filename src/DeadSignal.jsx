@@ -1530,9 +1530,10 @@ const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{
 // lives here so the header can shrink on phones via media queries; state-driven bits (colors,
 // animations, conditional borders) stay inline. Desktop ≈ current look; mobile = compact phone strip.
 const HUD_CSS = `
-.ds-hud{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:0.5rem;min-height:88px;padding:calc(0.65rem + env(safe-area-inset-top)) 1rem 0.75rem;border-bottom:1px solid #111;flex-shrink:0}
-.ds-hud-side{display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
-.ds-hud-right{justify-content:flex-end}
+.ds-hud{position:relative;display:flex;align-items:center;justify-content:center;min-height:88px;padding:calc(0.65rem + env(safe-area-inset-top)) 1rem 0.75rem;border-bottom:1px solid #111;flex-shrink:0}
+.ds-hud-side{position:absolute;bottom:1.2rem;display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
+.ds-hud-signal{left:1rem}
+.ds-hud-battery{right:1rem;justify-content:flex-end}
 .ds-hud-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
 .ds-batt-pct{font-size:0.7rem;letter-spacing:0.03em}
 .ds-contact-id{display:flex;flex-direction:column;align-items:center;gap:0.35rem}
@@ -1544,7 +1545,9 @@ const HUD_CSS = `
 .ds-actionbar{display:flex;justify-content:center;align-items:center;gap:0.6rem;padding:0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));border-top:1px solid #111;flex-shrink:0}
 .ds-actionbar button{flex:0 0 auto;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
 @media(max-width:480px){
-.ds-hud{min-height:84px;padding:calc(0.58rem + env(safe-area-inset-top)) 0.6rem 0.7rem;gap:0.35rem}
+.ds-hud{min-height:84px;padding:calc(0.58rem + env(safe-area-inset-top)) 0.65rem 0.7rem}
+.ds-hud-signal{left:0.65rem}
+.ds-hud-battery{right:0.65rem}
 .ds-avatar{width:42px;height:42px;font-size:1.05rem}
 .ds-name{font-size:0.98rem}
 .ds-vitals{gap:0.55rem;font-size:0.62rem;padding:0.34rem 0.6rem;flex-wrap:wrap}
@@ -4965,7 +4968,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // bar): nothing competes for the slot, so the avatar/name stay dead-centered.
   const TopHud = () => (
     <div className="ds-hud">
-      <div className="ds-hud-side">
+      <div className="ds-hud-side ds-hud-signal">
         <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
       </div>
       <div className="ds-hud-mid">
@@ -4974,7 +4977,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           <span className="ds-name" style={{ textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
         </div>
       </div>
-      <div className="ds-hud-side ds-hud-right">
+      <div className="ds-hud-side ds-hud-battery">
         <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
           <svg width="24" height="12" viewBox="0 0 24 12" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
             <rect x="0.7" y="0.7" width="18.6" height="10.6" rx="2" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.1"/>
