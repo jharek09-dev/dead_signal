@@ -10,10 +10,11 @@ permissions:
   pages: write
   id-token: write
 
-# Only one deploy at a time; cancel older in-progress runs.
+# Only one Pages deploy at a time. Queue newer runs instead of canceling a
+# deployment after GitHub Pages has already accepted its artifact.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
