@@ -1531,7 +1531,7 @@ const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{
 // animations, conditional borders) stay inline. Desktop ≈ current look; mobile = compact phone strip.
 const HUD_CSS = `
 .ds-hud{position:relative;display:flex;align-items:center;justify-content:center;min-height:88px;padding:calc(0.65rem + env(safe-area-inset-top)) 1rem 0.75rem;border-bottom:1px solid #111;flex-shrink:0}
-.ds-hud-side{position:absolute;bottom:1.2rem;display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
+.ds-hud-side{position:absolute;top:calc(0.65rem + env(safe-area-inset-top));display:flex;align-items:center;gap:0.5rem;white-space:nowrap;min-width:0}
 .ds-hud-signal{left:1rem}
 .ds-hud-battery{right:1rem;justify-content:flex-end}
 .ds-hud-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
@@ -1546,6 +1546,7 @@ const HUD_CSS = `
 .ds-actionbar button{flex:0 0 auto;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
 @media(max-width:480px){
 .ds-hud{min-height:84px;padding:calc(0.58rem + env(safe-area-inset-top)) 0.65rem 0.7rem}
+.ds-hud-side{top:calc(0.58rem + env(safe-area-inset-top))}
 .ds-hud-signal{left:0.65rem}
 .ds-hud-battery{right:0.65rem}
 .ds-avatar{width:42px;height:42px;font-size:1.05rem}
