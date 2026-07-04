@@ -95,12 +95,11 @@ export default function BrowserDemo() {
             <strong>9% power</strong>
           </div>
           <div className="signal-preview">
-            <p>found a phone. don't know whose.</p>
+            <p>found a phone in the stairwell.</p>
             <p>you were the last call on it.</p>
             <p className="signal-preview__dim">you still alive?</p>
           </div>
           <div className="hero-card-footer">
-            <span>status: unknown</span>
             <span>contact: KIM</span>
           </div>
         </aside>
