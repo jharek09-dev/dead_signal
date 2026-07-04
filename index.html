@@ -15,7 +15,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Dead Signal" />
     <style>
-      html, body, #root { margin: 0; height: 100%; background: #070707; }
+      /* Lock the document: the app manages its own scrolling (chat pane, case file, story).
+         position:fixed on body is the reliable iOS rubber-band kill — safe here, no text inputs. */
+      html, body, #root { margin: 0; height: 100%; background: #070707; overflow: hidden; overscroll-behavior: none; }
+      body { position: fixed; inset: 0; width: 100%; }
     </style>
   </head>
   <body>
