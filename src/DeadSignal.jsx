@@ -1986,30 +1986,41 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // key (ds_memories) and are untouched.
   const SLOT_COUNT = 3;
   const slotKey = (i) => `ds_save_${i}`;
+  const routeLocationLabel = (path = currentPath) =>
+    path === "metro" ? "Metro tunnels" : path === "route9" ? "Highway checkpoint" : path === "hospital" ? "Hospital" : null;
+  const routeAreaLabel = (path = currentPath) =>
+    path === "metro" ? "METRO TUNNELS" : path === "route9" ? "HIGHWAY" : path === "hospital" ? "HOSPITAL" : null;
+  const phase3LocationLabel = () => PHASE3_REGIONS[currentPhase3Region]?.label || "The Haven";
+  const labelForPhase = (phase, format = "save") => {
+    const upper = format === "area";
+    if (phase === "phase3" || phase === "phase3_finale") {
+      const label = phase3LocationLabel();
+      return upper ? label.toUpperCase() : label;
+    }
+    if (phase === "haven_approach") return upper ? "NORTH OF HARWICK" : "North of Harwick";
+    if (phase === "haven_ai" || phase === "haven_final") return upper ? "THE HAVEN" : "The Haven";
+    if (phase === "shelter") return upper ? "SHELTER" : "Shelter";
+    if (phase === "p2_ai_cross") return upper ? "CROSSING HARWICK" : "Crossing Harwick";
+    if (["p2_scripted", "p2_ai", "p2_memory_frag", "p2_discovery"].includes(phase)) {
+      return upper ? routeAreaLabel() : routeLocationLabel();
+    }
+    return null;
+  };
   // Short, human-readable location for the slot screen, derived from run state.
   const locationLabel = () => {
-    if (gamePhase === "phase3" || gamePhase === "phase3_finale") return PHASE3_REGIONS[currentPhase3Region]?.label || "The Haven";
-    if (dayThree || gamePhase.startsWith("haven")) return "The Haven";
-    if (gamePhase === "shelter")     return "Shelter";
-    if (gamePhase === "p2_ai_cross") return "Crossing Harwick";
-    if (currentPath === "hospital")  return "Hospital";
-    if (currentPath === "metro")     return "Metro tunnels";
-    if (currentPath === "route9")    return "Highway checkpoint";
+    if (gamePhase === "encounter") return labelForPhase(returnToPhaseRef.current, "save") || routeLocationLabel() || "Harwick";
+    const phaseLabel = labelForPhase(gamePhase, "save");
+    if (phaseLabel) return phaseLabel;
     if (gamePhase === "phase1" && exchangePhase < 10) return "Harwick apartment";
+    if (currentPath) return routeLocationLabel() || "Harwick";
     return "Harwick";
   };
   // Uppercase current-area name for the in-chat location strip (null = don't show the
   // strip, e.g. the apartment in phase1). Encounters borrow their leg's label via returnToPhase.
   const areaLabel = () => {
     const gp = gamePhase;
-    if (gp === "phase3" || gp === "phase3_finale") return (PHASE3_REGIONS[currentPhase3Region]?.label || "The Haven").toUpperCase();
-    if (gp === "encounter" && returnToPhaseRef.current === "phase3") return (PHASE3_REGIONS[currentPhase3Region]?.label || "The Haven").toUpperCase();
-    if (dayThree || gp.startsWith("haven")) return "THE HAVEN";
-    if (gp === "shelter") return "SHELTER";
-    if (gp === "p2_ai_cross" || (gp === "encounter" && returnToPhaseRef.current === "p2_ai_cross")) return "CROSSING HARWICK";
-    if (["p2_scripted", "p2_ai", "p2_memory_frag", "p2_discovery", "encounter"].includes(gp))
-      return currentPath === "metro" ? "METRO TUNNELS" : currentPath === "route9" ? "HIGHWAY" : "HOSPITAL";
-    return null; // phase1 (the apartment) and anything else → no strip
+    if (gp === "encounter") return labelForPhase(returnToPhaseRef.current, "area") || routeAreaLabel();
+    return labelForPhase(gp, "area"); // phase1 (the apartment) and anything else → no strip
   };
   const snapshotDay = () =>
     (gamePhase === "phase3" || gamePhase === "phase3_finale") ? phase3Day
@@ -5060,7 +5071,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       {area && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:"0.6rem", padding:"0.3rem 1rem", borderBottom:"1px solid #111", flexShrink:0 }}>
           <span style={{ flex:1, height:"1px", background:"linear-gradient(90deg, transparent, #1d3a22)" }} />
-          <span style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.22em", whiteSpace:"nowrap", textShadow:"0 0 7px rgba(74,158,107,0.3)" }}>◇&nbsp;{area}</span>
+          <span style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.22em", whiteSpace:"nowrap", textShadow:"0 0 7px rgba(74,158,107,0.3)" }}>{area}</span>
           <span style={{ flex:1, height:"1px", background:"linear-gradient(90deg, #1d3a22, transparent)" }} />
         </div>
       )}
