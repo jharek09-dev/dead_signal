@@ -2121,6 +2121,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       }
     }
     setSlots(next);
+    return next;
   };
   const saveRun = async () => {
     const i = activeSlotRef.current;
@@ -2132,7 +2133,12 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     if (i == null) return;
     try { await window.storage.delete(slotKey(i)); } catch (e) {}
     if (activeSlotRef.current === i) { activeSlotRef.current = null; activeProfileRef.current = null; }
-    await refreshSlots();
+    const next = await refreshSlots();
+    if (screen === "slots" && slotMode === "load" && !next.some(Boolean)) {
+      setSlotConfirm(null);
+      setSlotsFrom("menu");
+      setScreen("menu");
+    }
   };
   // Seed the HUD memory list from a committed profile (used when starting a playthrough).
   const memsFromProfile = (p) => [
@@ -5113,9 +5119,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); })} style={menuBtn}>Resume</button>
             {isDay1Demo && <button className="cb" onClick={withMenuSound(restartDay1Demo)} style={menuBtn}>Restart demo</button>}
             {isDay1Demo && onDemoExit && <button className="cb" onClick={withMenuSound(onDemoExit)} style={menuBtn}>Exit demo</button>}
-            {/* Load — opens the save-slots screen in load mode, same as the main-menu LOAD.
-                The run is autosaved at every decision point, so leaving to it is safe. */}
-            {!isDay1Demo && <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setSlotMode("load"); setSlotConfirm(null); setSlotsFrom("chat"); setScreen("slots"); })} style={menuBtn}>Load</button>}
             {!isDay1Demo && <button className="cb" onClick={withMenuSound(menuSave)} style={menuBtn}>Save game</button>}
             {!isDay1Demo && <button className="cb" onClick={withMenuSound(menuSaveExit)} style={menuBtn}>Save &amp; exit to title</button>}
             {/* Phase 3 only — replay the prologue from the start while KEEPING this slot's
