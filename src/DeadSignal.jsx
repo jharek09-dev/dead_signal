@@ -1369,6 +1369,11 @@ const PHASE3_DAYLIGHT  = 14;  // node-moves of daylight per investigation day (t
 const PHASE3_ENCOUNTER_RATE = 0.34; // chance the half-connected block a Phase-3 move (tuning knob)
 const DAY_GATE_MS = 17 * 60 * 1000;
 const EARLY_WAKE_MIN_MS = 2 * 60 * 1000; // "force yourself up" appears after this much of the night
+// Real-time day gates are BUILT but DORMANT during development (Jharek, 2026-07-03): testers
+// shouldn't hit 17-minute walls while the mechanic's final design is pending. The whole system
+// (resting screen, countdown, early wake) stays wired — add ?gates to the URL to preview it,
+// or flip this to `true` to ship it for real.
+const DAY_GATES_ENABLED = typeof location !== "undefined" && /[?&]gates\b/.test(location.search);
 const GATE_BYPASS = (() => {
   try { return !!import.meta.env?.DEV || (typeof location !== "undefined" && /[?&]debug/.test(location.search)); }
   catch (e) { return false; }
@@ -2089,7 +2094,14 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
-    setScreen(gateWakeAtRef.current ? "resting" : "chat");
+    if (gateWakeAtRef.current && !DAY_GATES_ENABLED) {
+      // Gates dormant: a save parked on the resting screen resumes straight through the
+      // dawn — wakeFromGate applies the restored gateHeal and plays the continuation.
+      setScreen("chat");
+      wakeFromGate(false);
+    } else {
+      setScreen(gateWakeAtRef.current ? "resting" : "chat");
+    }
   };
 
   // ─── Pause menu actions (manual save / load / exit) ────────────────────────────
@@ -3333,10 +3345,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
 
   // ─── Day transition ────────────────────────────────────────────────────────────────
   const startDayGate = (reason = "phase3_night", heal = 0) => {
-    const wakeAt = Date.now() + DAY_GATE_MS;
-    gateWakeAtRef.current = wakeAt; setGateWakeAt(wakeAt);
     gateReasonRef.current = reason; setGateReason(reason);
     gateHealRef.current = heal; // the dawn heal riding on this gate (0 = nothing deferred)
+    // Gates dormant (dev): the night resolves instantly through the verified wake path —
+    // same heal, captions, and dawn continuation, minus the real-time wall.
+    if (!DAY_GATES_ENABLED) { setChoices([]); setIsTyping(false); wakeFromGate(false); return; }
+    const wakeAt = Date.now() + DAY_GATE_MS;
+    gateWakeAtRef.current = wakeAt; setGateWakeAt(wakeAt);
     setNowTick(Date.now());
     setChoices([]); setIsTyping(false);
     setScreen("resting");
