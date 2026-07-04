@@ -830,6 +830,7 @@ const validatePhase3Map = () => {
 // are scaffolded now and deepen in Phase 3. Kept deliberately sparse — Haven cracks the
 // mystery, it doesn't answer it. reveal(clues:Set<string>, reached:boolean) → boolean.
 const ALL_FRAGMENT_NAMES = Object.values(MEMORY_FRAGMENT_POOLS).flat().map(f => f.name); // all 9
+const FRAGMENT_BY_NAME = Object.fromEntries(Object.values(MEMORY_FRAGMENT_POOLS).flat().map(f => [f.name, f])); // board drop-downs replay the flashback
 const BOARD_CLUES = [
   { name:"Patient File",  note:"mercy general. the name on it is yours." },
   { name:"Broadcast Log", note:"haven was named two weeks before the broadcast." },
@@ -1584,6 +1585,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const [muted, setMuted]               = useState(false); // audio — user mute preference (persisted)
   const [volume, setVolume]             = useState(70);    // audio — user volume 0–100 (persisted)
   const [optionsFrom, setOptionsFrom]   = useState("menu"); // where Options was opened from: "menu" | "chat"
+  const [boardSection, setBoardSection] = useState(null);   // case-file accordion: open section id (null = all collapsed)
+  const [boardItem, setBoardItem]       = useState(null);   // expanded item within the open section
   const [slotsFrom, setSlotsFrom]       = useState("menu"); // where the slots screen was opened from: "menu" | "chat"
   const [audioReady, setAudioReady]     = useState(false); // audio — true once unlocked by a user gesture
   const [slots, setSlots]               = useState([null, null, null]); // P4 — 3 save slots (meta or null)
@@ -3979,6 +3982,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
   const withMenuSound = (fn) => () => { audioEngine.tapMenu(); fn?.(); };
   const openCaseFile = () => {
     if (chatScrollRef.current) chatScrollTopRef.current = chatScrollRef.current.scrollTop;
+    setBoardSection(null); setBoardItem(null); // fresh collapsed view each visit
     setScreen("board");
   };
   const closeCaseFile = () => {
@@ -4151,7 +4155,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
           style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
-        <div style={{ height:"100%", overflowY:"auto", overscrollBehavior:"contain", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(1.5rem + env(safe-area-inset-bottom))", maskImage:"linear-gradient(to bottom, transparent 0, black 14px)", WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)" }}>
+        <div style={{ boxSizing:"border-box", height:"100%", overflowY:"auto", overscrollBehavior:"contain", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(1.5rem + env(safe-area-inset-bottom))", maskImage:"linear-gradient(to bottom, transparent 0, black 14px)", WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)" }}>
         <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards", paddingTop:"0.4rem", paddingBottom:"0.5rem" }}>
           {/* Transmission header — styled like a recovered signal log */}
           <div style={{ border:"1px solid #1d3a22", background:"#010a04", padding:"0.85rem 1rem", textAlign:"center" }}>
@@ -4248,109 +4252,137 @@ export default function DeadSignal({ presentation = "mobile", edition = "full" }
     const reached = dayThree || gamePhase.startsWith("haven") || gamePhase === "phase3";
     const facts = BOARD_FACTS.filter(f => f.reveal(cClues, reached, raisedQuestions));
     const contradictions = BOARD_CONTRADICTIONS.filter(x => x.reveal(cClues, reached, raisedQuestions));
-    const sec = (label, count) => (
-      <div style={{ color:"#5a7a64", fontSize:"0.6rem", letterSpacing:"0.2em", marginTop:"1.1rem", marginBottom:"0.45rem" }}>{label}{count != null ? `  ${count}` : ""}</div>
+    const openQ = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
+    // Accordion: one section open at a time; the open panel takes the remaining height and
+    // scrolls INSIDE itself — the page never moves (one screen, zero page scroll).
+    const openSection = (id) => { setBoardItem(null); setBoardSection(boardSection === id ? null : id); };
+    const secRow = (id, label, count) => (
+      <button key={id} className="cb" onClick={withMenuSound(()=>openSection(id))}
+        style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"transparent", border:`1px solid ${boardSection===id ? "#1d3a22" : "#1c1c1c"}`, color: boardSection===id ? "#9aba9a" : "#7a8a7e", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", padding:"0.55rem 0.7rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s", marginTop:"0.4rem", flexShrink:0 }}>
+        <span>{boardSection===id ? "▾" : "▸"}&nbsp;&nbsp;{label}</span>
+        {count != null && <span style={{ color:"#3f4a42", letterSpacing:"0.08em" }}>{count}</span>}
+      </button>
+    );
+    const panel = (children) => (
+      <div style={{ flex:1, minHeight:0, overflowY:"auto", overscrollBehavior:"contain", border:"1px solid #141a15", borderTop:"none", padding:"0.45rem 0.7rem 0.7rem" }}>{children}</div>
+    );
+    const subHead = (label) => (
+      <div style={{ color:"#5a7a64", fontSize:"0.56rem", letterSpacing:"0.2em", margin:"0.75rem 0 0.35rem" }}>{label}</div>
+    );
+    // An expandable item row: tap flips the chevron and reveals the detail block inline.
+    const itemRow = (id, glyph, label, detail, opts = {}) => {
+      const openIt = boardItem === id;
+      return (
+        <div key={id}>
+          <button className="cb" onClick={withMenuSound(()=>setBoardItem(openIt ? null : id))}
+            style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", background:"transparent", border:"none", color: opts.color || "#c8b896", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem", cursor:"pointer", textAlign:"left", transition:"color 0.15s" }}>
+            <span>{glyph} {label}</span>
+            <span style={{ color:"#333333", flexShrink:0 }}>{openIt ? "▾" : "▸"}</span>
+          </button>
+          {openIt && <div style={{ color: opts.detailColor || "#8a8a7a", fontSize:"0.57rem", lineHeight:1.55, padding:"0.05rem 0.2rem 0.5rem 1.05rem", fontStyle: opts.italic ? "italic" : "normal", animation:"fi 0.35s ease" }}>{detail}</div>}
+        </div>
+      );
+    };
+    const lockedRow = (key, glyph, label = "———") => (
+      <div key={key} style={{ color:"#2f2f2f", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem" }}>{glyph} {label}</div>
     );
     return (
       <div style={{ background:"#070707", height:"100dvh", position:"relative", overflow:"hidden", fontFamily:font, userSelect:"none" }}>
-        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-        {/* BACK sits OUTSIDE the masked scroller (an ancestor mask would capture a fixed child). */}
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <button className="rb" onClick={withMenuSound(closeCaseFile)}
           style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
-        {/* The screen's own scroller — a short early-game board centers (margin auto), a full
-            late-game one top-aligns and scrolls in here; the page itself never moves. */}
-        <div style={{ height:"100%", overflowY:"auto", overscrollBehavior:"contain", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(1.5rem + env(safe-area-inset-bottom))", maskImage:"linear-gradient(to bottom, transparent 0, black 14px)", WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)" }}>
-        <div style={{ width:"min(380px,100%)", margin:"auto 0", animation:"fi 0.8s ease forwards" }}>
-          <div style={{ fontSize:"0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem" }}>CASE FILE</div>
-          <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em" }}>what you've pieced together</div>
+        {/* One fixed page: header + section rows are static chrome; only an open panel scrolls.
+            border-box is load-bearing: height:100% + padding would otherwise exceed the shell
+            (no global box-sizing reset in this app) and push the bottom rows off-screen. */}
+        <div style={{ boxSizing:"border-box", height:"100%", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(0.9rem + env(safe-area-inset-bottom))" }}>
+          <div style={{ width:"min(380px,100%)", flex:1, minHeight:0, display:"flex", flexDirection:"column", animation:"fi 0.8s ease forwards" }}>
+            <div style={{ fontSize:"0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem", flexShrink:0 }}>CASE FILE</div>
+            <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em", flexShrink:0 }}>what you've pieced together</div>
+            <div style={{ textAlign:"center", color:"#4f5f55", fontSize:"0.6rem", letterSpacing:"0.12em", margin:"0.55rem 0 0.15rem", flexShrink:0 }}>
+              <span style={{ color:"#7a9a82" }}>◈ {cFrags.size}/9</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◉ {cClues.size}/3</span>
+              {discoveredTruths.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#a8763f" }}>◆ {discoveredTruths.length}/4</span></>}
+            </div>
 
-          {sec("MEMORIES", `${cFrags.size}/9`)}
-          <div style={{ display:"flex", flexWrap:"wrap", gap:"0.35rem" }}>
-            {ALL_FRAGMENT_NAMES.map((n, i) => cFrags.has(n)
-              ? <span key={i} style={{ border:"1px solid #1d3a22", color:"#9aba9a", fontSize:"0.56rem", letterSpacing:"0.03em", padding:"0.3rem 0.45rem" }}>{n}</span>
-              : <span key={i} style={{ border:"1px solid #161616", color:"#2a2a2a", fontSize:"0.56rem", padding:"0.3rem 0.55rem" }}>▦</span>
-            )}
-          </div>
+            {secRow("mem", "MEMORIES", `${cFrags.size}/9`)}
+            {boardSection === "mem" && panel(<>
+              {ALL_FRAGMENT_NAMES.map((n, i) => cFrags.has(n)
+                ? itemRow(`mem:${n}`, "◈", n, (FRAGMENT_BY_NAME[n]?.msgs || []).map((m, j) => <div key={j}>{m}</div>), { color:"#9aba9a", detailColor:"#6a8a72", italic:true })
+                : lockedRow(`memlock${i}`, "▦"))}
+            </>)}
 
-          {sec("CLUES", `${cClues.size}/3`)}
-          {BOARD_CLUES.map((cl, i) => cClues.has(cl.name)
-            ? <div key={i} style={{ marginBottom:"0.4rem" }}><span style={{ color:"#7accd4", fontSize:"0.62rem", letterSpacing:"0.06em" }}>◉ {cl.name}</span><div style={{ color:"#5a6a6e", fontSize:"0.55rem", letterSpacing:"0.03em", marginLeft:"0.9rem" }}>{cl.note}</div></div>
-            : <div key={i} style={{ color:"#2d4a52", fontSize:"0.62rem", letterSpacing:"0.06em", marginBottom:"0.4rem" }}>◉ ???</div>
-          )}
+            {secRow("clue", "CLUES", `${cClues.size}/3`)}
+            {boardSection === "clue" && panel(<>
+              {BOARD_CLUES.map((cl, i) => cClues.has(cl.name)
+                ? itemRow(`clue:${cl.name}`, "◉", cl.name, cl.note, { color:"#7accd4", detailColor:"#5a6a6e" })
+                : lockedRow(`cluelock${i}`, "◉", "???"))}
+            </>)}
 
-          {/* TRUTHS — the region payoffs (Phase 3). Each spoke uncovers one. Hidden until earned. */}
-          {discoveredTruths.length > 0 && <>
-            {sec("TRUTHS")}
-            {discoveredTruths.map((id, i) => (
-              <div key={i} style={{ border:"1px solid #5a3a1a", background:"#0d0703", padding:"0.45rem 0.6rem", marginBottom:"0.45rem", boxShadow:"0 0 12px rgba(200,120,40,0.12)" }}>
-                <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.12em" }}>◆ {PHASE3_TRUTHS[id]?.title || id}</div>
-                {PHASE3_TRUTHS[id]?.line && <div style={{ color:"#b89a6a", fontSize:"0.58rem", marginTop:"0.2rem", fontStyle:"italic", lineHeight:1.4 }}>{PHASE3_TRUTHS[id].line}</div>}
-              </div>
-            ))}
-          </>}
+            {/* TRUTHS — hidden until the first one is earned (no early spoiler that there are 4). */}
+            {discoveredTruths.length > 0 && secRow("truth", "TRUTHS", `${discoveredTruths.length}/4`)}
+            {boardSection === "truth" && discoveredTruths.length > 0 && panel(<>
+              {discoveredTruths.map(id => itemRow(`truth:${id}`, "◆", PHASE3_TRUTHS[id]?.title || id, PHASE3_TRUTHS[id]?.line || "", { color:"#c87a40", detailColor:"#b89a6a", italic:true }))}
+              {Array.from({ length: Math.max(0, 4 - discoveredTruths.length) }).map((_, i) => lockedRow(`truthlock${i}`, "◇"))}
+            </>)}
 
-          {sec("PEOPLE")}
-          {BOARD_PEOPLE.map((p, i) => (
-            <div key={i} style={{ marginBottom:"0.4rem" }}><span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{p.name}</span><div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{typeof p.note === "function" ? p.note(cClues, reached, raisedQuestions, discoveredTruths) : p.note}</div></div>
-          ))}
+            {secRow("world", "PEOPLE & PLACES", null)}
+            {boardSection === "world" && panel(<>
+              {subHead("PEOPLE")}
+              {BOARD_PEOPLE.map(p => itemRow(`person:${p.name}`, "·", p.name,
+                typeof p.note === "function" ? p.note(cClues, reached, raisedQuestions, discoveredTruths) : p.note,
+                { color:"#c8b896", detailColor:"#8a8a7a" }))}
+              {subHead("LOCATIONS")}
+              {(() => {
+                const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath) || phase3UnlockedRegions.includes(r.key));
+                return (<>
+                  {shown.length === 0 && <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no leads yet.</div>}
+                  {shown.map((r, i) => itemRow(`loc:${r.key || i}`, "▪",
+                    <>{r.name}{discoveredTruths.includes(r.truthId || r.truth) && <span style={{ color:"#c87a40" }}>&nbsp;◆</span>}</>,
+                    <>
+                      <div style={{ color:"#4a6a54" }}>the truth about {r.truth}{discoveredTruths.includes(r.truthId || r.truth) ? " — uncovered." : "."}</div>
+                      {r.blurb && <div style={{ marginTop:"0.15rem" }}>{r.blurb}</div>}
+                    </>,
+                    { color:"#c8b896", detailColor:"#8a8a7a" }))}
+                  {shown.length < REGIONS.length && <div style={{ color:"#3a3a3a", fontSize:"0.55rem", fontStyle:"italic", marginTop:"0.25rem" }}>more to find.</div>}
+                </>);
+              })()}
+            </>)}
 
-          {sec("LOCATIONS")}
-          {(() => {
-            const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath) || phase3UnlockedRegions.includes(r.key));
-            return (<>
-              {shown.length === 0 && <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no leads yet.</div>}
-              {shown.map((r, i) => (
-                <div key={i} style={{ marginBottom:"0.4rem" }}>
-                  <span style={{ color:"#c8b896", fontSize:"0.62rem", letterSpacing:"0.06em" }}>{r.name}</span>
-                  <span style={{ color:"#4a6a54", fontSize:"0.54rem", letterSpacing:"0.04em" }}>{`  · the truth about ${r.truth}`}</span>
-                  {discoveredTruths.includes(r.truthId || r.truth) && <span style={{ color:"#c87a40", fontSize:"0.54rem", letterSpacing:"0.08em" }}>{"  ◆ uncovered"}</span>}
-                  {r.blurb && <div style={{ color:"#5a5a52", fontSize:"0.55rem", marginLeft:"0.6rem" }}>{r.blurb}</div>}
-                </div>
-              ))}
-              {shown.length < REGIONS.length && <div style={{ color:"#3a3a3a", fontSize:"0.55rem", fontStyle:"italic", marginTop:"0.2rem" }}>more to find.</div>}
-            </>);
-          })()}
-
-          {sec("KNOWN FACTS")}
-          {facts.length ? facts.map((f, i) => <div key={i} style={{ color:"#8aaa90", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem" }}>› {f.text}</div>)
-            : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>nothing proven yet.</div>}
-
-          {contradictions.length > 0 && <>
-            {sec("CONTRADICTIONS")}
-            {contradictions.map((x, i) => (
-              <div key={i} style={{ border:"1px solid #3a1f1f", background:"#0a0505", padding:"0.45rem 0.6rem", marginBottom:"0.45rem" }}>
-                {x.known.map((k, j) => (
-                  <div key={j} style={{ color:"#8aaa90", fontSize:"0.55rem", letterSpacing:"0.03em" }}>
-                    <span style={{ color:"#4a6a54" }}>KNOWN&nbsp;</span>{k}
+            {secRow("inv", "INVESTIGATION", `${openQ.length}`)}
+            {boardSection === "inv" && panel(<>
+              {subHead("KNOWN FACTS")}
+              {facts.length ? facts.map((f, i) => <div key={i} style={{ color:"#8aaa90", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", lineHeight:1.5 }}>› {f.text}</div>)
+                : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>nothing proven yet.</div>}
+              {contradictions.length > 0 && <>
+                {subHead("CONTRADICTIONS")}
+                {contradictions.map((x, i) => (
+                  <div key={i} style={{ border:"1px solid #3a1f1f", background:"#0a0505", padding:"0.45rem 0.6rem", marginBottom:"0.45rem" }}>
+                    {x.known.map((k, j) => (
+                      <div key={j} style={{ color:"#8aaa90", fontSize:"0.55rem", letterSpacing:"0.03em" }}>
+                        <span style={{ color:"#4a6a54" }}>KNOWN&nbsp;</span>{k}
+                      </div>
+                    ))}
+                    <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.04em", marginTop:"0.2rem", fontStyle:"italic" }}>
+                      <span style={{ color:"#8b4a4a", fontStyle:"normal" }}>⚠ CONTRADICTION&nbsp;</span>{x.q}
+                    </div>
                   </div>
                 ))}
-                <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.04em", marginTop:"0.2rem", fontStyle:"italic" }}>
-                  <span style={{ color:"#8b4a4a", fontStyle:"normal" }}>⚠ CONTRADICTION&nbsp;</span>{x.q}
-                </div>
-              </div>
-            ))}
-          </>}
-
-          {sec("OPEN QUESTIONS")}
-          {(() => {
-            const asked = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
-            return asked.length
-              ? asked.map((q, i) => {
+              </>}
+              {subHead("OPEN QUESTIONS")}
+              {openQ.length ? openQ.map((q, i) => {
                   const evolved = q.evolved && raisedQuestions.includes(q.evolved.key);
                   return (
-                    <div key={i} style={{ color:"#7a6a5a", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", fontStyle:"italic" }}>
+                    <div key={i} style={{ color:"#7a6a5a", fontSize:"0.57rem", letterSpacing:"0.03em", marginBottom:"0.3rem", fontStyle:"italic", lineHeight:1.5 }}>
                       {evolved
                         ? <><span style={{ color:"#4a463e", textDecoration:"line-through" }}>? {q.text}</span><br/><span style={{ color:"#c8a878" }}>↳ {q.evolved.text}</span></>
                         : <>? {q.text}</>}
                     </div>
                   );
                 })
-              : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no questions yet.</div>;
-          })()}
-          <div style={{ height:"1rem" }} />
-        </div>
+                : <div style={{ color:"#3a3a3a", fontSize:"0.57rem" }}>no questions yet.</div>}
+            </>)}
+          </div>
         </div>
       </div>
     );
