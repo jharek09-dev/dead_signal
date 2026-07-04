@@ -1501,6 +1501,28 @@ const choiceButtonStyle = (kind, index = 0, overrides = {}) => {
   };
 };
 
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const elliePauseWeight = (text) => {
+  const t = String(text).toLowerCase();
+  let extra = 0;
+  if (t.includes("...")) extra += 900;
+  if (/\b(sorry|scared|gone|dead|kim)\b/.test(t)) extra += 700;
+  if (/\b(signal|don't open)\b/.test(t)) extra += 900;
+  return clamp(extra, 0, 1400);
+};
+const ellieChatPacing = (text) => {
+  const s = String(text);
+  const extra = elliePauseWeight(s);
+  const typingMs = clamp(850 + s.length * 42, 1000, 3200) + extra;
+  const postGapMs = clamp(650 + s.length * 8 + Math.round(extra * 0.25), 650, 1300);
+  return { typingMs, postGapMs, choiceDelayMs: 900 };
+};
+const messagePacing = (text, msgType) => {
+  if (msgType === "ellie") return ellieChatPacing(text);
+  if (msgType === "narrator") return { typingMs: 1200, postGapMs: 400, choiceDelayMs: 80 };
+  return { typingMs: Math.min(500 + String(text).length * 22, 1800), postGapMs: 280, choiceDelayMs: 80 };
+};
+
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
 const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@keyframes choiceIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
 
@@ -2407,18 +2429,20 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     }
 
     msgs.forEach((text, i) => {
+      const pace = messagePacing(text, msgType);
       dialogueRef.current.push(setT(() => setIsTyping(msgType !== "narrator"), t));
-      t += msgType === "narrator" ? 1200 : Math.min(500 + text.length * 22, 1800);
+      t += pace.typingMs;
       dialogueRef.current.push(setT(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
         audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
         onShown?.(text, i);
       }, t));
-      t += msgType === "narrator" ? 400 : 280;
+      t += pace.postGapMs;
     });
     const visibleChoices = capVisibleChoices(choiceList, `scheduleMessages:${msgType}`);
-    if (visibleChoices?.length) dialogueRef.current.push(setT(() => setChoices(visibleChoices), t + 80));
+    const choiceDelay = msgType === "ellie" ? ellieChatPacing(msgs[msgs.length - 1] || "").choiceDelayMs : 80;
+    if (visibleChoices?.length) dialogueRef.current.push(setT(() => setChoices(visibleChoices), t + choiceDelay));
     return t;
   };
 
@@ -2433,6 +2457,18 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   };
 
   // audio — soft confirm on a net gain, duller thud on a loss, from a resource delta.
+  const addTypedEllie = (text, delay = 0) => {
+    const pace = ellieChatPacing(text);
+    pendingRef.current.push(setT(() => setIsTyping(true), delay));
+    const showAt = delay + pace.typingMs;
+    pendingRef.current.push(setT(() => {
+      setIsTyping(false);
+      setMessages(p => [...p, { id: nextId("ellie"), from: "ellie", text }]);
+      audioEngine.blip();
+    }, showAt));
+    return showAt + pace.postGapMs;
+  };
+
   const stingForDelta = (d) => {
     const pos = d.food > 0 || d.water > 0 || d.hp > 0 || d.battery > 0;
     const neg = d.food < 0 || d.water < 0 || d.hp < 0 || d.battery < 0;
@@ -2653,17 +2689,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           shelterForcedRef.current = false;
           setChoices([]); setIsTyping(false);
           setGamePhase("shelter");
-          addMsg("ellie", "it's getting dark.", 600);
-          addMsg("ellie", "you need to find somewhere to stop.", 2400);
-          addMsg("narrator", "emergency shelter.", 4800);
-          addMsg("narrator", "cots still unfolded.", 6400);
-          addMsg("narrator", "names written on tape above each one.", 7900);
-          addMsg("narrator", "one of them is yours.", 9400);
+          let t = addTypedEllie("it's getting dark.", 600);
+          t = addTypedEllie("you need to find somewhere to stop.", t);
+          addMsg("narrator", "emergency shelter.", t + 900);
+          addMsg("narrator", "cots still unfolded.", t + 2500);
+          addMsg("narrator", "names written on tape above each one.", t + 4000);
+          addMsg("narrator", "one of them is yours.", t + 5500);
           pendingRef.current.push(setT(() => setChoices([
             "Sleep here. [-1 Food] [-1 Water]",
             "Barricade the door first. [+1 Noise] [-1 Food] [-1 Water]",
             "Keep moving. [danger]",
-          ]), 11000));
+          ]), t + 7100));
 
         } else if (pending.type === "haven_final") {
           setGamePhase("haven_final");
@@ -2689,8 +2725,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           // auto-flows back to the nav screen after the held breath.
           const calm = CALM_BEAT[path] || CALM_BEAT.hospital;
           const ct = scheduleMessages(calm.msgs, null, "narrator");
-          addMsg("ellie", pickRandom(CALM_BEAT.ellie), ct + 900);
-          pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(); }, ct + 2600));
+          const calmDone = addTypedEllie(pickRandom(CALM_BEAT.ellie), ct + 900);
+          pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(); }, Math.max(ct + 2600, calmDone + 300)));
         }
 
       }, aiMsgTime + 600));
@@ -2820,11 +2856,11 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const reactionPool = (reactionKey === "fight_loss" && hpAfter <= 3)
       ? ["you're hurt bad. i know. keep moving — don't you stop.", "stay with me. please. you're okay. you're okay."]
       : (ENCOUNTER_REACTIONS[reactionKey] || ["keep moving."]);
-    addMsg("ellie", pickRandom(reactionPool), reactionDelay);
+    let ellieReactionDone = addTypedEllie(pickRandom(reactionPool), reactionDelay);
 
     // Noise crossings — Ellie's caution (2) escalates to fear (4); narrator lines stay.
-    if (prevNoise < 2 && newNoise >= 2) addMsg("ellie", pickRandom(ELLIE_NOISE.rising), reactionDelay + 700);
-    if (prevNoise < 4 && newNoise >= 4) addMsg("ellie", pickRandom(ELLIE_NOISE.high), reactionDelay + 700);
+    if (prevNoise < 2 && newNoise >= 2) ellieReactionDone = addTypedEllie(pickRandom(ELLIE_NOISE.rising), ellieReactionDone);
+    if (prevNoise < 4 && newNoise >= 4) ellieReactionDone = addTypedEllie(pickRandom(ELLIE_NOISE.high), ellieReactionDone);
     if (prevNoise < 4 && newNoise >= 4) addMsg("narrator", "something answers.", reactionDelay + 700);
     if (prevNoise < 5 && newNoise >= 5) addMsg("narrator", "you hear footsteps. more than one set.", reactionDelay + 700);
 
@@ -2843,7 +2879,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       } else {
         localBeat(null, returnPhase); // resume exploration in the phase we returned to
       }
-    }, reactionDelay + 1800));
+    }, Math.max(reactionDelay + 1800, ellieReactionDone + 500)));
   };
 
   // Free action (does NOT advance a beat or drain): bleed the charger reservoir into
@@ -3105,18 +3141,18 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     if (action === "BROADCAST") {
       markDay1Flag(DAY1_FLAGS.BROADCAST);
       setDay1Scene("apartment"); day1SceneRef.current = "apartment";
-      setChoices([]); setIsTyping(true);
+      setChoices([]); setIsTyping(false);
       let t = 500;
       addMsg("narrator", "the sound comes from a little shortwave radio on the shelf.", t); t += 1500;
       addMsg("narrator", "the volume is almost dead, but the voice keeps looping.", t); t += 1700;
       addMsg("narrator", "coordinates. a promise of somewhere left.", t); t += 1500;
-      addMsg("ellie", "you hear it too.", t); t += 1200;
-      addMsg("ellie", "that's the signal i've been following.", t); t += 1500;
-      addMsg("ellie", "we move when it's light. tonight, you keep that door shut.", t); t += 1300;
+      t = addTypedEllie("you hear it too.", t);
+      t = addTypedEllie("that's the signal i've been following.", t);
+      t = addTypedEllie("we move when it's light. tonight, you keep that door shut.", t);
       pendingRef.current.push(setT(() => {
         setIsTyping(false);
         setChoices(capVisibleChoices(day1HubChoices(), "day1:broadcast"));
-      }, t));
+      }, t + ellieChatPacing("").choiceDelayMs));
       return;
     }
 
@@ -3131,7 +3167,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       setExchangePhase(10);
       let t = 600;
       addMsg("narrator", "you make the apartment as quiet as you can.", t); t += 1600;
-      addMsg("ellie", "get some rest. i'll wake you.", t); t += 1800;
+      t = addTypedEllie("get some rest. i'll wake you.", t);
       addMsg("narrator", "night falls.", t); t += 1500;
       addMsg("narrator", "day one ends.", t); t += 1500;
       pendingRef.current.push(setT(() => {
@@ -3783,12 +3819,12 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       if (choice === "·") {
         setChoices([]); setIsTyping(false);
         setDayThree(true);
-        addMsg("ellie", "still there?", 1400);
-        addMsg("ellie", "morning. you made it through the night.", 3000);
+        let t = addTypedEllie("still there?", 1400);
+        t = addTypedEllie("morning. you made it through the night.", t);
         pendingRef.current.push(setT(() => {
           setGamePhase("haven_approach"); setP2BeatIndex(0);
           scheduleMessages(HAVEN_APPROACH_BEATS[0].msgs, HAVEN_APPROACH_BEATS[0].choices, HAVEN_APPROACH_BEATS[0].from || "ellie");
-        }, 4800));
+        }, t + 700));
         return;
       }
       setChoices([]);
@@ -3801,8 +3837,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         addMsg("narrator", "you keep walking.", 1000);
         addMsg("narrator", "night gets worse.", 2600);
         addMsg("narrator", "something follows.", 4100);
-        addMsg("ellie", "i told you to stop.", 5600); // the slip — her fear sharpens for one line
-        addMsg("ellie", "...i'm sorry. i'm just scared. keep going. i've got you.", 7100); // and she walks it back
+        let t = addTypedEllie("i told you to stop.", 5600); // the slip — her fear sharpens for one line
+        t = addTypedEllie("...i'm sorry. i'm just scared. keep going. i've got you.", t); // and she walks it back
         shelterForcedRef.current = true; // one-shot — this whole branch only fires the first "Keep moving"
         pendingRef.current.push(setT(() => {
           addMsg("narrator", "a doorway.", 200);
@@ -3813,7 +3849,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             "Go inside. Sleep. [-1 Food] [-1 Water]",
             "Bar the door and sleep. [+1 Noise] [-1 Food] [-1 Water]",
           ]); }, 3800));
-        }, 9000));
+        }, t + 900));
         return;
       }
 
