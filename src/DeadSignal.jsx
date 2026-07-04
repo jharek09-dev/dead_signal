@@ -1751,6 +1751,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const havenVisitedRef     = useRef([]); // Haven hub — destination ids already investigated this run
   const discoveryFoundRef   = useRef(false); // route discovery found this run — gates "move on" off the first route
   const pendingQuestionCardsRef = useRef([]);   // QUESTION cards awaiting the batch flush (simultaneous raises share one box)
+  const pendingPostQuestionNarrationRef = useRef([]); // narrator lines that must land after a reveal's QUESTION card
+  const pendingDeferredChoicesRef = useRef(null); // choices held until post-question narration has landed
   const qFlushArmedRef          = useRef(false); // fallback flush timer armed (choiceless flows; the stable-point effect is primary)
   const pendingCaseFileHintRef  = useRef(false); // once-per-slot "tap FILE" nudge rides the next flushed card
   const seenEncountersRef   = useRef(new Set()); // P6a — encounter ids seen this run (reduce repetition)
@@ -1842,6 +1844,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const clearPending = () => {
     pendingRef.current.forEach(clearT); pendingRef.current = [];
     dialogueRef.current.forEach(clearT); dialogueRef.current = [];
+    pendingPostQuestionNarrationRef.current = [];
+    pendingDeferredChoicesRef.current = null;
     // Pending question cards deliberately survive this: the fallback flush timer may die here,
     // but the stable-point effect re-flushes them — a fast tap can no longer lose a card.
     qFlushArmedRef.current = false;
@@ -1879,6 +1883,33 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // staggered stack splitting the dialogue. The flush lands at the stable point (choices shown,
   // typing settled — the same trigger as the autosave), so the burst reads uninterrupted; the
   // armed setT is only a fallback for choiceless flows.
+  const queuePostQuestionNarration = (text, delay = 500) => {
+    pendingPostQuestionNarrationRef.current = [...pendingPostQuestionNarrationRef.current, { text, delay }];
+  };
+
+  const flushDeferredChoices = (delay = 0) => {
+    const deferredChoices = pendingDeferredChoicesRef.current;
+    pendingDeferredChoicesRef.current = null;
+    if (!deferredChoices?.length) return;
+    pendingRef.current.push(setT(() => setChoices(deferredChoices), delay));
+  };
+
+  const flushPostQuestionNarration = () => {
+    const lines = pendingPostQuestionNarrationRef.current;
+    pendingPostQuestionNarrationRef.current = [];
+    if (!lines.length) {
+      flushDeferredChoices(100);
+      return;
+    }
+    let t = 0;
+    lines.forEach(({ text, delay = 500 }, i) => {
+      t += delay;
+      addMsg("narrator", text, t);
+      t += i === lines.length - 1 ? 900 : 650;
+    });
+    flushDeferredChoices(t + 100);
+  };
+
   const flushQuestionCards = () => {
     const cards = pendingQuestionCardsRef.current;
     if (!cards.length) return;
@@ -1888,6 +1919,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     pendingCaseFileHintRef.current = false;
     const body = cards.length === 1 ? { ...cards[0] } : { kind: "batch", cards };
     setMessages(p => [...p, { id: nextId("q"), from: "question_note", ...body, ...(hint ? { hint: true } : {}) }]);
+    flushPostQuestionNarration();
   };
   const armQuestionFlushFallback = () => {
     qFlushArmedRef.current = true;
@@ -2442,7 +2474,15 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     });
     const visibleChoices = capVisibleChoices(choiceList, `scheduleMessages:${msgType}`);
     const choiceDelay = msgType === "ellie" ? ellieChatPacing(msgs[msgs.length - 1] || "").choiceDelayMs : 80;
-    if (visibleChoices?.length) dialogueRef.current.push(setT(() => setChoices(visibleChoices), t + choiceDelay));
+    if (visibleChoices?.length) dialogueRef.current.push(setT(() => {
+      if (pendingQuestionCardsRef.current.length || pendingPostQuestionNarrationRef.current.length) {
+        pendingDeferredChoicesRef.current = visibleChoices;
+        if (pendingQuestionCardsRef.current.length) flushQuestionCards();
+        else flushPostQuestionNarration();
+        return;
+      }
+      setChoices(visibleChoices);
+    }, t + choiceDelay));
     return t;
   };
 
@@ -3130,7 +3170,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         showDay1Hub(["okay.", "name's ellie.", "i found this phone in our stairwell two days ago.", "it belonged to kim. she was already gone.", "i didn't think anyone was going to answer it."], "ellie",
           (text) => {
             if (/ellie/i.test(text)) setContactName("ELLIE");
-            if (/answer it/i.test(text)) addMsg("narrator", "somewhere in the apartment, under the quiet, a voice repeats through static.", 0);
+            if (/answer it/i.test(text)) queuePostQuestionNarration("somewhere in the apartment, under the quiet, a voice repeats through static.");
           });
       } else {
         showDay1Hub(["still me.", "still not a great time for introductions.", "find the static. that's the part that matters tonight."], "ellie");
