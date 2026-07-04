@@ -14,7 +14,7 @@ const INTRO_LINES = [
 const NOTIF_DELAY = 11400;
 
 const DAY1_OPENING = {
-  msgs: ["found a phone. don't know whose.", "you were the last call on it. you still alive?"],
+  msgs: ["found a phone in the stairwell.", "you were the last call on it. you still alive?"],
   choices: ["Yeah. I'm here. I don't remember anything.", "Alive. I don't know where I am or what happened."],
 };
 
