@@ -1423,6 +1423,8 @@ const parseText = (text, ctx = "button") => {
       const inner = tok.slice(1, -1).trim();
       const low   = inner.toLowerCase();
       let color;
+      let display = tok; // tier tags render as one word — the color carries the tier
+      let hint;          // hover/assistive fallback since the word alone no longer does
       // Resource impact coloring (sign-prefixed markers first)
       if (low.startsWith("+") && low.includes("noise")) color = "#c8a020";       // +Noise = yellow warning
       else if (low.startsWith("-") && low.includes("noise")) color = "#4a9e6b";  // -Noise = green
@@ -1432,16 +1434,18 @@ const parseText = (text, ctx = "button") => {
       else if (low.includes("memory fragment") || low === "memory") color = "#4a9e6b";
       else if (low.includes("project haven") || low.includes("discovery") || low.includes("examine") || low.includes("clue")) color = "#4ab5c8";
       // Risk tiers — EXACT match only: "[open highway]" contains "high", so
-      // substring matching here would repaint the route-branch button.
-      else if (low === "low")                      color = "#4a9e6b";
-      else if (low === "med" || low === "costly")  color = "#c8a020";
-      else if (low === "high")                     color = "#8b4a4a";
-      // Risk / warning (legacy [risk] kept as fallback: pre-feature saves can
-      // restore literal [risk] choice strings — they should still render sanely)
+      // substring matching here would repaint the route-branch button. All three
+      // graded tiers display as [RISK]; green/yellow/red differentiates (Jharek).
+      else if (low === "low")    { color = "#4a9e6b"; display = "[RISK]"; hint = "low risk"; }
+      else if (low === "med")    { color = "#c8a020"; display = "[RISK]"; hint = "medium risk"; }
+      else if (low === "high")   { color = "#8b4a4a"; display = "[RISK]"; hint = "high risk"; }
+      else if (low === "costly") color = "#c8a020"; // COSTLY = flat cost, not odds — keeps its word
+      // Legacy [risk] (pre-feature saves can restore literal [risk] labels) — unify the look
+      else if (low === "risk")   { color = "#c8a020"; display = "[RISK]"; hint = "risk"; }
       else if (low.includes("risk") || low.includes("attracts")) color = "#c8a020";
       // Neutral actions (collect, pick up, equip) + default
       else color = ctx === "button" ? "#4a9e6b" : "#8fba8f";
-      return <span key={i} style={{ color }}>{tok}</span>;
+      return <span key={i} style={{ color }} title={hint}>{display}</span>;
     }
     if (tok.startsWith("*") && tok.endsWith("*"))
       return <em key={i} style={{ fontStyle: "italic", opacity: 0.65 }}>{tok.slice(1, -1)}</em>;
