@@ -1,9 +1,11 @@
+> **ARCHIVED / HISTORICAL.** The completed M0–M8 AI-removal + battery-economy execution plan, moved here from the repo root during the docs reorganization (2026-07-06). Superseded by the living [Production Plan](PRODUCTION.md); kept for the record.
+
 > ⚠ **HISTORICAL — COMPLETE & SUPERSEDED.** This is the finished M0–M8 roadmap for the
 > AI-removal + battery-economy work. The `remove-ai-battery-economy` branch is long since
 > merged/deleted, and the line numbers + some constants below are out of date (e.g.
 > `HAVEN_BATTERY_FLOOR` / `CHARGER +35` were later replaced by `HAVEN_BATTERY_CACHE=45` /
-> `CHARGER_FIND=20`). Kept for the record. Living design canon: [`STORY.md`](STORY.md);
-> current product status: [`prd.md`](prd.md).
+> `CHARGER_FIND=20`). Kept for the record. Living design canon: [`STORY.md`](../narrative/STORY.md);
+> current product status: [`prd.md`](../product/PRD.md).
 
 # Dead Signal — Execution Plan (Removing AI + Battery Economy)
 

@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dead Signal — UI Wireframes</title>
+<style>
+  :root{--bg:#0b0c0b;--panel:#101210;--ink:#d7d8d2;--dim:#8a8a84;--green:#4a9e6b;--line:#1d3a22;--cyan:#4ab5c8;}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1200px 700px at 50% -10%,#12140f 0%,var(--bg) 60%);
+    color:var(--ink);font-family:'IBM Plex Mono',ui-monospace,'Courier New',monospace;line-height:1.55;
+    -webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  /* top bar */
+  header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
+    gap:16px;flex-wrap:wrap;padding:12px clamp(16px,4vw,40px);
+    background:rgba(9,10,9,.82);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .brand{font-weight:700;letter-spacing:.18em;font-size:15px}
+  .brand .d{color:#5a5a5a} .brand .s{color:var(--green);text-shadow:0 0 10px rgba(74,158,107,.6),0 0 26px rgba(74,158,107,.25)}
+  nav{display:flex;gap:4px;flex-wrap:wrap}
+  nav a{font-size:12px;letter-spacing:.12em;color:var(--dim);padding:5px 9px;border:1px solid transparent;border-radius:4px;transition:.15s}
+  nav a:hover{color:var(--green)}
+  nav a.active{color:var(--green);border-color:var(--line);background:rgba(74,158,107,.07)}
+  /* hero */
+  .hero{max-width:1040px;margin:0 auto;padding:48px clamp(16px,4vw,40px) 8px}
+  .hero h1{margin:0 0 8px;font-size:clamp(26px,5vw,40px);letter-spacing:.06em}
+  .hero h1 .s{color:var(--green);text-shadow:0 0 12px rgba(74,158,107,.5)}
+  .hero p{margin:0;color:var(--dim);font-size:14px}
+  .hero .meta{margin-top:14px;font-size:12px;color:#6a6a64;letter-spacing:.08em}
+  /* sections */
+  main{max-width:1040px;margin:0 auto;padding:20px clamp(16px,4vw,40px) 80px}
+  .wf{padding-top:40px;scroll-margin-top:76px}
+  .wf-head{display:flex;align-items:baseline;gap:16px;margin-bottom:14px}
+  .wf-n{font-size:clamp(28px,5vw,44px);font-weight:700;color:var(--green);
+    text-shadow:0 0 14px rgba(74,158,107,.35);line-height:1}
+  .wf-t{margin:0;font-size:clamp(15px,2.4vw,19px);letter-spacing:.04em}
+  .wf-d{margin:4px 0 0;color:var(--dim);font-size:13px}
+  .wf-tag{display:inline-block;margin:6px 0 0;font-size:11px;letter-spacing:.14em;color:var(--cyan);
+    border:1px solid rgba(74,181,200,.4);border-radius:3px;padding:2px 7px;
+    text-shadow:0 0 8px rgba(74,181,200,.3)}
+  .wf-card{background:#f5f5f2;border:1px solid rgba(74,158,107,.22);border-radius:14px;
+    padding:14px;box-shadow:0 10px 34px rgba(0,0,0,.45)}
+  .wf-card img,.wf-card svg{display:block;width:100%;height:auto;border-radius:6px}
+  /* footer */
+  footer{max-width:1040px;margin:0 auto;padding:28px clamp(16px,4vw,40px) 60px;border-top:1px solid #1a1a18;color:#6a6a64;font-size:12px}
+  .sw{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0}
+  .sw span{display:inline-flex;align-items:center;gap:7px}
+  .sw i{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid rgba(255,255,255,.12)}
+  .v2note{margin-top:16px;padding:12px 14px;border:1px solid rgba(74,181,200,.28);border-radius:8px;
+    background:rgba(74,181,200,.04);color:#8a9aa0;font-size:12px;line-height:1.6}
+  .v2note b{color:var(--cyan);letter-spacing:.08em}
+  /* back to top */
+  #top{position:fixed;right:20px;bottom:20px;width:42px;height:42px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;background:rgba(74,158,107,.14);
+    border:1px solid var(--green);color:var(--green);cursor:pointer;opacity:0;pointer-events:none;transition:.2s;font-size:16px}
+  #top.show{opacity:1;pointer-events:auto}
+  @media(max-width:560px){.brand{font-size:13px} nav a{padding:4px 6px}}
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="d">DEAD</span><span class="s">SIGNAL</span></div>
+    <nav>
+      <a href="#wf1" data-t="wf1">01</a>
+      <a href="#wf2" data-t="wf2">02</a>
+      <a href="#wf3" data-t="wf3">03</a>
+      <a href="#wf4" data-t="wf4">04</a>
+      <a href="#wf5" data-t="wf5">05</a>
+      <a href="#wf6" data-t="wf6">06</a>
+      <a href="#wf7" data-t="wf7">07</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>UI <span class="s">Wireframes</span></h1>
+    <p>The core screens of Dead Signal — a deterministic text-message survival mystery.</p>
+    <div class="meta">7 SCREENS · ONE SELF-CONTAINED FILE · v1.2 · 2026-07-06 · 01–06 from the shipped UI · 04 + 07 are Expansion v2 · build: PLANNED</div>
+  </div>
+
+  <main>
+
+    <!-- ============================================================ 01 -->
+    <section class="wf" id="wf1">
+      <div class="wf-head">
+        <span class="wf-n">01</span>
+        <div><h2 class="wf-t">Title / Main Menu</h2><p class="wf-d">The first screen — wordmark plus START / LOAD / STORY / OPTIONS.</p></div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Title / main menu wireframe">
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .cap{fill:#2f2f2c;font-size:13px}.sub{fill:#7a7a74;font-size:11px}
+      .num{fill:#fff;font-size:12px;font-weight:700}.lg{fill:#2f2f2c;font-size:13px}
+      .lgh{fill:#1a1a18;font-size:13px;font-weight:700}.tiny{fill:#8a8a84;font-size:10px}
+    </style>
+  </defs>
+  <rect width="1000" height="700" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">01 · TITLE / MAIN MENU</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · the first screen</text>
+
+  <!-- phone -->
+  <rect x="100" y="96" width="300" height="560" rx="34" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="112" y="108" width="276" height="536" rx="24" fill="#070707"/>
+
+  <!-- logo -->
+  <text x="250" y="250" text-anchor="middle" font-size="27" font-weight="700" letter-spacing="3">
+    <tspan fill="#4a4a4a">DEAD</tspan><tspan fill="#4a9e6b" filter="url(#glow)">SIGNAL</tspan>
+  </text>
+  <text x="250" y="276" text-anchor="middle" class="tiny" letter-spacing="2">A TEXT-MESSAGE SURVIVAL MYSTERY</text>
+
+  <!-- menu buttons -->
+  <g letter-spacing="2.5">
+    <rect x="150" y="330" width="200" height="34" rx="2" fill="none" stroke="#1d3a22"/>
+    <text x="250" y="352" text-anchor="middle" fill="#4a9e6b" font-size="12">&#9656;&#160;&#160;START</text>
+    <rect x="150" y="374" width="200" height="34" rx="2" fill="none" stroke="#1d3a22"/>
+    <text x="250" y="396" text-anchor="middle" fill="#4a9e6b" font-size="12">&#9656;&#160;&#160;CONTINUE</text>
+    <rect x="150" y="418" width="200" height="34" rx="2" fill="none" stroke="#1d3a22"/>
+    <text x="250" y="440" text-anchor="middle" fill="#4a9e6b" font-size="12">&#9656;&#160;&#160;STORY</text>
+    <rect x="150" y="462" width="200" height="34" rx="2" fill="none" stroke="#1d3a22"/>
+    <text x="250" y="484" text-anchor="middle" fill="#4a9e6b" font-size="12">&#9656;&#160;&#160;OPTIONS</text>
+  </g>
+  <!-- hover example -->
+  <rect x="150" y="330" width="200" height="34" rx="2" fill="none" stroke="#4a9e6b" stroke-width="1.5"/>
+
+  <!-- callout markers -->
+  <g><circle cx="133" cy="243" r="11" fill="#4a9e6b"/><text x="133" y="247" text-anchor="middle" class="num">1</text></g>
+  <g><circle cx="366" cy="347" r="11" fill="#4a9e6b"/><text x="366" y="351" text-anchor="middle" class="num">2</text></g>
+  <g><circle cx="366" cy="391" r="11" fill="#4a9e6b"/><text x="366" y="395" text-anchor="middle" class="num">3</text></g>
+  <g><circle cx="128" cy="620" r="11" fill="#4a9e6b"/><text x="128" y="624" text-anchor="middle" class="num">4</text></g>
+
+  <!-- legend -->
+  <g transform="translate(470,150)">
+    <g><circle cx="0" cy="-4" r="11" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">1</text></g>
+    <text x="24" y="0" class="lgh">WORDMARK</text>
+    <text x="24" y="20" class="lg">DEAD in dead-grey #4a4a4a + SIGNAL in live</text>
+    <text x="24" y="38" class="lg">green #4a9e6b (glow + slow 3s sigpulse breathe).</text>
+    <text x="24" y="56" class="lg">The premise encoded in one word.</text>
+
+    <g transform="translate(0,92)"><circle cx="0" cy="-4" r="11" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">2</text></g>
+    <text x="24" y="92" class="lgh">MENU BUTTONS (.rb)</text>
+    <text x="24" y="112" class="lg">Transparent fill · 1px dim-green border #1d3a22 ·</text>
+    <text x="24" y="130" class="lg">green uppercase text · wide tracking. Hover lights</text>
+    <text x="24" y="148" class="lg">border + text to full #4a9e6b (shown on START).</text>
+
+    <g transform="translate(0,184)"><circle cx="0" cy="-4" r="11" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">3</text></g>
+    <text x="24" y="184" class="lgh">CONDITIONAL CONTINUE / LOAD</text>
+    <text x="24" y="204" class="lg">Shown only when a save exists. Three save slots,</text>
+    <text x="24" y="222" class="lg">each with its own profile + progress.</text>
+
+    <g transform="translate(0,258)"><circle cx="0" cy="-4" r="11" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">4</text></g>
+    <text x="24" y="258" class="lgh">CANVAS &amp; TYPE</text>
+    <text x="24" y="278" class="lg">#070707 near-black everywhere · one typeface,</text>
+    <text x="24" y="296" class="lg">IBM Plex Mono · portrait, phone-locked (no scroll).</text>
+  </g>
+
+  <text x="470" y="640" class="tiny">Terminal-noir · restraint · the green is the only thing alive on a dead screen.</text>
+</svg>
+      </div>
+    </section>
+
+    <!-- ============================================================ 02 -->
+    <section class="wf" id="wf2">
+      <div class="wf-head">
+        <span class="wf-n">02</span>
+        <div><h2 class="wf-t">Core Gameplay — Chat + HUD</h2><p class="wf-d">The screen the whole game is played on: messages, HUD, vitals, choices.</p></div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Core gameplay chat and HUD wireframe">
+  <defs><style>
+    .sub{fill:#7a7a74;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:700}
+    .lg{fill:#2f2f2c;font-size:12.5px}.lgh{fill:#1a1a18;font-size:13px;font-weight:700}
+    .tiny{fill:#8a8a84;font-size:10px}.msg{fill:#cfcfc7;font-size:11px}
+  </style></defs>
+  <rect width="1000" height="720" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">02 · CORE GAMEPLAY — CHAT + HUD</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · the screen the whole game is played on</text>
+
+  <!-- phone -->
+  <rect x="100" y="96" width="300" height="576" rx="34" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="112" y="108" width="276" height="552" rx="24" fill="#070707"/>
+
+  <!-- HUD bar -->
+  <text x="126" y="130" fill="#4a9e6b" font-size="10" letter-spacing="1">&#9612;&#9612;&#9613; SIGNAL</text>
+  <text x="374" y="130" text-anchor="end" fill="#c8a020" font-size="10" letter-spacing="1">34% &#9611;</text>
+  <!-- contact header -->
+  <text x="250" y="156" text-anchor="middle" fill="#4a9e6b" font-size="13" letter-spacing="3">ELLIE</text>
+  <line x1="124" y1="168" x2="376" y2="168" stroke="#1c1c1c"/>
+
+  <!-- chat -->
+  <rect x="124" y="182" width="182" height="30" rx="6" fill="#1c1c1c"/>
+  <text x="134" y="201" class="msg">you're still here. good.</text>
+  <rect x="124" y="220" width="214" height="30" rx="6" fill="#1c1c1c"/>
+  <text x="134" y="239" class="msg">keep moving. it won't last.</text>
+  <text x="250" y="278" text-anchor="middle" fill="#8a8a84" font-size="10.5" font-style="italic">— the stairwell breathes below you —</text>
+  <rect x="124" y="296" width="150" height="30" rx="6" fill="#1c1c1c"/>
+  <text x="134" y="315" class="msg">don't stop.</text>
+
+  <!-- vitals bar -->
+  <rect x="124" y="420" width="252" height="42" rx="3" fill="none" stroke="#2a2a2a"/>
+  <text x="134" y="438" fill="#8a8a7a" font-size="9.5" letter-spacing="0.5">BAT 34%  CHRG 20%  FOOD 3</text>
+  <text x="134" y="453" fill="#8a8a7a" font-size="9.5" letter-spacing="0.5">WATER 2   HP 8   NOISE &#9642;&#9642;&#9643;</text>
+
+  <!-- choices -->
+  <rect x="124" y="474" width="252" height="30" rx="2" fill="none" stroke="#1d3a22"/>
+  <text x="134" y="493" fill="#4a9e6b" font-size="10.5" letter-spacing="1">KEEP CLIMBING</text>
+  <rect x="124" y="510" width="252" height="30" rx="2" fill="none" stroke="#1d3a22"/>
+  <text x="134" y="529" fill="#4a9e6b" font-size="10.5" letter-spacing="1">SEARCH THE LANDING</text>
+  <text x="366" y="529" text-anchor="end" fill="#4a9e6b" font-size="9">[+? FOOD]</text>
+  <rect x="124" y="546" width="252" height="30" rx="2" fill="none" stroke="#4a351b"/>
+  <text x="134" y="565" fill="#c89a58" font-size="10.5" letter-spacing="1">CALL OUT</text>
+  <text x="366" y="565" text-anchor="end" fill="#c8a020" font-size="9">[MED]</text>
+  <!-- file button -->
+  <rect x="124" y="590" width="252" height="28" rx="2" fill="none" stroke="#2a2a2a"/>
+  <text x="250" y="608" text-anchor="middle" fill="#6a6a6a" font-size="10" letter-spacing="2">&#9636; CASE FILE</text>
+
+  <!-- markers -->
+  <g><circle cx="112" cy="126" r="10" fill="#4a9e6b"/><text x="112" y="130" text-anchor="middle" class="num">1</text></g>
+  <g><circle cx="250" cy="140" r="10" fill="#4a9e6b"/><text x="250" y="144" text-anchor="middle" class="num">2</text></g>
+  <g><circle cx="322" cy="197" r="10" fill="#4a9e6b"/><text x="322" y="201" text-anchor="middle" class="num">3</text></g>
+  <g><circle cx="108" cy="274" r="10" fill="#4a9e6b"/><text x="108" y="278" text-anchor="middle" class="num">4</text></g>
+  <g><circle cx="108" cy="441" r="10" fill="#4a9e6b"/><text x="108" y="445" text-anchor="middle" class="num">5</text></g>
+  <g><circle cx="108" cy="525" r="10" fill="#4a9e6b"/><text x="108" y="529" text-anchor="middle" class="num">6</text></g>
+  <g><circle cx="108" cy="604" r="10" fill="#4a9e6b"/><text x="108" y="608" text-anchor="middle" class="num">7</text></g>
+
+  <!-- legend -->
+  <g transform="translate(468,118)">
+    <g><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">1</text></g>
+    <text x="22" y="0" class="lgh">HUD CORNERS</text>
+    <text x="22" y="18" class="lg">Signal + battery, corner-anchored so they never</text>
+    <text x="22" y="34" class="lg">fight the conversation. Battery pulses on change.</text>
+
+    <g transform="translate(0,64)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">2</text></g>
+    <text x="22" y="64" class="lgh">CONTACT HEADER</text>
+    <text x="22" y="82" class="lg">The saved contact — flips KIM &#8594; ELLIE mid-</text>
+    <text x="22" y="98" class="lg">prologue. State-derived location labels.</text>
+
+    <g transform="translate(0,128)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">3</text></g>
+    <text x="22" y="128" class="lgh">GUIDE MESSAGES</text>
+    <text x="22" y="146" class="lg">Left, lowercase, human-paced (a blip on arrival).</text>
+    <text x="22" y="162" class="lg">Dim panel #1c1c1c; never bright.</text>
+
+    <g transform="translate(0,192)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">4</text></g>
+    <text x="22" y="192" class="lgh">NARRATION</text>
+    <text x="22" y="210" class="lg">Centered + italic = the world's voice, visibly not</text>
+    <text x="22" y="226" class="lg">the phone UI. Protects the frame.</text>
+
+    <g transform="translate(0,256)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">5</text></g>
+    <text x="22" y="256" class="lgh">VITALS BAR</text>
+    <text x="22" y="274" class="lg">BAT · CHRG · FOOD · WATER · HP · NOISE.</text>
+    <text x="22" y="290" class="lg">Uppercase registers; dim until they matter.</text>
+
+    <g transform="translate(0,320)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">6</text></g>
+    <text x="22" y="320" class="lgh">CHOICES — INTENT-CODED</text>
+    <text x="22" y="338" class="lg">Green = safe/quiet; amber frame = a gamble. Tags</text>
+    <text x="22" y="354" class="lg">[+? FOOD] / [MED] are HUD register — never spoken.</text>
+
+    <g transform="translate(0,384)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">7</text></g>
+    <text x="22" y="384" class="lgh">CASE FILE (FILE)</text>
+    <text x="22" y="402" class="lg">Opens the investigation board + journal (see 04).</text>
+  </g>
+</svg>
+      </div>
+    </section>
+
+    <!-- ============================================================ 03 -->
+    <section class="wf" id="wf3">
+      <div class="wf-head">
+        <span class="wf-n">03</span>
+        <div><h2 class="wf-t">Encounter — Risk Tiers</h2><p class="wf-d">A hazard interrupt with readable, computed odds (LOW / MED / HIGH / COSTLY).</p></div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1000 660" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Encounter risk tiers wireframe">
+  <defs><style>
+    .sub{fill:#7a7a74;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:700}
+    .lg{fill:#2f2f2c;font-size:12.5px}.lgh{fill:#1a1a18;font-size:13px;font-weight:700}
+    .tiny{fill:#8a8a84;font-size:10px}
+  </style></defs>
+  <rect width="1000" height="660" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">03 · ENCOUNTER — RISK TIERS</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · a hazard interrupt with readable, computed odds</text>
+
+  <rect x="100" y="96" width="300" height="520" rx="34" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="112" y="108" width="276" height="496" rx="24" fill="#070707"/>
+
+  <!-- hud -->
+  <text x="126" y="132" fill="#8b4a4a" font-size="10" letter-spacing="1">NOISE &#9642;&#9642;&#9642;</text>
+  <text x="374" y="132" text-anchor="end" fill="#6a6a6a" font-size="10" letter-spacing="1">CROWBAR</text>
+  <line x1="124" y1="144" x2="376" y2="144" stroke="#1c1c1c"/>
+
+  <!-- narration -->
+  <text x="250" y="188" text-anchor="middle" fill="#9a9a92" font-size="11" font-style="italic">— something moves in the dark ahead —</text>
+  <text x="250" y="210" text-anchor="middle" fill="#8a8a84" font-size="10.5" font-style="italic">it hasn't seen you. not yet.</text>
+
+  <!-- choices with tiers -->
+  <g font-size="11" letter-spacing="1">
+    <rect x="124" y="270" width="252" height="34" rx="2" fill="none" stroke="#1d3a22"/>
+    <text x="136" y="292" fill="#4a9e6b">SNEAK PAST</text><text x="364" y="292" text-anchor="end" fill="#4a9e6b" font-size="10">[LOW]</text>
+    <rect x="124" y="312" width="252" height="34" rx="2" fill="none" stroke="#4a351b"/>
+    <text x="136" y="334" fill="#c89a58">RUN</text><text x="364" y="334" text-anchor="end" fill="#c8a020" font-size="10">[MED]</text>
+    <rect x="124" y="354" width="252" height="34" rx="2" fill="none" stroke="#5a2020"/>
+    <text x="136" y="376" fill="#e08a8a">FIGHT</text><text x="364" y="376" text-anchor="end" fill="#8b4a4a" font-size="10">[HIGH]</text>
+    <rect x="124" y="396" width="252" height="34" rx="2" fill="none" stroke="#2a2a2a"/>
+    <text x="136" y="418" fill="#7a7a7a">FORCE THROUGH</text><text x="364" y="418" text-anchor="end" fill="#6a6a6a" font-size="10">[COSTLY]</text>
+  </g>
+  <text x="250" y="470" text-anchor="middle" class="tiny">the odds you see are the odds that roll.</text>
+
+  <!-- markers -->
+  <g><circle cx="250" cy="176" r="10" fill="#4a9e6b"/><text x="250" y="180" text-anchor="middle" class="num">1</text></g>
+  <g><circle cx="108" cy="287" r="10" fill="#4a9e6b"/><text x="108" y="291" text-anchor="middle" class="num">2</text></g>
+  <g><circle cx="108" cy="413" r="10" fill="#4a9e6b"/><text x="108" y="417" text-anchor="middle" class="num">3</text></g>
+  <g><circle cx="392" cy="132" r="10" fill="#4a9e6b"/><text x="392" y="136" text-anchor="middle" class="num">4</text></g>
+
+  <!-- legend -->
+  <g transform="translate(470,150)">
+    <g><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">1</text></g>
+    <text x="22" y="0" class="lgh">ENCOUNTER INTERRUPT</text>
+    <text x="22" y="18" class="lg">A hazard breaks into the leg, resolves, and returns</text>
+    <text x="22" y="34" class="lg">control to the exploration it spawned from.</text>
+
+    <g transform="translate(0,66)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">2</text></g>
+    <text x="22" y="66" class="lgh">COMPUTED RISK TIERS</text>
+    <text x="22" y="84" class="lg">[LOW] green / [MED] amber / [HIGH] red — derived</text>
+    <text x="22" y="100" class="lg">from the SAME odds functions the roll uses</text>
+    <text x="22" y="116" class="lg">(pSneak / pRun / pFight). One source of truth.</text>
+
+    <g transform="translate(0,148)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">3</text></g>
+    <text x="22" y="148" class="lgh">FORCE — [COSTLY]</text>
+    <text x="22" y="166" class="lg">A no-roll, guaranteed outcome. Spend resources to</text>
+    <text x="22" y="182" class="lg">skip the gamble entirely.</text>
+
+    <g transform="translate(0,214)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">4</text></g>
+    <text x="22" y="214" class="lgh">INPUTS: NOISE + WEAPON</text>
+    <text x="22" y="232" class="lg">Louder = worse odds; a better weapon raises FIGHT.</text>
+    <text x="22" y="248" class="lg">Route profile tunes how noise carries. Tags are HUD</text>
+    <text x="22" y="264" class="lg">register — the guide never speaks them.</text>
+
+    <rect x="0" y="292" width="470" height="66" rx="3" fill="#efeae0" stroke="#d8cbb0"/>
+    <text x="14" y="314" fill="#8a6a2a" font-size="12" font-weight="700">&#9888; INTERNAL — combat's meaning</text>
+    <text x="14" y="332" fill="#6a5a3a" font-size="11.5">Kept deliberately shallow. Phase 3 (Research Annex)</text>
+    <text x="14" y="348" fill="#6a5a3a" font-size="11.5">reveals every FIGHT was a half-connected person. Not celebrated.</text>
+  </g>
+</svg>
+      </div>
+    </section>
+
+    <!-- ============================================================ 04 -->
+    <section class="wf" id="wf4">
+      <div class="wf-head">
+        <span class="wf-n">04</span>
+        <div>
+          <h2 class="wf-t">Case File — Board + Journal</h2>
+          <p class="wf-d">The investigation layer: the evidence board, the journal of facts &amp; questions, and (Expansion&nbsp;v2) the ECHOES lane + truth-by-assembly.</p>
+          <span class="wf-tag">Board additions · Expansion v2 · build: PLANNED</span>
+        </div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1000 760" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Case file board and journal wireframe with Expansion v2 Echoes lane and truth-by-assembly">
+  <defs><style>
+    .sub{fill:#7a7a74;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:700}
+    .lg{fill:#2f2f2c;font-size:12px}.lgh{fill:#1a1a18;font-size:13px;font-weight:700}
+    .tiny{fill:#8a8a84;font-size:10px}.py{fill:#c8b896;font-size:10px}.lock{fill:#4a4a4a;font-size:10px}
+    /* Expansion v2 · ECHOES — transmission, not paper (cold-cyan axis) */
+    .ec{fill:#4ab5c8;font-size:9.5px}.ecd{fill:#356a74;font-size:9px}.ecl{fill:#2e4a50;font-size:8px;letter-spacing:1px}
+    .v2h{fill:#2e6a74;font-size:13px;font-weight:700}.v2tag{fill:#4ab5c8;font-size:9px;letter-spacing:1px}
+  </style></defs>
+  <rect width="1000" height="760" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">04 · CASE FILE — BOARD + JOURNAL</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · the investigation layer (opened from FILE)</text>
+
+  <!-- BOARD panel -->
+  <rect x="70" y="100" width="250" height="560" rx="26" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="80" y="110" width="230" height="540" rx="18" fill="#070707"/>
+  <text x="120" y="140" fill="#4a9e6b" font-size="11" letter-spacing="2">BOARD</text>
+  <text x="215" y="140" fill="#3a3a3a" font-size="11" letter-spacing="2">JOURNAL</text>
+  <line x1="92" y1="150" x2="298" y2="150" stroke="#1c1c1c"/>
+  <text x="95" y="176" class="tiny" letter-spacing="1">MEMORIES 3/9   CLUES 1/3</text>
+  <!-- board grid -->
+  <g>
+    <rect x="95" y="188" width="95" height="40" rx="3" fill="#15130d" stroke="#3a3320"/><text x="103" y="205" class="py">the last call</text><text x="103" y="219" fill="#6a5f45" font-size="8">MEMORY</text>
+    <rect x="200" y="188" width="95" height="40" rx="3" fill="#0e0e0e" stroke="#2a2a2a"/><text x="235" y="212" class="lock">???</text>
+    <rect x="95" y="236" width="95" height="40" rx="3" fill="#0e0e0e" stroke="#2a2a2a"/><text x="130" y="260" class="lock">???</text>
+    <rect x="200" y="236" width="95" height="40" rx="3" fill="#15130d" stroke="#3a3320"/><text x="208" y="253" class="py">patient file</text><text x="208" y="267" fill="#6a5f45" font-size="8">CLUE</text>
+  </g>
+  <text x="95" y="300" class="tiny" letter-spacing="1">PEOPLE</text>
+  <rect x="95" y="308" width="200" height="30" rx="3" fill="#0e0e0e" stroke="#2a2a2a"/><text x="103" y="327" class="py">KIM<tspan fill="#6a6a6a"> — dead in the stairwell</tspan></text>
+  <text x="95" y="362" class="tiny" letter-spacing="1">LOCATIONS</text>
+  <rect x="95" y="370" width="200" height="30" rx="3" fill="#0e0e0e" stroke="#2a2a2a"/><text x="103" y="389" class="py">HAVEN<tspan fill="#6a6a6a"> — a broadcast. empty.</tspan></text>
+
+  <!-- ECHOES lane (Expansion v2 · PLANNED) — transmission, not paper -->
+  <text x="95" y="432" class="ecl">ECHOES</text><text x="146" y="432" class="v2tag">v2 · PLANNED</text>
+  <!-- Echo fragment 1 — Theo (degraded, cold-cyan, trailing cursor) -->
+  <rect x="95" y="440" width="200" height="42" rx="3" fill="#070c0d" stroke="#1e3a40" stroke-dasharray="3 3"/>
+  <text x="103" y="457" class="ec">mom says it's like a n<tspan fill="#2a565e">a</tspan>p on the bus<tspan fill="#2e6a74">&#183;&#183;&#183;</tspan><tspan fill="#4ab5c8">&#9612;</tspan></text>
+  <text x="103" y="473" class="ecd">THEO &#183; echo &#183; <tspan fill="#2a565e">recover</tspan>ing<tspan fill="#243f44">&#183;&#183;</tspan></text>
+  <!-- Echo fragment 2 — locked -->
+  <rect x="95" y="488" width="200" height="30" rx="3" fill="#060a0b" stroke="#182a2e" stroke-dasharray="3 3"/>
+  <text x="130" y="507" fill="#2e4a50" font-size="10">???</text><text x="150" y="507" class="ecl" font-size="7">&#183;&#183;&#183; no carrier</text>
+  <!-- Kim's absence — a NON-CARD. pure negative space, the one lane the Signal can't fill -->
+  <text x="95" y="536" class="ecl" fill="#243f44">— KIM —</text>
+  <line x1="95" y1="542" x2="295" y2="542" stroke="#141a1c" stroke-dasharray="2 4"/>
+  <text x="103" y="558" fill="#2a3234" font-size="9.5" font-style="italic">— no signal —</text>
+  <text x="103" y="572" fill="#242a2c" font-size="8.5">she isn't running.</text>
+
+  <!-- truth-by-assembly (Expansion v2 · PLANNED) — evidence -> contradiction -> TRUTH -->
+  <text x="95" y="600" class="ecl" fill="#3a4a40">TRUTH — ASSEMBLING</text><text x="205" y="600" class="v2tag" fill="#6aba8a">v2 · PLANNED</text>
+  <!-- two parchment evidence cards linked by a thin green rule to a resolved TRUTH -->
+  <rect x="95" y="608" width="70" height="26" rx="3" fill="#15130d" stroke="#3a3320"/><text x="101" y="624" class="py" font-size="8.5">gate log</text>
+  <rect x="95" y="636" width="70" height="26" rx="3" fill="#15130d" stroke="#3a3320"/><text x="101" y="652" class="py" font-size="8.5">143 present</text>
+  <!-- green rule drawing the link (evidence -> contradiction -> TRUTH) -->
+  <path d="M165 621 H188 V635" fill="none" stroke="#4a9e6b" stroke-width="1"/>
+  <path d="M165 649 H188 V635" fill="none" stroke="#4a9e6b" stroke-width="1"/>
+  <line x1="188" y1="635" x2="212" y2="635" stroke="#4a9e6b" stroke-width="1"/>
+  <rect x="212" y="620" width="86" height="30" rx="3" fill="#0b160f" stroke="#4a9e6b"/>
+  <text x="255" y="633" text-anchor="middle" fill="#7fffa0" font-size="9" letter-spacing="1">TRUTH</text>
+  <text x="255" y="645" text-anchor="middle" fill="#6aba8a" font-size="7">they walked out</text>
+
+  <!-- JOURNAL panel -->
+  <rect x="360" y="100" width="250" height="560" rx="26" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="370" y="110" width="230" height="540" rx="18" fill="#070707"/>
+  <text x="410" y="140" fill="#3a3a3a" font-size="11" letter-spacing="2">BOARD</text>
+  <text x="505" y="140" fill="#4a9e6b" font-size="11" letter-spacing="2">JOURNAL</text>
+  <line x1="382" y1="150" x2="588" y2="150" stroke="#1c1c1c"/>
+  <text x="385" y="176" fill="#8aaa90" font-size="10" letter-spacing="1">KNOWN FACTS</text>
+  <text x="388" y="196" fill="#9aba9a" font-size="9.5">&#183; Haven existed before the outbreak.</text>
+  <text x="388" y="212" fill="#9aba9a" font-size="9.5">&#183; You're tied to Mercy General.</text>
+  <text x="385" y="242" fill="#c8a878" font-size="10" letter-spacing="1">OPEN QUESTIONS</text>
+  <text x="388" y="262" fill="#c8b896" font-size="9.5">&#183; Who was Kim?</text>
+  <text x="388" y="278" fill="#c8b896" font-size="9.5">&#183; Why is Haven empty?</text>
+  <!-- contradiction (existing example, retained) -->
+  <rect x="385" y="300" width="200" height="86" rx="4" fill="#12100b" stroke="#4a351b"/>
+  <text x="395" y="320" fill="#c89a58" font-size="9" letter-spacing="1">CONTRADICTION</text>
+  <text x="395" y="338" fill="#8a8a84" font-size="9">Haven is empty.</text>
+  <text x="395" y="352" fill="#8a8a84" font-size="9">Board reads PRESENT 143.</text>
+  <text x="395" y="374" fill="#7fffa0" font-size="9.5">&#8594; Where are the 143?</text>
+
+  <!-- markers -->
+  <g><circle cx="70" cy="176" r="10" fill="#4a9e6b"/><text x="70" y="180" text-anchor="middle" class="num">1</text></g>
+  <g><circle cx="360" cy="176" r="10" fill="#4a9e6b"/><text x="360" y="180" text-anchor="middle" class="num">2</text></g>
+  <g><circle cx="360" cy="343" r="10" fill="#4a9e6b"/><text x="360" y="347" text-anchor="middle" class="num">3</text></g>
+  <g><circle cx="212" cy="208" r="10" fill="#4a9e6b"/><text x="212" y="212" text-anchor="middle" class="num">4</text></g>
+  <!-- Expansion v2 markers (cyan ring = planned) -->
+  <g><circle cx="70" cy="432" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="70" y="436" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">5</text></g>
+  <g><circle cx="70" cy="536" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="70" y="540" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">6</text></g>
+  <g><circle cx="70" cy="635" r="10" fill="#0e1a1d" stroke="#6aba8a" stroke-width="1.5"/><text x="70" y="639" text-anchor="middle" fill="#7fffa0" font-size="12" font-weight="700">7</text></g>
+
+  <!-- legend -->
+  <g transform="translate(650,140)">
+    <g><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">1</text></g>
+    <text x="22" y="0" class="lgh">BOARD</text>
+    <text x="22" y="18" class="lg">MEMORIES / CLUES / PEOPLE / LOCATIONS.</text>
+    <text x="22" y="34" class="lg">Locked entries read ??? and warm into parchment</text>
+    <text x="22" y="50" class="lg">as the matching fragment/clue is collected.</text>
+
+    <g transform="translate(0,78)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">2</text></g>
+    <text x="22" y="78" class="lgh">JOURNAL</text>
+    <text x="22" y="96" class="lg">KNOWN FACTS (proven) vs OPEN QUESTIONS</text>
+    <text x="22" y="112" class="lg">(not yet). Persists per save slot.</text>
+
+    <g transform="translate(0,140)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">3</text></g>
+    <text x="22" y="140" class="lgh">CONTRADICTION</text>
+    <text x="22" y="158" class="lg">Two facts that can't both be true pair into the</text>
+    <text x="22" y="174" class="lg">question they force. Reads like a board, not a</text>
+    <text x="22" y="190" class="lg">checklist (NEW / QUESTION UPDATED cards).</text>
+
+    <g transform="translate(0,218)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">4</text></g>
+    <text x="22" y="218" class="lgh">PARCHMENT — the warm exception</text>
+    <text x="22" y="236" class="lg">The one place the palette warms up: evidence in</text>
+    <text x="22" y="252" class="lg">manila tones, so it feels physical on the black desk.</text>
+
+    <!-- v2 legend entries -->
+    <g transform="translate(0,286)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">5</text></g>
+    <text x="22" y="286" class="v2h">ECHOES LANE<tspan class="v2tag">   Expansion v2 · PLANNED</tspan></text>
+    <text x="22" y="304" class="lg">A 5th board lane. An Echo is <tspan font-style="italic">transmission, not</tspan></text>
+    <text x="22" y="320" class="lg"><tspan font-style="italic">paper</tspan> — cold-cyan #4ab5c8 / #7accd4 on raw #070707,</text>
+    <text x="22" y="336" class="lg">NOT the manila family. Degraded &amp; fragmentary:</text>
+    <text x="22" y="352" class="lg">dropped chars, a trailing cursor, ··· gaps. Dim,</text>
+    <text x="22" y="368" class="lg">half-there — visibly unlike the warm MEMORY/CLUE.</text>
+
+    <g transform="translate(0,398)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">6</text></g>
+    <text x="22" y="398" class="v2h">KIM'S ABSENCE — a non-card<tspan class="v2tag">   v2</tspan></text>
+    <text x="22" y="416" class="lg">An empty / ghost slot reading — no signal — /</text>
+    <text x="22" y="432" class="lg">she isn't running. Pure negative space; the one</text>
+    <text x="22" y="448" class="lg">lane the Signal can't fill. Never built as a card.</text>
+
+    <g transform="translate(0,478)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#6aba8a" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#7fffa0" font-size="12" font-weight="700">7</text></g>
+    <text x="22" y="478" class="v2h" fill="#2e5a40">TRUTH-BY-ASSEMBLY<tspan class="v2tag" fill="#6aba8a">   v2 · PLANNED</tspan></text>
+    <text x="22" y="496" class="lg">Parchment evidence sits collected; a thin green</text>
+    <text x="22" y="512" class="lg">rule draws the link (evidence &#8594; the contradiction</text>
+    <text x="22" y="528" class="lg">they force &#8594; a resolved TRUTH in signal-green).</text>
+    <text x="22" y="544" class="lg">You see the case being built, evidence by evidence.</text>
+  </g>
+</svg>
+      </div>
+    </section>
+
+    <!-- ============================================================ 05 -->
+    <section class="wf" id="wf5">
+      <div class="wf-head">
+        <span class="wf-n">05</span>
+        <div><h2 class="wf-t">Phase 3 — Hub &amp; Spoke</h2><p class="wf-d">Haven hub plus four truth spokes, unlocked by progressive gating.</p></div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1050 660" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Phase 3 hub and spoke map wireframe">
+  <defs><style>
+    .sub{fill:#7a7a74;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:700}
+    .lg{fill:#2f2f2c;font-size:12px}.lgh{fill:#1a1a18;font-size:13px;font-weight:700}
+    .nn{font-size:11px;letter-spacing:1px}.nt{font-size:8.5px}
+    .v2h{fill:#2e6a74;font-size:13px;font-weight:700}.v2tag{fill:#4ab5c8;font-size:9px;letter-spacing:1px}
+  </style></defs>
+  <rect width="1050" height="660" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">05 · PHASE 3 — THE INVESTIGATION (HUB &amp; SPOKE)</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · Haven hub + four truth spokes, progressively gated</text>
+
+  <!-- map canvas -->
+  <rect x="56" y="92" width="580" height="516" rx="16" fill="#070707"/>
+
+  <!-- links (behind nodes) -->
+  <g stroke="#2f4a38" stroke-width="1.5">
+    <line x1="346" y1="350" x2="200" y2="210"/>
+    <line x1="346" y1="350" x2="492" y2="210"/>
+  </g>
+  <g stroke="#2a2a2a" stroke-width="1.5" stroke-dasharray="4 4">
+    <line x1="346" y1="350" x2="200" y2="490"/>
+    <line x1="346" y1="350" x2="492" y2="490"/>
+  </g>
+  <line x1="346" y1="350" x2="346" y2="540" stroke="#2f4a38" stroke-width="1.5" stroke-dasharray="3 5"/>
+
+  <!-- HAVEN hub -->
+  <rect x="286" y="322" width="120" height="56" rx="8" fill="#12251a" stroke="#4a9e6b" stroke-width="2"/>
+  <text x="346" y="346" text-anchor="middle" fill="#7fffa0" class="nn">THE HAVEN</text>
+  <text x="346" y="362" text-anchor="middle" fill="#6aba8a" class="nt">hub &#183; your base</text>
+
+  <!-- Mercy (available) -->
+  <rect x="140" y="184" width="120" height="52" rx="8" fill="#0e0e0e" stroke="#4a9e6b"/>
+  <text x="200" y="206" text-anchor="middle" fill="#4a9e6b" class="nn">MERCY GEN.</text>
+  <text x="200" y="222" text-anchor="middle" fill="#6a8a74" class="nt">truth: YOU &#183; open</text>
+
+  <!-- Comms (available) -->
+  <rect x="432" y="184" width="120" height="52" rx="8" fill="#0e0e0e" stroke="#4a9e6b"/>
+  <text x="492" y="206" text-anchor="middle" fill="#4a9e6b" class="nn">COMMS ARRAY</text>
+  <text x="492" y="222" text-anchor="middle" fill="#6a8a74" class="nt">truth: THE SIGNAL</text>
+
+  <!-- City Hall (locked) -->
+  <rect x="140" y="464" width="120" height="52" rx="8" fill="#0e0e0e" stroke="#3a3a3a"/>
+  <text x="200" y="486" text-anchor="middle" fill="#6a6a6a" class="nn">CITY HALL</text>
+  <text x="200" y="502" text-anchor="middle" fill="#5a5a5a" class="nt">gated: YOU truth</text>
+
+  <!-- Annex (locked) -->
+  <rect x="432" y="464" width="120" height="52" rx="8" fill="#0e0e0e" stroke="#3a3a3a"/>
+  <text x="492" y="486" text-anchor="middle" fill="#6a6a6a" class="nn">RESEARCH ANNEX</text>
+  <text x="492" y="502" text-anchor="middle" fill="#5a5a5a" class="nt">gated: 2 truths</text>
+
+  <!-- Finale (dashed) -->
+  <rect x="286" y="516" width="120" height="46" rx="8" fill="#0b140f" stroke="#4a9e6b" stroke-dasharray="5 4"/>
+  <text x="346" y="536" text-anchor="middle" fill="#6aba8a" class="nn">FINALE</text>
+  <text x="346" y="551" text-anchor="middle" fill="#4a6a54" class="nt">appears at 4 truths</text>
+
+  <!-- legend -->
+  <g transform="translate(670,132)">
+    <g><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">1</text></g>
+    <text x="22" y="0" class="lgh">HUB &amp; SPOKE</text>
+    <text x="22" y="18" class="lg">Phase 3 opens at Haven (your base). Pick a region</text>
+    <text x="22" y="34" class="lg">to investigate, in the order the gating allows.</text>
+
+    <g transform="translate(0,66)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">2</text></g>
+    <text x="22" y="66" class="lgh">NODE STATES</text>
+    <text x="22" y="84" class="lg">green border = available &#183; grey = locked/gated &#183;</text>
+    <text x="22" y="100" class="lg">filled green = truth uncovered. Solid link = open;</text>
+    <text x="22" y="116" class="lg">dashed = still gated.</text>
+
+    <g transform="translate(0,148)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">3</text></g>
+    <text x="22" y="148" class="lgh">GATING</text>
+    <text x="22" y="166" class="lg">Mercy + Comms open from Haven leads (any order).</text>
+    <text x="22" y="182" class="lg">City Hall is truth-gated on YOU; the Annex needs</text>
+    <text x="22" y="198" class="lg">2 truths uncovered.</text>
+
+    <g transform="translate(0,230)"><circle cx="0" cy="-4" r="10" fill="#4a9e6b"/><text x="0" y="0" text-anchor="middle" class="num">4</text></g>
+    <text x="22" y="230" class="lgh">ONE TRUTH EACH &#183; THEN THE FINALE</text>
+    <text x="22" y="248" class="lg">Every region pays off exactly one answer. The</text>
+    <text x="22" y="264" class="lg">finale appears at Haven's gate yard once all four</text>
+    <text x="22" y="280" class="lg">truths are uncovered.</text>
+
+    <!-- v2 light-touch note -->
+    <g transform="translate(0,312)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">5</text></g>
+    <text x="22" y="312" class="v2h">REGION DEPTH<tspan class="v2tag">   Expansion v2 · PLANNED</tspan></text>
+    <text x="22" y="330" class="lg">v2 deepens each region with a human sub-story and</text>
+    <text x="22" y="346" class="lg">~2&#215; nodes (~35 &#8594; ~65). Truths / gating / endings</text>
+    <text x="22" y="362" class="lg">are unchanged — the map above stays exactly as is.</text>
+  </g>
+</svg>
+      </div>
+    </section>
+
+    <!-- ============================================================ 06 -->
+    <section class="wf" id="wf6">
+      <div class="wf-head">
+        <span class="wf-n">06</span>
+        <div><h2 class="wf-t">Endings — Accept / Refuse</h2><p class="wf-d">Two definitive endings, neither a win — a color statement (green vs grey).</p></div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Endings accept versus refuse wireframe">
+  <defs><style>
+    .sub{fill:#7a7a74;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:700}
+    .lg{fill:#2f2f2c;font-size:12px}.lgh{fill:#1a1a18;font-size:13px;font-weight:700}
+    .tiny{fill:#8a8a84;font-size:10px}
+  </style></defs>
+  <rect width="1000" height="700" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">06 · ENDINGS — ACCEPT / REFUSE</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · two definitive endings, neither a win (SOMA-tone)</text>
+
+  <!-- ACCEPT -->
+  <text x="250" y="104" text-anchor="middle" class="lgh">ACCEPT &#8212; "Let her take you in."</text>
+  <rect x="130" y="120" width="240" height="440" rx="30" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="140" y="130" width="220" height="420" rx="22" fill="#070707"/>
+  <text x="250" y="300" text-anchor="middle" fill="#6a9a78" font-size="13">you went in.</text>
+  <text x="250" y="326" text-anchor="middle" fill="#6a9a78" font-size="13">you are not alone anymore.</text>
+  <text x="250" y="360" text-anchor="middle" fill="#6a9a78" font-size="12" opacity="0.85">you are not sure</text>
+  <text x="250" y="378" text-anchor="middle" fill="#6a9a78" font-size="12" opacity="0.85">you are anyone at all.</text>
+  <text x="250" y="430" text-anchor="middle" fill="#3a5a44" font-size="10" letter-spacing="3">&#8212; YOU ACCEPTED &#8212;</text>
+
+  <!-- REFUSE -->
+  <text x="640" y="104" text-anchor="middle" class="lgh">REFUSE &#8212; "Put the phone down."</text>
+  <rect x="520" y="120" width="240" height="440" rx="30" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="530" y="130" width="220" height="420" rx="22" fill="#070707"/>
+  <text x="640" y="310" text-anchor="middle" fill="#7a7a82" font-size="13">you stayed.</text>
+  <text x="640" y="336" text-anchor="middle" fill="#7a7a82" font-size="13">you are still yourself.</text>
+  <text x="640" y="370" text-anchor="middle" fill="#7a7a82" font-size="12" opacity="0.85">for as long as that lasts.</text>
+  <text x="640" y="430" text-anchor="middle" fill="#4a4a52" font-size="10" letter-spacing="3">&#8212; YOU REFUSED &#8212;</text>
+
+  <!-- legend row -->
+  <line x1="60" y1="588" x2="940" y2="588" stroke="#d8d8d2"/>
+  <g transform="translate(60,614)">
+    <text x="0" y="0" class="lgh">A COLOR STATEMENT</text>
+    <text x="0" y="20" class="lg">Accept goes into the green (the Signal wins, warm,</text>
+    <text x="0" y="36" class="lg">together). Refuse holds a cold blue-grey — mortal,</text>
+    <text x="0" y="52" class="lg">alone. Canvas stays #070707 for both.</text>
+  </g>
+  <g transform="translate(500,614)">
+    <text x="0" y="0" class="lgh">NEITHER WINS &#183; RECORDED &#183; SPOILER-SAFE</text>
+    <text x="0" y="20" class="lg">Both quiet, both fade in slowly (subtitle at +1.4s).</text>
+    <text x="0" y="36" class="lg">profile.ending = "accept" | "refuse"; replay the other.</text>
+    <text x="0" y="52" class="lg">Never shown in public copy or marketing.</text>
+  </g>
+</svg>
+      </div>
+    </section>
+
+    <!-- ============================================================ 07 -->
+    <section class="wf" id="wf7">
+      <div class="wf-head">
+        <span class="wf-n">07</span>
+        <div>
+          <h2 class="wf-t">Echoes — Recovered Minds</h2>
+          <p class="wf-d">The ECHOES category in detail — the Signal's minds given voice, recovered at Signal-dense nodes. Text only, never dressed for shock.</p>
+          <span class="wf-tag">Expansion v2 · build: PLANNED</span>
+        </div>
+      </div>
+      <div class="wf-card">
+<svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','Courier New',monospace" role="img" aria-label="Echoes recovered minds wireframe, Expansion v2 planned">
+  <defs><style>
+    .sub{fill:#7a7a74;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:700}
+    .lg{fill:#2f2f2c;font-size:12px}.lgh{fill:#1a1a18;font-size:13px;font-weight:700}
+    .tiny{fill:#8a8a84;font-size:10px}
+    /* ECHOES — cold-cyan / signal axis on raw #070707, degraded */
+    .ec{fill:#4ab5c8;font-size:11px}.ec2{fill:#7accd4;font-size:11px}.ecd{fill:#356a74;font-size:9px;letter-spacing:1px}
+    .ecl{fill:#2e4a50;font-size:8.5px;letter-spacing:1px}
+    .v2h{fill:#2e6a74;font-size:13px;font-weight:700}.v2tag{fill:#4ab5c8;font-size:9px;letter-spacing:1px}
+  </style></defs>
+  <rect width="1000" height="720" fill="#f4f4f2"/>
+  <text x="60" y="46" class="lgh" font-size="18">07 · ECHOES — RECOVERED MINDS</text>
+  <text x="60" y="66" class="sub">Dead Signal — UI wireframe · the ECHOES category · Expansion v2 · build: PLANNED</text>
+  <text x="740" y="46" text-anchor="end" fill="#4ab5c8" font-size="10" letter-spacing="1">EXPANSION v2 · PLANNED</text>
+  <rect x="746" y="34" width="14" height="14" rx="2" fill="none" stroke="#4ab5c8"/>
+  <text x="753" y="45" text-anchor="middle" fill="#4ab5c8" font-size="10">&#183;</text>
+
+  <!-- phone -->
+  <rect x="100" y="96" width="300" height="576" rx="34" fill="#141414" stroke="#bdbdb7" stroke-width="2"/>
+  <rect x="112" y="108" width="276" height="552" rx="24" fill="#070707"/>
+
+  <!-- header: BOARD > ECHOES on the cold axis -->
+  <text x="126" y="134" fill="#3a3a3a" font-size="10" letter-spacing="2">BOARD</text>
+  <text x="374" y="134" text-anchor="end" fill="#4ab5c8" font-size="10" letter-spacing="2">ECHOES</text>
+  <line x1="124" y1="146" x2="376" y2="146" stroke="#132a2e"/>
+  <text x="126" y="170" fill="#356a74" font-size="9" letter-spacing="1">RECOVERED 2/142   &#183;   1 LOCKED   &#183;   1 ABSENT</text>
+
+  <!-- Echo card 1 — THEO (the child): shortest, hardest, bare text -->
+  <rect x="124" y="184" width="252" height="58" rx="4" fill="#070d0e" stroke="#1e3a40" stroke-dasharray="3 3"/>
+  <text x="134" y="203" class="ec2">…is she coming too<tspan fill="#356a74">?</tspan><tspan fill="#4ab5c8">&#9612;</tspan></text>
+  <text x="134" y="220" class="ec" fill="#2f6470">a nap on the bus, mom sai<tspan fill="#204248">d</tspan><tspan fill="#2e6a74">&#183;&#183;&#183;</tspan></text>
+  <text x="134" y="235" class="ecl">THEO &#183; echo &#183; <tspan fill="#204248">frag</tspan>ment<tspan fill="#1c3a40">&#183;&#183;</tspan></text>
+
+  <!-- Echo card 2 — DR. SORKIN (the regretter): the numbers / you signed anyway -->
+  <rect x="124" y="252" width="252" height="66" rx="4" fill="#070d0e" stroke="#1e3a40" stroke-dasharray="3 3"/>
+  <text x="134" y="271" class="ec">i brought you the numbers</text>
+  <text x="134" y="286" class="ec">three times. <tspan fill="#2f6470">you sign</tspan>ed anyway<tspan fill="#2e6a74">&#183;&#183;&#183;</tspan><tspan fill="#4ab5c8">&#9612;</tspan></text>
+  <text x="134" y="303" class="ecl">DR. SORKIN &#183; echo &#183; <tspan fill="#204248">loop</tspan>ing</text>
+
+  <!-- Echo card 3 — PATIENT ZERO: cyan eaten nearly to nothing -->
+  <rect x="124" y="328" width="252" height="60" rx="4" fill="#060a0b" stroke="#152a2e" stroke-dasharray="2 4"/>
+  <text x="134" y="348" fill="#204248" font-size="11">i <tspan fill="#2a565e">was</tspan> the fir<tspan fill="#183238">s</tspan><tspan fill="#1c3a40">&#183;&#183;&#183;&#183;&#183;</tspan></text>
+  <text x="134" y="364" fill="#1c3a40" font-size="11">&#183;&#183;&#183;&#183;&#183;&#183;&#183;&#183;&#183; <tspan fill="#183238">how long</tspan> &#183;&#183;&#183;&#183;<tspan fill="#2a565e">&#9612;</tspan></text>
+  <text x="134" y="381" class="ecl" fill="#1c3a40">SUBJECT 001 &#183; oldest echo &#183; heavily corrupted</text>
+
+  <!-- Kim's absence — the empty slot (negative space) -->
+  <text x="126" y="418" class="ecl" fill="#243f44">— KIM —</text>
+  <line x1="124" y1="424" x2="376" y2="424" stroke="#101618" stroke-dasharray="2 5"/>
+  <rect x="124" y="430" width="252" height="46" rx="4" fill="#050708" stroke="#0e1416"/>
+  <text x="250" y="452" text-anchor="middle" fill="#2a3234" font-size="11" font-style="italic">— no signal —</text>
+  <text x="250" y="468" text-anchor="middle" fill="#222a2c" font-size="9">she isn't among the running minds.</text>
+
+  <!-- footer note in phone -->
+  <text x="250" y="520" text-anchor="middle" fill="#2e4a50" font-size="9" font-style="italic">recovered at signal-dense / powered nodes.</text>
+  <text x="250" y="536" text-anchor="middle" fill="#243f44" font-size="8.5">no portraits. no imagery. ever.</text>
+
+  <!-- markers -->
+  <g><circle cx="108" cy="213" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="108" y="217" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">1</text></g>
+  <g><circle cx="108" cy="285" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="108" y="289" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">2</text></g>
+  <g><circle cx="108" cy="358" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="108" y="362" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">3</text></g>
+  <g><circle cx="108" cy="453" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="108" y="457" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">4</text></g>
+
+  <!-- legend -->
+  <g transform="translate(430,132)">
+    <g><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">1</text></g>
+    <text x="22" y="0" class="v2h">THEO — the child</text>
+    <text x="22" y="18" class="lg">The shortest, hardest line in the game. Bare text</text>
+    <text x="22" y="34" class="lg">on black — it lands <tspan font-style="italic">because</tspan> it is undressed. No</text>
+    <text x="22" y="50" class="lg">photo of a child, no staged scene. Absolute rule.</text>
+
+    <g transform="translate(0,80)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">2</text></g>
+    <text x="22" y="80" class="v2h">DR. SORKIN — the regretter</text>
+    <text x="22" y="98" class="lg">A looped confession — the numbers brought, the</text>
+    <text x="22" y="114" class="lg">form signed anyway. Terse, lowercase, mid-thought;</text>
+    <text x="22" y="130" class="lg">never dressed for shock (STORY.md §4).</text>
+
+    <g transform="translate(0,160)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">3</text></g>
+    <text x="22" y="160" class="v2h">SUBJECT 001 — patient zero</text>
+    <text x="22" y="178" class="lg">The oldest, most degraded Echo — cyan eaten nearly</text>
+    <text x="22" y="194" class="lg">to nothing (the ceiling of the degraded styling).</text>
+    <text x="22" y="210" class="lg">The dread is the fragment, not gore. No body.</text>
+
+    <g transform="translate(0,240)"><circle cx="0" cy="-4" r="10" fill="#0e1a1d" stroke="#4ab5c8" stroke-width="1.5"/><text x="0" y="0" text-anchor="middle" fill="#4ab5c8" font-size="12" font-weight="700">4</text></g>
+    <text x="22" y="240" class="v2h">KIM — deliberately not an Echo</text>
+    <text x="22" y="258" class="lg">At the Signal Core the player looks for Kim among</text>
+    <text x="22" y="274" class="lg">the running minds — she isn't there. Rendered as an</text>
+    <text x="22" y="290" class="lg">empty slot / — no signal —: pure negative space,</text>
+    <text x="22" y="306" class="lg">the one lane the Signal can't fill. Never a card.</text>
+
+    <!-- summary box (cold, on the cyan axis) -->
+    <rect x="0" y="332" width="490" height="128" rx="4" fill="#e8eef0" stroke="#bcd2d8"/>
+    <text x="14" y="354" class="v2h" fill="#2e6a74">WHAT AN ECHO IS</text>
+    <text x="14" y="374" fill="#2a5560" font-size="11.5">Echoes = the Signal's 142 minds given voice — a fragment</text>
+    <text x="14" y="390" fill="#2a5560" font-size="11.5">the Signal keeps replaying (a frozen thread, a looped note).</text>
+    <text x="14" y="406" fill="#2a5560" font-size="11.5">Transmission, not paper: cold-cyan #4ab5c8 / #7accd4 on raw</text>
+    <text x="14" y="422" fill="#2a5560" font-size="11.5">#070707, degraded &amp; half-there — never a clean, whole block.</text>
+    <text x="14" y="438" fill="#2a5560" font-size="11.5">RESTRAINT is the ceiling: text only, never dressed for shock.</text>
+    <text x="14" y="454" fill="#2a5560" font-size="11.5">Recovered at Signal-dense / powered nodes. Kim is not an Echo.</text>
+  </g>
+</svg>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div>Palette — the whole game runs on one canvas and one accent, plus a small semantic set (and the cold-cyan Signal axis for Echoes):</div>
+    <div class="sw">
+      <span><i style="background:#070707"></i>#070707 canvas</span>
+      <span><i style="background:#4a9e6b"></i>#4a9e6b signal-green</span>
+      <span><i style="background:#c8a020"></i>#c8a020 caution</span>
+      <span><i style="background:#8b4a4a"></i>#8b4a4a danger</span>
+      <span><i style="background:#c8b896"></i>#c8b896 case-file parchment</span>
+      <span><i style="background:#4ab5c8"></i>#4ab5c8 cold cyan (Echoes)</span>
+      <span><i style="background:#7a7a82"></i>#7a7a82 refuse-grey</span>
+    </div>
+    <div class="v2note">
+      <b>EXPANSION v2 · build: PLANNED.</b> Screens 01–06 reflect the shipped UI. The <b>ECHOES</b> lane +
+      <b>truth-by-assembly</b> on the Case File (screen 04) and the whole of <b>screen 07 (ECHOES — Recovered Minds)</b>
+      are design-locked in the Art Bible but <b>not yet in the shipped build</b>. An Echo is transmission, not paper —
+      cold-cyan, degraded, text only; Kim is deliberately not an Echo (rendered as an empty slot). Canon: <code>STORY.md</code> §3/§6;
+      direction: <code>ART.md</code> §3.3 / §8 (Expansion v2).
+    </div>
+    <div style="margin-top:14px">Type: IBM Plex Mono. One self-contained file — no external assets · see docs/art/ART.md for the full Art Bible.</div>
+  </footer>
+
+  <div id="top" title="Back to top">&#8593;</div>
+
+<script>
+  const links=[...document.querySelectorAll('nav a')];
+  const secs=links.map(a=>document.getElementById(a.dataset.t));
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{
+    if(e.isIntersecting){links.forEach(l=>l.classList.toggle('active',l.dataset.t===e.target.id));}
+  });},{rootMargin:'-40% 0px -55% 0px'});
+  secs.forEach(s=>s&&io.observe(s));
+  const top=document.getElementById('top');
+  addEventListener('scroll',()=>top.classList.toggle('show',scrollY>400));
+  top.onclick=()=>scrollTo({top:0,behavior:'smooth'});
+</script>
+</body>
+</html>
