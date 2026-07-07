@@ -5,22 +5,22 @@ import "./browser-demo.css";
 
 const storySections = [
   ["The Situation", "Harwick went dark three days ago. Power gone, streets emptied, and whatever moves out there now is not what it used to be. Your phone is almost dead."],
-  ["The Voice", "You woke with no memory of how you got here. A stranger texts the phone beside you: a way out, if you keep moving and keep the line alive."],
-  ["The Goal", "A broadcast loops the same coordinates: somewhere still standing. Haven. Cross the city, keep the battery alive, reach it."],
+  ["The Voice", "You woke with no memory of how you got here. A stranger texts the phone beside you: a route through the city, if you keep moving and keep the line alive."],
+  ["The Signal", "A shortwave loop points toward Haven. Getting there is only the first answer."],
 ];
 
 const playBeats = [
   ["Survive", "Battery, food, water, and nerve form the clock."],
   ["Choose", "Your replies shape risk, resources, and what you learn."],
   ["Investigate", "Evidence moves from texts into a persistent case file."],
-  ["Return Tomorrow", "The full game is built for tense multi-session play."],
+  ["Endure", "The mystery stretches past the crossing into the places that made it."],
 ];
 
 const caseCategories = [
   ["Memories", "0/9", "Fragmented flashes of who you were before Harwick went dark."],
   ["Clues", "0/3", "Route evidence tying you to Mercy, Haven, and the broadcast."],
   ["People", "3", "Kim. Ellie. You. None of those files agree yet."],
-  ["Locations", "5", "Harwick, Mercy General, Haven, and places still locked."],
+  ["Locations", "5", "Harwick, Mercy General, Haven, and the roads between them."],
   ["Known Facts", "0", "Nothing proven yet. The board is waiting."],
   ["Open Questions", "5", "Why did you call Kim? Why can't you remember?"],
 ];
@@ -71,20 +71,20 @@ export default function BrowserDemo() {
 
       <section className="hero" id="home">
         <div className="hero-copy">
-          <p className="eyebrow">browser demo available now</p>
+          <p className="eyebrow">playable browser build</p>
           <DeadSignalLogo variant="hero" />
           <p className="tagline">A text-message survival mystery about memory, guilt, and the voice on the other end.</p>
           <p className="hero-body">
             Wake in Harwick with no memory, a dying phone, and a stranger who knows the city too well.
-            Follow the signal. Build the case file. Survive long enough to learn why Haven called you.
+            Follow the signal. Build the case file. Survive long enough to learn why the city knows you.
           </p>
           <div className="hero-actions">
             <button className="primary-cta" type="button" onClick={() => go("play")}>Play Demo</button>
             <a className="secondary-cta" href="#about">About the Game</a>
           </div>
           <div className="status-strip" aria-label="release status">
-            <span>demo available now</span>
-            <span>full game in development</span>
+            <span>playable build</span>
+            <span>phase 3 investigation</span>
             <span>case file enabled</span>
           </div>
         </div>
@@ -169,10 +169,10 @@ export default function BrowserDemo() {
 
       <section className="premium-band" id="full-version">
         <div>
-          <p className="eyebrow">full version</p>
+          <p className="eyebrow">full route</p>
           <h2>The first night is only the hook.</h2>
           <p>
-            The premium release continues through the city, Haven, and the investigation behind the Signal.
+            The crossing leads into Haven, and Haven opens into the investigation behind the signal.
           </p>
         </div>
         <button className="primary-cta" type="button" onClick={() => go("play")}>Play Demo</button>
