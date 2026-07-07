@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dead Signal — Production Telemetry // Road to v1.0</title>
+<meta name="theme-color" content="#070707" />
+<style>
+/* ============================================================
+   DEAD SIGNAL — SIGNAL RESTORATION CONSOLE
+   In-world production milestone dashboard. Self-contained, offline.
+   Source of truth: docs/production/PRODUCTION.md v1.1 (2026-07-06)
+   State persists to localStorage; RESYNC restores plan baseline.
+   // 143
+   ============================================================ */
+:root{
+  color-scheme:dark;
+  --bg:#070707; --bg2:#0a0c0a;
+  --panel:rgba(16,20,16,.72); --panel-2:rgba(10,13,10,.92);
+  --green:#4a9e6b; --green-lit:#6aba8a; --green-bright:#7fffa0; --green-dim:#2f5a41;
+  --amber:#c8a020; --amber-2:#c87a40;
+  --bone:#c8b896; --bone-dim:#8a8a7a; --bone-faint:#6a6a63;
+  --red:#8b2020; --red-lit:#e08a8a;
+  --cyan:#4ab5c8;
+  --line:rgba(74,158,107,.20);
+  --line-2:rgba(74,158,107,.10);
+  --mono:ui-monospace,'SF Mono','JetBrains Mono','Cascadia Code',Menlo,Consolas,monospace;
+  --s-done:var(--green-lit); --s-active:var(--amber); --s-blocked:var(--red-lit); --s-queued:#6c6c66;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--bone);font-family:var(--mono);-webkit-font-smoothing:antialiased}
+body{
+  min-height:100vh;line-height:1.5;font-size:14px;position:relative;overflow-x:hidden;
+  background:
+    radial-gradient(1100px 640px at 12% -8%, rgba(74,158,107,.12), transparent 60%),
+    radial-gradient(900px 560px at 108% 8%, rgba(200,122,64,.07), transparent 55%),
+    radial-gradient(1200px 800px at 50% 120%, rgba(74,181,200,.06), transparent 60%),
+    var(--bg);
+}
+/* CRT overlays */
+.fx{position:fixed;inset:0;pointer-events:none;z-index:9}
+.fx.scan{background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.22) 3px,rgba(0,0,0,0) 4px);mix-blend-mode:multiply;opacity:.55}
+.fx.vig{background:radial-gradient(120% 120% at 50% 42%,transparent 55%,rgba(0,0,0,.55) 100%)}
+.fx.flick{background:rgba(74,158,107,.015);animation:flick 5.5s steps(2,end) infinite;z-index:8}
+@keyframes flick{0%,97%,100%{opacity:0}98%{opacity:.5}99%{opacity:.15}}
+
+.wrap{position:relative;z-index:10;max-width:1180px;margin:0 auto;padding:26px 20px 22px}
+
+/* ---------- MASTHEAD ---------- */
+.masthead{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;
+  border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px}
+.brand{display:flex;flex-direction:column;gap:4px;min-width:260px}
+.eyebrow{font-size:10.5px;letter-spacing:.42em;text-transform:uppercase;color:var(--green);opacity:.85}
+.title{font-size:clamp(30px,5.2vw,52px);font-weight:800;letter-spacing:.03em;line-height:.96;margin:2px 0 0;
+  color:#e9e4d4;text-shadow:0 0 22px rgba(74,158,107,.35);position:relative}
+.title .g{color:var(--green-lit)}
+.title::after{content:"DEAD SIGNAL";position:absolute;left:0;top:0;color:var(--red-lit);opacity:.0;
+  clip-path:inset(0 0 0 0);animation:glitch 6.5s infinite}
+@keyframes glitch{0%,92%,100%{opacity:0;transform:translate(0,0)}93%{opacity:.35;transform:translate(-2px,1px)}
+  95%{opacity:.2;transform:translate(2px,-1px)}97%{opacity:.3;transform:translate(-1px,0)}}
+.sub{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--bone-dim)}
+.mast-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}
+.pill{border:1px solid var(--line);padding:4px 10px;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--green-lit);background:rgba(74,158,107,.05)}
+.clock{font-size:11px;color:var(--bone-dim);letter-spacing:.1em}
+.clock b{color:var(--bone);font-weight:600}
+
+/* ---------- HERO / SIGNAL STRENGTH ---------- */
+.hero{position:relative;border:1px solid var(--line);background:
+  linear-gradient(180deg,rgba(74,158,107,.06),rgba(10,13,10,.5));padding:22px 22px 20px;margin-bottom:20px;overflow:hidden}
+.hero::before,.hero::after{content:"";position:absolute;width:12px;height:12px;border:1px solid var(--green);opacity:.5}
+.hero::before{left:8px;top:8px;border-right:0;border-bottom:0}
+.hero::after{right:8px;bottom:8px;border-left:0;border-top:0}
+.hero-grid{display:grid;grid-template-columns:minmax(220px,1.05fr) 2fr;gap:26px;align-items:center}
+.decode{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--green);margin-bottom:8px;min-height:14px}
+.decode .cur{animation:blink 1.05s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.big-num{font-size:clamp(56px,11vw,96px);font-weight:800;line-height:.85;color:var(--green-bright);
+  text-shadow:0 0 28px rgba(127,255,160,.35);letter-spacing:-.02em}
+.big-num small{font-size:.32em;color:var(--bone-dim);font-weight:600;letter-spacing:.02em;text-shadow:none}
+.big-lbl{font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--bone-dim);margin-top:8px}
+.big-lbl b{color:var(--amber)}
+/* signal meter */
+.meter{display:flex;align-items:flex-end;gap:3px;height:96px;margin-bottom:10px}
+.meter .bar{flex:1;background:rgba(74,158,107,.09);border-top:1px solid rgba(74,158,107,.14);transition:background .5s ease,box-shadow .5s ease;min-width:4px}
+.meter .bar.on{background:linear-gradient(180deg,var(--green-bright),var(--green));box-shadow:0 0 10px rgba(74,158,107,.5)}
+.meter .bar.warn.on{background:linear-gradient(180deg,#ffd76a,var(--amber));box-shadow:0 0 10px rgba(200,160,32,.5)}
+.meter-legend{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.14em;color:var(--bone-faint);text-transform:uppercase}
+
+/* ---------- VITALS ---------- */
+.vitals{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px}
+.vital{border:1px solid var(--line);background:var(--panel);padding:13px 14px;position:relative}
+.vital .k{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--bone-dim)}
+.vital .v{font-size:27px;font-weight:800;line-height:1.1;margin-top:5px;color:var(--bone)}
+.vital .v small{font-size:.5em;color:var(--bone-dim);font-weight:600}
+.vital .n{font-size:10px;color:var(--bone-faint);margin-top:3px;letter-spacing:.04em}
+.vital.good .v{color:var(--green-bright)} .vital.warn .v{color:var(--amber)} .vital.bad .v{color:var(--red-lit)}
+
+/* ---------- SECTION HEADERS ---------- */
+.sec{margin:30px 0 14px;display:flex;align-items:center;gap:12px}
+.sec h2{font-size:13px;letter-spacing:.26em;text-transform:uppercase;color:var(--green-lit);margin:0;white-space:nowrap}
+.sec .rule{flex:1;height:1px;background:var(--line)}
+.sec .tag{font-size:10px;color:var(--bone-faint);letter-spacing:.14em;text-transform:uppercase}
+
+/* ---------- PATHWAY ---------- */
+.pathway{border:1px solid var(--line);background:var(--panel-2);padding:18px 16px;overflow-x:auto}
+.path-row{display:flex;align-items:stretch;gap:0;min-width:640px}
+.pnode{flex:1;min-width:96px;text-align:center;padding:10px 8px;border:1px solid var(--line-2);background:rgba(74,158,107,.03);
+  cursor:pointer;position:relative;transition:.2s}
+.pnode:hover{background:rgba(74,158,107,.09);border-color:var(--line)}
+.pnode .code{font-size:12px;font-weight:800;letter-spacing:.06em}
+.pnode .nm{font-size:9.5px;color:var(--bone-dim);text-transform:uppercase;letter-spacing:.08em;margin-top:3px;line-height:1.25}
+.pnode .dot{width:8px;height:8px;border-radius:50%;margin:7px auto 0;background:var(--s-queued)}
+.pnode .pct{font-size:10px;color:var(--bone-faint);margin-top:4px}
+.pconn{align-self:center;color:var(--green);opacity:.5;padding:0 2px;font-size:14px}
+.path-legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--bone-dim)}
+.path-legend span{display:inline-flex;align-items:center;gap:6px}
+.path-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+/* ---------- MILESTONES ---------- */
+.mgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.mcard{border:1px solid var(--line);background:var(--panel);position:relative;transition:border-color .2s}
+.mcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--s-queued);opacity:.9}
+.mcard[data-status=done]::before{background:var(--s-done)} .mcard[data-status=active]::before{background:var(--s-active)}
+.mcard[data-status=blocked]::before{background:var(--s-blocked)} .mcard[data-status=queued]::before{background:var(--s-queued)}
+.mcard.p0{border-color:rgba(139,32,32,.28)}
+.mhead{display:flex;align-items:flex-start;gap:10px;padding:14px 15px 10px;cursor:pointer}
+.mhead .idcol{display:flex;flex-direction:column;gap:5px;min-width:52px}
+.mcode{font-size:15px;font-weight:800;letter-spacing:.03em;color:var(--bone)}
+.prio{font-size:9px;font-weight:700;letter-spacing:.1em;padding:2px 6px;border:1px solid;display:inline-block;text-align:center}
+.prio.P0{color:var(--red-lit);border-color:rgba(224,138,138,.4)}
+.prio.P1{color:var(--amber);border-color:rgba(200,160,32,.4)}
+.prio.P2{color:var(--cyan);border-color:rgba(74,181,200,.4)}
+.mtitle{flex:1}
+.mtitle .nm{font-size:14px;font-weight:700;color:#e5e0d2;letter-spacing:.01em}
+.mtitle .goal{font-size:11.5px;color:var(--bone-dim);margin-top:4px;line-height:1.45}
+.chip{border:1px solid;padding:3px 9px 3px 8px;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  cursor:pointer;white-space:nowrap;user-select:none;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.25)}
+.chip i{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
+.chip.done{color:var(--s-done);border-color:rgba(106,186,138,.45)}
+.chip.active{color:var(--s-active);border-color:rgba(200,160,32,.45)}
+.chip.blocked{color:var(--s-blocked);border-color:rgba(224,138,138,.45)}
+.chip.queued{color:var(--s-queued);border-color:rgba(120,120,110,.4)}
+.mbarwrap{padding:0 15px 12px}
+.mbar{height:6px;background:rgba(255,255,255,.05);position:relative;overflow:hidden}
+.mbar>i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--green),var(--green-bright));box-shadow:0 0 8px rgba(74,158,107,.5);transition:width .5s cubic-bezier(.2,.7,.2,1)}
+.mcard[data-status=active] .mbar>i{background:linear-gradient(90deg,var(--amber-2),var(--amber));box-shadow:0 0 8px rgba(200,160,32,.5)}
+.mbar-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--bone-faint);margin-top:6px;letter-spacing:.08em;text-transform:uppercase}
+.mbody{display:none;padding:2px 15px 15px;border-top:1px solid var(--line-2)}
+.mcard.open .mbody{display:block}
+.stag{font-size:10.5px;color:var(--bone-dim);margin:10px 0 4px;letter-spacing:.05em}
+.stag b{color:var(--green-lit)}
+.dep{font-size:10px;color:var(--bone-faint);letter-spacing:.06em;text-transform:uppercase;margin:8px 0 2px}
+.dep b{color:var(--amber)}
+.critlist{list-style:none;margin:10px 0 0;padding:0}
+.crit{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-top:1px dashed var(--line-2);cursor:pointer;font-size:12px;line-height:1.4}
+.crit:first-child{border-top:0}
+.crit .box{flex:none;width:15px;height:15px;border:1px solid var(--green-dim);margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--green-bright);transition:.15s}
+.crit.met .box{background:rgba(74,158,107,.18);border-color:var(--green);box-shadow:0 0 8px rgba(74,158,107,.3)}
+.crit.met .txt{color:var(--bone-dim);text-decoration:line-through;text-decoration-color:rgba(200,184,150,.35)}
+.crit .txt{color:#d8d2c0}
+.mnote{font-size:10.5px;color:var(--amber);background:rgba(200,160,32,.06);border-left:2px solid var(--amber);padding:7px 10px;margin-top:11px;line-height:1.5}
+.mnote.exp{color:var(--cyan);border-color:var(--cyan);background:rgba(74,181,200,.05)}
+
+/* ---------- AREAS ---------- */
+.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.area{border:1px solid var(--line-2);background:var(--panel);padding:11px 12px;display:flex;align-items:center;gap:11px;transition:.2s}
+.area:hover{border-color:var(--line)}
+.area .adot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--s-queued);box-shadow:0 0 7px currentColor;cursor:pointer}
+.area[data-status=done] .adot{background:var(--s-done);color:var(--s-done)}
+.area[data-status=active] .adot{background:var(--s-active);color:var(--s-active)}
+.area[data-status=blocked] .adot{background:var(--s-blocked);color:var(--s-blocked)}
+.area[data-status=queued] .adot{background:var(--s-queued);color:var(--s-queued)}
+.area .anm{flex:1;font-size:12px;color:#dcd6c6;line-height:1.3}
+.area .apr{font-size:8.5px;font-weight:700;letter-spacing:.08em;padding:1px 5px;border:1px solid;flex:none}
+.area .apr.P0{color:var(--red-lit);border-color:rgba(224,138,138,.35)}
+.area .apr.P1{color:var(--amber);border-color:rgba(200,160,32,.35)}
+.area .apr.P2{color:var(--cyan);border-color:rgba(74,181,200,.35)}
+.area .ast{font-size:9px;color:var(--bone-faint);text-transform:uppercase;letter-spacing:.08em;flex:none;min-width:64px;text-align:right;cursor:pointer}
+
+/* ---------- RISKS ---------- */
+.rlist{display:flex;flex-direction:column;gap:8px}
+.risk{border:1px solid var(--line-2);background:var(--panel);}
+.rhead{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer}
+.rid{font-size:12px;font-weight:800;color:var(--bone);min-width:30px}
+.rname{flex:1;font-size:12.5px;color:#dcd6c6}
+.heat{display:flex;gap:5px;flex:none}
+.heat b{font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid;font-weight:700}
+.heat .L{color:var(--bone-dim);border-color:var(--line-2)}
+.heat .H{color:var(--red-lit);border-color:rgba(224,138,138,.45);background:rgba(139,32,32,.12)}
+.heat .M{color:var(--amber);border-color:rgba(200,160,32,.4)}
+.sev{font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border:1px solid;flex:none;min-width:70px;text-align:center}
+.sev.elevated{color:var(--amber);border-color:rgba(200,160,32,.45)}
+.sev.moderate{color:var(--green-lit);border-color:rgba(106,186,138,.4)}
+.rbody{display:none;padding:0 13px 13px 55px;font-size:11.5px;line-height:1.55;color:var(--bone-dim)}
+.risk.open .rbody{display:block}
+.rbody .rl{color:var(--green-lit);text-transform:uppercase;letter-spacing:.1em;font-size:9.5px;margin-top:8px}
+
+/* ---------- CONSOLE FOOTER ---------- */
+.console{position:sticky;bottom:0;z-index:20;background:linear-gradient(180deg,rgba(7,7,7,.55),rgba(7,7,7,.97));
+  border-top:1px solid var(--line);backdrop-filter:blur(6px);padding:11px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:22px}
+.logline{flex:1;font-size:10.5px;color:var(--green-lit);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:160px}
+.logline .dim{color:var(--bone-faint)}
+.btn{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--green-lit);
+  background:rgba(74,158,107,.06);border:1px solid var(--line);padding:7px 12px;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn:hover{background:rgba(74,158,107,.16);color:var(--green-bright);box-shadow:0 0 12px rgba(74,158,107,.25)}
+.btn.warn{color:var(--amber);border-color:rgba(200,160,32,.35)}
+.btn.warn:hover{background:rgba(200,160,32,.12);color:#ffd76a}
+
+.foot-sig{text-align:center;font-size:10px;color:var(--bone-faint);letter-spacing:.24em;text-transform:uppercase;margin-top:34px;opacity:.7}
+.foot-sig b{color:var(--green-dim)}
+
+@media(max-width:820px){
+  .hero-grid{grid-template-columns:1fr;gap:16px}
+  .vitals{grid-template-columns:repeat(2,1fr)}
+  .mgrid{grid-template-columns:1fr}
+  .agrid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="fx scan"></div>
+<div class="fx vig"></div>
+<div class="fx flick"></div>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand">
+      <div class="eyebrow">Production Telemetry</div>
+      <h1 class="title">DEAD<span class="g"> SIGNAL</span></h1>
+      <div class="sub">Signal Restoration Console · Road to v1.0</div>
+    </div>
+    <div class="mast-right">
+      <div class="pill" id="planTag">PLAN v1.1 · LIVING</div>
+      <div class="clock" id="clock">SYS CLOCK · —</div>
+      <div class="clock">LAST SYNC · <b id="lastSync">—</b></div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-grid">
+      <div>
+        <div class="decode" id="decode">> DECODING TRANSMISSION<span class="cur">_</span></div>
+        <div class="big-num"><span id="heroPct">0</span><small>%</small></div>
+        <div class="big-lbl">Signal &rarr; <b>v1.0</b> · release-weighted</div>
+      </div>
+      <div>
+        <div class="meter" id="meter"></div>
+        <div class="meter-legend"><span>NO SIGNAL</span><span>ACQUIRING</span><span>LOCK · 1.0</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VITALS -->
+  <section class="vitals" id="vitals"></section>
+
+  <!-- PATHWAY -->
+  <div class="sec"><h2>Critical Path</h2><div class="rule"></div><span class="tag">dependency order</span></div>
+  <section class="pathway">
+    <div class="path-row" id="pathRow"></div>
+    <div class="path-legend">
+      <span><i style="background:var(--s-done)"></i>Done</span>
+      <span><i style="background:var(--s-active)"></i>In progress</span>
+      <span><i style="background:var(--s-blocked)"></i>Blocked</span>
+      <span><i style="background:var(--s-queued)"></i>Queued</span>
+      <span style="color:var(--bone-faint)">M-LOC · M-EXP branch off M-DOC — may land pre- or post-launch</span>
+    </div>
+  </section>
+
+  <!-- MILESTONES -->
+  <div class="sec"><h2>Milestones</h2><div class="rule"></div><span class="tag" id="mstag">— · click a card to expand</span></div>
+  <main class="mgrid" id="mgrid"></main>
+
+  <!-- AREAS -->
+  <div class="sec"><h2>Build Status by Area</h2><div class="rule"></div><span class="tag">click a dot to cycle</span></div>
+  <section class="agrid" id="agrid"></section>
+
+  <!-- RISKS -->
+  <div class="sec"><h2>Risk Register</h2><div class="rule"></div><span class="tag" id="rtag">— open · click to expand</span></div>
+  <section class="rlist" id="rlist"></section>
+
+  <div class="foot-sig">// TRANSMISSION HOLDS · <b>143</b> · KIM &rarr; ELLIE //</div>
+</div>
+
+<!-- CONSOLE -->
+<div class="console">
+  <div class="logline" id="log">> console ready.</div>
+  <button class="btn" id="expandAll">[ Expand all ]</button>
+  <button class="btn" id="exportBtn">[ Export snapshot ]</button>
+  <button class="btn" id="importBtn">[ Import ]</button>
+  <button class="btn warn" id="resyncBtn">[ Resync to plan ]</button>
+  <input type="file" id="importFile" accept="application/json" hidden />
+</div>
+
+<script>
+/* ================= DATA MODEL — canonical baseline from PRODUCTION.md v1.2 ================= */
+const PLAN_VERSION = "1.2";
+const BASELINE = {
+  milestones: [
+    { id:"M-P", name:"Polish & Consistency", prio:"P0", status:"done",
+      goal:"The shipped spine reads as finished — pacing, HUD readability, save/load robustness, mobile presentation, and full spoiler/canon alignment across every public surface.",
+      depends:[], branch:false,
+      note:{txt:"QA pass 2026-07-06 — COMPLETE. Headless: production build clean (995 modules), Phase-3 map integrity (5 regions/34 nodes, no soft-locks), save-schema 7/7, zero network. Live browser (Brave + dev server, via the QA auto-driver): all 3 route prologues+crossings driven to Haven, plus the hospital run through Phase 3 to BOTH endings — ~440 choices, zero console errors (only the dev-only GATE_BYPASS cap warning, compiled out of prod). All public copy spoiler-safe vs STORY.md §2/§4. Fixed §4/§7→§2/§4 ref + the QA §6 doctored-save recipe.",cls:""},
+      crit:[
+        ["Live per-route playthrough (hospital / metro / route9) — zero console errors. VERIFIED live 2026-07-06: all 3 prologues+crossings to Haven + hospital run through Phase 3 to both endings (~440 choices), 0 errors / 0 network. Build + map + save also verified headless.",true],
+        ["No spoiler leaks in README / demo shell / in-game Story / PWA meta (audited vs STORY.md §2/§4)",true],
+        ["Case File + location labels correct end-to-end (regions, HUD, board categories 9·3·4·3·5, truthId↔region)",true],
+        ["save → reload → resume restores a safe state on all 3 slots (schema logic verified 7/7 headless)",true],
+      ]},
+    { id:"M-DOC", name:"Documentation Suite", prio:"P1", status:"done",
+      goal:"Complete the professional documentation set — Markdown source + polished Word/PDF export, indexed in docs/README.",
+      depends:[], branch:false,
+      note:{txt:"Plan text still reads “in progress / 4 docs left” — actually COMPLETE. All 8 docs + Word/PDF exports are shipped (docs/README: “All planned documents are complete”). Baseline updated to reflect reality.",cls:""},
+      crit:[
+        ["Game Design Document (GDD) — v1.1",true],
+        ["Product Requirements (PRD) — v2.1",true],
+        ["Technical Design — v1.1",true],
+        ["Production Plan — v1.1",true],
+        ["Audio Bible — v1.1",true],
+        ["Art Bible + SVG wireframes — v1.2",true],
+        ["Localization Plan — v1.1",true],
+        ["Accessibility Plan — v1.1",true],
+        ["Word/PDF exports generated + indexed in docs/README",true],
+      ]},
+    { id:"M-EXP", name:"Expansion v2 (Narrative Depth)", prio:"P1", status:"active",
+      goal:"Implement the sanctioned narrative-density pass — Echoes, region sub-stories, the unchosen thread, truth-by-assembly, the prologue second act — as authored text + nodes only, no new mechanics.",
+      depends:["M-P"], branch:true,
+      staging:"Stage 1 canon <b>✅</b> · Stage 2 doc propagation <b>✅</b> · Stage 3 content + code <b>🔜 future</b>",
+      note:{txt:"Design-locked; build: PLANNED (2026-07-06). Fully specified across every doc but not yet in code — this is the near-term code milestone once M-P is clean.",cls:"exp"},
+      crit:[
+        ["~14 Echo fragments + 7-face cast authored, wired to new ECHOES Case File category",false],
+        ["~30 new Phase-3 nodes integrated (region sub-stories + U1 unchosen thread): Phase 3 ~35 → ~65",false],
+        ["S1 truth-by-assembly live (region truth resolves only after 2–3 supporting pieces found)",false],
+        ["Prologue second act (P1–P3) integrated spoiler-safe",false],
+        ["Every shipped truth, gate, and both endings unchanged",false],
+        ["Loc / a11y deltas from the added text logged",false],
+        ["Full regression bar (§6.1) green",false],
+      ]},
+    { id:"M-A11Y", name:"Accessibility", prio:"P1", status:"queued",
+      goal:"Deliver the accessibility option set and pass an audit to a WCAG 2.2 AA baseline.",
+      depends:["M-DOC"], branch:false,
+      note:{txt:"Structural advantages already in place (§1). This milestone is the option set + the formal audits.",cls:""},
+      crit:[
+        ["Text-speed / instant-reveal option",false],
+        ["Contrast + scaling verified against the #070707 canvas",false],
+        ["Visual equivalent for the Signal audio cue",false],
+        ["Photosensitivity audit of the distortion effect passed",false],
+        ["Keyboard-navigable",false],
+        ["Content / trauma notes surfaced",false],
+        ["Muted-playable confirmed end-to-end",false],
+      ]},
+    { id:"M-LOC", name:"Localization", prio:"P2", status:"queued",
+      goal:"The game is translatable and ships at least one non-English language.",
+      depends:["M-DOC"], branch:true,
+      note:{txt:"Critical path: string externalization — strings are hardcoded in DeadSignal.jsx today; nothing in loc starts until they’re extracted. Treat as a refactor, not a feature.",cls:""},
+      crit:[
+        ["Externalized string catalog",false],
+        ["Pseudo-loc pass — no truncation / overflow on a phone screen",false],
+        ["≥1 language integrated and LQA’d",false],
+        ["Culturalization decisions logged for the 143 / KIM→ELLIE motifs",false],
+      ]},
+    { id:"M-RC", name:"Release Candidate", prio:"P0", status:"queued",
+      goal:"All PRD P0 release criteria met; the build is a candidate. (PRD §8 — Definition of Done)",
+      depends:["M-P"], branch:false,
+      note:{txt:"Several criteria are already satisfied by the shipped spine — the gate is the full set clean, together, verified.",cls:""},
+      crit:[
+        ["Full arc completable on mobile + desktop",false],
+        ["Zero console errors, zero network calls",true],
+        ["Both endings reachable and recorded",true],
+        ["Save schema round-trips",true],
+        ["PWA installs + runs offline: iOS Safari + Android Chrome (matrix pass)",false],
+        ["Core-screen accessibility smoke test passes",false],
+        ["No spoiler leaks",false],
+        ["Canon consistency pass clean",false],
+      ]},
+    { id:"M-LAUNCH", name:"Release", prio:"P0", status:"queued",
+      goal:"Ship.",
+      depends:["M-RC"], branch:false,
+      crit:[
+        ["Tagged release",false],
+        ["Production deploy green",false],
+        ["Store / listing (if any) live",false],
+        ["Launch runbook (§7) executed",false],
+      ]},
+    { id:"M-POST", name:"Post-launch", prio:"P2", status:"queued", postLaunch:true,
+      goal:"Support and complete the P1/P2 tracks that didn’t gate launch (localization, extra accessibility).",
+      depends:["M-LAUNCH"], branch:false,
+      crit:[
+        ["Rolling post-launch track: loc fast-follow, extra a11y, support",false],
+      ]},
+  ],
+  areas: [
+    ["Prologue (P1–P2, 3 routes)","done","P0"],
+    ["Phase 3 investigation","done","P0"],
+    ["Finale + endings","done","P0"],
+    ["Survival economy + tuning","done","P0"],
+    ["Encounter resolver + risk tiers","done","P0"],
+    ["Case File (board + journal)","done","P0"],
+    ["Audio engine","done","P1"],
+    ["PWA + deploy","done","P1"],
+    ["Spoiler / canon consistency pass","active","P0"],
+    ["Documentation suite","done","P1"],
+    ["Expansion v2 (Narrative Depth)","active","P1"],
+    ["Accessibility option set","queued","P1"],
+    ["Localization","queued","P2"],
+    ["Mobile platform matrix","queued","P0"],
+    ["Distribution / monetization decision","queued","P1"],
+  ],
+  risks: [
+    ["R1","Spoiler leak into public copy breaks the mystery","M","H","Spoiler discipline codified (GDD §4.5); public-copy audit vs STORY.md is an M-RC gate.","Any new store / marketing / Story-screen copy."],
+    ["R2","Narrative / canon drift across docs + build","M","H","STORY.md is the single source of truth; standing consistency pass; docs defer to canon.","Any edit touching story or a doc."],
+    ["R3","iOS Safari PWA / audio quirks (unlock fails, standalone bugs)","M","M","Existing unlock/resume handling in audio.js; explicit device matrix in M-RC.","Any audio/PWA change; new iOS version."],
+    ["R4","Localization debt (hardcoded strings) grows","H","M","Externalize early (M-LOC critical path); treat as a refactor, not a feature.","Before committing to any launch language set."],
+    ["R5","Solo-dev bandwidth stalls burndown","H","M","Phased docs; hard non-goals (§4); polish over expansion; criteria-gated milestones.","Any milestone slipping without a blocker."],
+    ["R6","Save-schema regression corrupts progress","L","H","Forward-compatible defaults; save round-trip in the QA bar; migrations tested.","Any change to snapshot / profile shape."],
+    ["R7","Scope creep re-opens “done” systems","M","M","Scope ledger (§4); changes to cut/out items need a written reason.","Any request to add mechanics / combat."],
+    ["R8","Distribution / monetization undecided blocks launch","M","M","Decide before M-LAUNCH (§9); web-only is a valid default.","Entering M-RC."],
+    ["R9","DeadSignal.jsx size slows iteration / onboarding","M","L","Optional data-block extraction (DESIGN §13); no architecture change.","When navigation cost bites."],
+    ["R10","Expansion v2 scope growth erodes the restraint pillar","M","M","Sanctioned carve-out is narrative density only, not mechanics; node budget capped ~2×; truths/gates/endings frozen; U2/X1 held open.","Any M-EXP item proposing a new mechanic, a new truth, or nodes beyond ~2×."],
+    ["R11","Loc + a11y load grows with ~2× Phase-3 text","M","M","Size M-LOC / M-A11Y against the larger post-Expansion string set; author Expansion strings before externalization commits, or plan a second extraction pass.","Committing to a launch language set or the externalization refactor while M-EXP content is unwritten."],
+  ],
+};
+const WEIGHT = {P0:3,P1:2,P2:1};
+const NEXT_STATUS = {done:"active",active:"blocked",blocked:"queued",queued:"done"};
+const LS_KEY = "deadsignal_dashboard_v1";
+
+/* ================= STATE ================= */
+function baseState(){
+  const s = {version:PLAN_VERSION, updatedAt:new Date().toISOString(), milestones:{}, areas:{}};
+  BASELINE.milestones.forEach(m=>{ s.milestones[m.id] = {status:m.status, crit:m.crit.map(c=>c[1])}; });
+  BASELINE.areas.forEach((a,i)=>{ s.areas[i] = a[1]; });
+  return s;
+}
+let state = load();
+function load(){
+  try{ const raw = localStorage.getItem(LS_KEY); if(!raw) return baseState();
+    const s = JSON.parse(raw);
+    // reconcile shape against baseline (in case plan grew)
+    const b = baseState();
+    BASELINE.milestones.forEach(m=>{ if(!s.milestones[m.id]) s.milestones[m.id]=b.milestones[m.id];
+      else if(s.milestones[m.id].crit.length!==m.crit.length) s.milestones[m.id].crit=b.milestones[m.id].crit; });
+    BASELINE.areas.forEach((a,i)=>{ if(!(i in s.areas)) s.areas[i]=b.areas[i]; });
+    return s;
+  }catch(e){ return baseState(); }
+}
+function save(){ state.updatedAt=new Date().toISOString(); localStorage.setItem(LS_KEY, JSON.stringify(state)); paintSync(); }
+
+/* ================= COMPUTE ================= */
+function mProgress(id){ const c=state.milestones[id].crit; return c.length? c.filter(Boolean).length/c.length : 0; }
+function metrics(){
+  let wSum=0, wProg=0, critMet=0, critTot=0, p0Open=0, done=0;
+  BASELINE.milestones.forEach(m=>{
+    const p = mProgress(m.id); const c=state.milestones[m.id].crit;
+    critMet += c.filter(Boolean).length; critTot += c.length;
+    if(p>=1) done++;
+    if(!m.postLaunch){ const w=WEIGHT[m.prio]; wSum+=w; wProg+=p*w; }
+    if(m.prio==="P0" && !m.postLaunch && p<1) p0Open++;
+  });
+  const hero = wSum? Math.round(wProg/wSum*100):0;
+  // risk posture
+  let elevated=0; BASELINE.risks.forEach(r=>{ const sev=({H:3,M:2,L:1})[r[2]]*({H:3,M:2,L:1})[r[3]]; if(sev>=6) elevated++; });
+  return {hero, critMet, critTot, p0Open, done, total:BASELINE.milestones.length, elevated};
+}
+
+/* ================= RENDER ================= */
+const $=s=>document.querySelector(s), el=(t,c)=>{const e=document.createElement(t); if(c)e.className=c; return e;};
+function statusLabel(s){return s==="done"?"DONE":s==="active"?"IN PROGRESS":s==="blocked"?"BLOCKED":"QUEUED";}
+
+function renderMeter(pct){
+  const N=28, on=Math.round(pct/100*N), m=$("#meter"); m.innerHTML="";
+  for(let i=0;i<N;i++){ const b=el("div","bar"); const h=30+ (i/N)*70; b.style.height=h+"%";
+    if(i<on){ b.classList.add("on"); if(pct<45) b.classList.add("warn"); }
+    b.style.transitionDelay=(i*14)+"ms"; m.appendChild(b);
+  }
+}
+function renderVitals(mx){
+  const cls = mx.p0Open===0? "good" : mx.p0Open<=2? "warn":"bad";
+  const rp = mx.elevated>=1? "warn":"good";
+  const items=[
+    ["Signal → 1.0", mx.hero+"<small>%</small>", "release-weighted", mx.hero>=66?"good":mx.hero>=33?"warn":"bad"],
+    ["P0 Gates Open", mx.p0Open+"<small> / 3</small>", "ship-blocking milestones", cls],
+    ["Milestones Done", mx.done+"<small> / "+mx.total+"</small>", "fully met exit criteria", mx.done>0?"good":""],
+    ["Criteria Met", mx.critMet+"<small> / "+mx.critTot+"</small>", "across all milestones",""],
+    ["Risk Posture", mx.elevated? "ELEVATED":"MODERATE", mx.elevated+" elevated of "+BASELINE.risks.length, rp],
+  ];
+  const v=$("#vitals"); v.innerHTML="";
+  items.forEach(([k,val,n,c])=>{ const d=el("div","vital "+(c||"")); d.innerHTML=`<div class="k">${k}</div><div class="v">${val}</div><div class="n">${n}</div>`; v.appendChild(d); });
+}
+function renderPath(){
+  // launch spine + branches, in dependency order
+  const spine=["M-P","M-DOC","M-RC","M-LAUNCH","M-POST"];
+  const row=$("#pathRow"); row.innerHTML="";
+  spine.forEach((id,i)=>{
+    const m=BASELINE.milestones.find(x=>x.id===id); const st=state.milestones[id].status; const p=Math.round(mProgress(id)*100);
+    const n=el("div","pnode"); n.dataset.status=st;
+    n.innerHTML=`<div class="code">${id}</div><div class="nm">${m.name}</div>
+      <div class="dot" style="background:var(--s-${st})"></div><div class="pct">${p}%</div>`;
+    n.onclick=()=>{ const c=document.getElementById("card-"+id); if(c){c.classList.add("open"); c.scrollIntoView({behavior:"smooth",block:"center"}); flashLog("→ focus "+id);} };
+    row.appendChild(n);
+    if(i<spine.length-1){ const c=el("div","pconn"); c.textContent="─▶"; row.appendChild(c); }
+  });
+}
+function renderMilestones(){
+  const g=$("#mgrid"); g.innerHTML="";
+  BASELINE.milestones.forEach(m=>{
+    const ms=state.milestones[m.id]; const p=Math.round(mProgress(m.id)*100);
+    const card=el("article","mcard"+(m.prio==="P0"?" p0":"")); card.id="card-"+m.id; card.dataset.status=ms.status;
+    // head
+    const head=el("div","mhead");
+    head.innerHTML=`<div class="idcol"><span class="mcode">${m.id}</span><span class="prio ${m.prio}">${m.prio}</span></div>
+      <div class="mtitle"><div class="nm">${m.name}</div><div class="goal">${m.goal}</div></div>`;
+    const chip=el("div","chip "+ms.status); chip.innerHTML=`<i></i>${statusLabel(ms.status)}`;
+    chip.title="click to cycle status";
+    chip.onclick=(e)=>{ e.stopPropagation(); ms.status=NEXT_STATUS[ms.status]; save(); renderAll(); flashLog(m.id+" → "+statusLabel(ms.status)); };
+    head.appendChild(chip);
+    head.onclick=()=>{ card.classList.toggle("open"); };
+    card.appendChild(head);
+    // bar
+    const bw=el("div","mbarwrap");
+    bw.innerHTML=`<div class="mbar"><i style="width:${p}%"></i></div>
+      <div class="mbar-meta"><span>${ms.crit.filter(Boolean).length} / ${ms.crit.length} exit criteria</span><span>${p}%</span></div>`;
+    card.appendChild(bw);
+    // body
+    const body=el("div","mbody");
+    if(m.staging) body.insertAdjacentHTML("beforeend",`<div class="stag">STAGING &middot; ${m.staging}</div>`);
+    if(m.depends&&m.depends.length) body.insertAdjacentHTML("beforeend",`<div class="dep">Depends on &middot; <b>${m.depends.join(" · ")}</b>${m.branch?" &middot; branch (pre/post-launch)":""}</div>`);
+    else body.insertAdjacentHTML("beforeend",`<div class="dep">Depends on &middot; <b>— foundation</b></div>`);
+    const ul=el("ul","critlist");
+    m.crit.forEach((c,i)=>{
+      const li=el("li","crit"+(ms.crit[i]?" met":""));
+      li.innerHTML=`<span class="box">${ms.crit[i]?"✓":""}</span><span class="txt">${c[0]}</span>`;
+      li.onclick=()=>{ ms.crit[i]=!ms.crit[i]; save(); renderAll(); };
+      ul.appendChild(li);
+    });
+    body.appendChild(ul);
+    if(m.note) body.insertAdjacentHTML("beforeend",`<div class="mnote ${m.note.cls}">${m.note.txt}</div>`);
+    card.appendChild(body);
+    g.appendChild(card);
+  });
+}
+function renderAreas(){
+  const g=$("#agrid"); g.innerHTML="";
+  BASELINE.areas.forEach((a,i)=>{
+    const st=state.areas[i]; const d=el("div","area"); d.dataset.status=st;
+    d.innerHTML=`<span class="adot"></span><span class="anm">${a[0]}</span><span class="apr ${a[2]}">${a[2]}</span><span class="ast">${statusLabel(st)}</span>`;
+    const cyc=()=>{ state.areas[i]=NEXT_STATUS[state.areas[i]]; save(); renderAreas(); flashLog(a[0]+" → "+statusLabel(state.areas[i])); };
+    d.querySelector(".adot").onclick=cyc; d.querySelector(".ast").onclick=cyc;
+    g.appendChild(d);
+  });
+}
+function renderRisks(){
+  const g=$("#rlist"); g.innerHTML="";
+  BASELINE.risks.forEach(r=>{
+    const sev=({H:3,M:2,L:1})[r[2]]*({H:3,M:2,L:1})[r[3]]; const sc=sev>=6?"elevated":"moderate";
+    const d=el("div","risk");
+    d.innerHTML=`<div class="rhead"><span class="rid">${r[0]}</span><span class="rname">${r[1]}</span>
+      <span class="heat"><b class="${r[2]}">L:${r[2]}</b><b class="${r[3]}">I:${r[3]}</b></span>
+      <span class="sev ${sc}">${sc}</span></div>
+      <div class="rbody"><div class="rl">Mitigation</div>${r[4]}<div class="rl">Trigger to act</div>${r[5]}</div>`;
+    d.querySelector(".rhead").onclick=()=>d.classList.toggle("open");
+    g.appendChild(d);
+  });
+  $("#rtag").textContent = BASELINE.risks.length+" tracked · click to expand";
+}
+function paintSync(){
+  const dt=new Date(state.updatedAt);
+  $("#lastSync").textContent = dt.toLocaleDateString(undefined,{month:"short",day:"2-digit"})+" "+dt.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+}
+function renderAll(){
+  const mx=metrics();
+  animateNum($("#heroPct"), parseInt($("#heroPct").textContent)||0, mx.hero);
+  renderMeter(mx.hero); renderVitals(mx); renderPath(); renderMilestones(); renderAreas();
+  $("#mstag").textContent = mx.done+" done · "+mx.p0Open+" P0 open · click a card to expand";
+  paintSync();
+}
+function animateNum(node,from,to){
+  const t0=performance.now(), dur=650;
+  function step(t){ const k=Math.min(1,(t-t0)/dur); node.textContent=Math.round(from+(to-from)*(1-Math.pow(1-k,3))); if(k<1)requestAnimationFrame(step); }
+  requestAnimationFrame(step);
+}
+
+/* ================= CONSOLE ACTIONS ================= */
+let logTimer;
+function flashLog(msg){ const l=$("#log"); l.innerHTML="> "+msg+" <span class='dim'>· state saved</span>"; clearTimeout(logTimer);
+  logTimer=setTimeout(()=>{ l.innerHTML="> console ready. <span class='dim'>· "+metrics().critMet+"/"+metrics().critTot+" criteria met</span>"; },2600); }
+$("#resyncBtn").onclick=()=>{ if(confirm("RESYNC TO PLAN — restore every milestone, criterion and area to the canonical status captured from PRODUCTION.md v"+PLAN_VERSION+"? This overwrites your local edits.")){ state=baseState(); save(); renderAll(); flashLog("resynced to plan v"+PLAN_VERSION); } };
+$("#exportBtn").onclick=()=>{ const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="dead-signal-milestones-"+new Date().toISOString().slice(0,10)+".json"; a.click(); flashLog("snapshot exported"); };
+$("#importBtn").onclick=()=>$("#importFile").click();
+$("#importFile").onchange=(e)=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.milestones||!s.areas) throw 0; localStorage.setItem(LS_KEY,JSON.stringify(s)); state=load(); renderAll(); flashLog("snapshot imported"); }catch(err){ alert("Invalid snapshot file."); } }; r.readAsText(f); };
+let allOpen=false;
+$("#expandAll").onclick=()=>{ allOpen=!allOpen; document.querySelectorAll(".mcard").forEach(c=>c.classList.toggle("open",allOpen)); $("#expandAll").textContent=allOpen?"[ Collapse all ]":"[ Expand all ]"; };
+
+/* ================= CLOCK + DECODE ================= */
+function tick(){ const d=new Date(); $("#clock").innerHTML="SYS CLOCK · <b>"+d.toLocaleTimeString(undefined,{hour12:false})+"</b>"; }
+setInterval(tick,1000); tick();
+(function decode(){ const target="> DECODING TRANSMISSION · SIGNAL LOCK"; const node=$("#decode"); let i=0;
+  const iv=setInterval(()=>{ i++; node.innerHTML=target.slice(0,i)+"<span class='cur'>_</span>"; if(i>=target.length){ clearInterval(iv);
+    setTimeout(()=>{ node.innerHTML="> SIGNAL LOCK &middot; "+metrics().hero+"% &middot; ROUTE TO v1.0 <span class='cur'>_</span>"; },400); } },26); })();
+
+/* ================= INIT ================= */
+$("#planTag").textContent="PLAN v"+PLAN_VERSION+" · LIVING";
+renderAll();
+renderRisks();
+$("#log").innerHTML="> console ready. <span class='dim'>· "+metrics().critMet+"/"+metrics().critTot+" criteria met · localStorage active</span>";
+</script>
+</body>
+</html>
