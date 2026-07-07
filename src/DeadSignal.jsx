@@ -3666,7 +3666,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
   // Commit this run's fragments/clues into the slot profile, bump playthroughs, set the 100%
   // flag, and persist (run cleared — Phase 3 writes its own snapshot on the first menu).
-  // Shared by the auto-flow handoff so prologue progress still records without a win screen.
+  // Shared by the auto-flow handoff so prologue progress still records without a standalone completion screen.
   const mergeRunIntoProfile = () => {
     const prev = activeProfileRef.current || emptyProfile();
     const fragments = [...new Set([...(prev.fragments || []), ...recoveredMemoriesRef.current.filter(m => m.type === "fragment").map(m => m.name)])];
@@ -3680,7 +3680,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
   // Auto-flow handoff into Phase 3 (STORY.md §7, revised): after the call dies, the prologue
   // commits and the player is dropped — alone — into Haven as the investigation hub. Resources
-  // carry over ("battery is exploration"). No win screen; the pause is the canon "alone" beat.
+    // carry over ("battery is exploration"). No standalone completion screen; the pause is the canon "alone" beat.
   const beginPhase3 = () => {
     clearPending();
     mergeRunIntoProfile();
@@ -4043,7 +4043,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         addMsg("narrator", "the line goes dead.", 11400);
         addMsg("narrator", "click.", 12800);
         // Auto-flow into Phase 3: the prologue commits, then Haven opens as the investigation
-        // hub (no win screen — the silence after "click." is the canon "player alone" beat).
+        // hub (no standalone completion screen — the silence after "click." is the canon "player alone" beat).
         pendingRef.current.push(setT(() => beginPhase3(), 15200));
       }
       return;
@@ -4508,7 +4508,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       <div style={{ background:"#070707", height:isDesktopDemo ? "100%" : "100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", textAlign:"center" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", marginBottom:"0.7rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>DAY 1 COMPLETE</div>
-        <p style={{ color:"#c8b98a", fontSize:"0.92rem", lineHeight:1.8, letterSpacing:"0.04em", maxWidth:"28rem", margin:"0 0 2rem" }}>Night falls over the apartment. The next morning waits in the full version.</p>
+        <p style={{ color:"#c8b98a", fontSize:"0.92rem", lineHeight:1.8, letterSpacing:"0.04em", maxWidth:"28rem", margin:"0 0 2rem" }}>Night falls over the apartment. The road through Harwick is waiting.</p>
         <div style={{ display:"flex", flexWrap:"wrap", gap:"0.7rem", justifyContent:"center" }}>
           <button className="rb" onClick={withMenuSound(restartDay1Demo)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>REPLAY DAY 1</button>
           {onDemoExit && (
@@ -4579,10 +4579,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           <p style={body}>Harwick went dark three days ago. Power gone, streets emptied, and whatever moves out there now isn't what it used to be. Your phone is almost dead.</p>
 
           {ssec("THE VOICE")}
-          <p style={body}>You woke with no memory of how you got here. A stranger texts the phone beside you — a way out, if you keep moving and keep the line alive.</p>
+          <p style={body}>You woke with no memory of how you got here. A stranger texts the phone beside you: a route through the city, if you keep moving and keep the line alive.</p>
 
           {ssec("THE GOAL")}
-          <p style={body}>A broadcast loops the same coordinates: somewhere still standing. Haven. Cross the city, keep the battery alive, reach it.</p>
+          <p style={body}>A shortwave loop points toward Haven. Cross the city, keep the battery alive, and find out why the evidence keeps turning back toward you.</p>
+
+          {ssec("THE CASE")}
+          <p style={body}>Every fragment, name, place, and question goes into the Case File. The city is not only something to survive. It is something to prove.</p>
 
           <div style={{ marginTop:"2rem", textAlign:"center", color:"#3a3a3a", fontSize:"0.58rem", letterSpacing:"0.14em", fontStyle:"italic" }}>
             …carrier lost…&nbsp;&nbsp;·&nbsp;&nbsp;keep the signal alive.
