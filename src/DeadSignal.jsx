@@ -250,6 +250,10 @@ const HAVEN_APPROACH_BEATS = [
     msgs:["the gate.", "open.", "not broken.", "not forced.", "just open."],
     choices:["Go through the gate.", "Wait. Listen first."] },
   { from:"ellie",
+    // day1Demo ENDS here — the player has reached Haven's gate. The interior (the empty
+    // compound, the cache, the "i remember you" call) and all of Phase 3 are held back
+    // for the full game; the haven_approach handler shows the promo screen after this beat.
+    demoEnd: true,
     msgs:["you made it.", "i wasn't sure you would."],
     choices:["Are you okay?", "Where is everyone?"] },
   { from:"narrator",
@@ -3242,8 +3246,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       addMsg("narrator", "night falls.", t); t += 1500;
       addMsg("narrator", "day one ends.", t); t += 1500;
       pendingRef.current.push(setT(() => {
-        if (isDay1Demo) setScreen("demoComplete");
-        else startDayGate("day1");
+        // The extended demo (day1Demo) runs the WHOLE prologue: Day 1 flows into the
+        // crossing (Phase 2) exactly like the full game. The demo's end is gated later,
+        // at Haven's gate (see the haven_approach handler + HAVEN_APPROACH_BEATS demoEnd).
+        startDayGate("day1");
       }, t + 900));
       return;
     }
@@ -3956,8 +3962,15 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       setP2BeatIndex(next);
       if (next < HAVEN_APPROACH_BEATS.length) {
         const nx = HAVEN_APPROACH_BEATS[next];
-        const t = scheduleMessages(nx.msgs, nx.choices, nx.from || "narrator");
+        // Extended demo: end at Haven's gate. Play the flagged beat's lines, suppress its
+        // choices, then hand off to the prologue-complete promo screen. Holds back the empty
+        // compound, the cache, the "i remember you" call, and Phase 3 for the full game.
+        const demoStop = isDay1Demo && nx.demoEnd;
+        const t = scheduleMessages(nx.msgs, demoStop ? null : nx.choices, nx.from || "narrator");
         if (nx.effect) pendingRef.current.push(setT(() => fireBeatEffect(nx.effect), t + 200));
+        if (demoStop) {
+          pendingRef.current.push(setT(() => { setIsTyping(false); setChoices([]); setScreen("demoComplete"); }, t + 1700));
+        }
       } else {
         raiseQuestion("haven"); // arrived — Haven is empty
         setGamePhase("haven_ai");
@@ -4433,9 +4446,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     </>
   );
   const missingPrep = day1MissingPrep();
-  const demoObjective = day1ReadyForSleep()
-    ? "sleep until morning"
-    : missingPrep.length ? missingPrep[0] : choices.length ? "answer the phone" : "stay alive";
+  // Phase-aware objective for the demo status rail — the extended demo runs the whole
+  // prologue (apartment → crossing → shelter → Haven's gate), so this tracks each leg.
+  const demoObjective =
+    gamePhase === "phase1"
+      ? (day1ReadyForSleep() ? "sleep until morning" : missingPrep.length ? missingPrep[0] : choices.length ? "answer the phone" : "stay alive")
+    : gamePhase === "encounter" ? "survive it"
+    : gamePhase === "shelter" ? "survive the night"
+    : gamePhase.startsWith("haven") ? "reach Haven"
+    : gamePhase.startsWith("p2") ? "cross Harwick to Haven"
+    : "keep moving";
   const DesktopStatusRail = () => (
     <aside className="play-rail play-rail--left ds-status-rail">
       <p className="eyebrow">demo controls</p>
@@ -4502,18 +4522,93 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     return isDesktopDemo ? renderDesktopFrame(introScreen, { mode:"intro" }) : introScreen;
   }
 
-  // ─── Main Menu — landing hub (Start / Resume / Story) ──────────────────────────
+  // ─── Prologue-complete promo — the demo ends at Haven's gate (day1Demo). ────────────
+  // Rewards the crossing with a run summary, then sells the full game (spoiler-safe).
   if (screen === "demoComplete") {
+    const routeLabel = currentPath === "metro" ? "The Metro"
+      : currentPath === "route9" ? "Route 9" : "Mercy General";
+    const condition = resources.hp >= 8 ? "steady" : resources.hp >= 4 ? "battered" : "barely standing";
+    const runSummary = [
+      ["route taken", routeLabel],
+      ["days survived", "3"],
+      ["battery at the gate", `${resources.battery}%`],
+      ["condition", condition],
+      ["memories recovered", `${recoveredMemories.length}/9`],
+    ];
     const completeScreen = (
-      <div style={{ background:"#070707", height:isDesktopDemo ? "100%" : "100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none", textAlign:"center" }}>
-        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
-        <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", marginBottom:"0.7rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>DAY 1 COMPLETE</div>
-        <p style={{ color:"#c8b98a", fontSize:"0.92rem", lineHeight:1.8, letterSpacing:"0.04em", maxWidth:"28rem", margin:"0 0 2rem" }}>Night falls over the apartment. The road through Harwick is waiting.</p>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:"0.7rem", justifyContent:"center" }}>
-          <button className="rb" onClick={withMenuSound(restartDay1Demo)} style={{ background:"transparent", border:"1px solid #1d3a22", color:"#4a9e6b", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>REPLAY DAY 1</button>
-          {onDemoExit && (
-            <button className="rb" onClick={withMenuSound(onDemoExit)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.7rem 1.2rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>EXIT DEMO</button>
-          )}
+      <div className="ds-demo-end" style={{ position:"relative", background:"radial-gradient(120% 80% at 50% -10%, #0b140e 0%, #070707 55%)", height:isDesktopDemo ? "100%" : "100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.5rem, 5vw, 3rem)", userSelect:"none", textAlign:"center" }}>
+        <style>{`${FONT_IMPORT}${KEYFRAMES_FI}
+          @keyframes dsRise{0%{opacity:0;transform:translateY(14px)}100%{opacity:1;transform:translateY(0)}}
+          @keyframes dsScan{0%{background-position:0 0}100%{background-position:0 100%}}
+          @keyframes dsFlick{0%,100%{opacity:1}47%{opacity:1}48%{opacity:.35}49%{opacity:1}82%{opacity:1}83%{opacity:.5}84%{opacity:1}}
+          @keyframes dsBar{0%,100%{transform:scaleY(.55);opacity:.5}50%{transform:scaleY(1);opacity:1}}
+          .ds-demo-end__scan{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,rgba(74,158,107,0.035) 0 1px,transparent 1px 3px);background-size:100% 6px;animation:dsScan 8s linear infinite;opacity:.6}
+          .ds-demo-end > *{position:relative;z-index:1}
+          .ds-demo-end .rise{animation:dsRise .8s ease both}
+          .ds-demo-end .rb{background:transparent;border:1px solid #223;color:#8f8f97;padding:0.85rem 1.5rem;font-family:inherit;font-size:0.68rem;letter-spacing:0.16em;cursor:pointer;transition:all .22s ease}
+          .ds-demo-end .rb:hover{border-color:#4a9e6b!important;color:#dff1e6!important;background:rgba(20,50,30,0.4)!important;box-shadow:0 0 26px rgba(74,158,107,0.22)}
+          .ds-demo-end .rb--go{border-color:#1d3a22;color:#6aba8a}
+          .ds-demo-end .sbar{display:inline-block;width:5px;border-radius:2px;background:#4a9e6b;transform-origin:bottom;box-shadow:0 0 8px rgba(74,158,107,0.55)}
+        `}</style>
+        <div className="ds-demo-end__scan" aria-hidden="true" />
+
+        {/* Signal-lost mark — three live bars fading, the fourth dead (mirrors the logo) */}
+        <div className="rise" style={{ display:"flex", alignItems:"flex-end", gap:"4px", height:"30px", marginBottom:"1.4rem" }} aria-hidden="true">
+          <span className="sbar" style={{ height:"14px", animation:"dsBar 1.6s ease infinite" }} />
+          <span className="sbar" style={{ height:"20px", animation:"dsBar 1.6s ease infinite .2s" }} />
+          <span className="sbar" style={{ height:"27px", animation:"dsBar 1.6s ease infinite .4s" }} />
+          <span className="sbar" style={{ height:"27px", background:"#2c2c2c", boxShadow:"none", opacity:.7 }} />
+        </div>
+
+        <div className="rise" style={{ animationDelay:".05s", color:"#4a9e6b", fontSize:"0.62rem", letterSpacing:"0.3em", marginBottom:"1.1rem", textShadow:"0 0 10px rgba(74,158,107,0.45)" }}>▚&nbsp; TRANSMISSION ENDS &nbsp;—&nbsp; HAVEN GATE</div>
+
+        <h1 className="rise" style={{ animationDelay:".12s", margin:"0 0 1.1rem", fontSize:"clamp(1.5rem, 4.5vw, 2.7rem)", fontWeight:700, letterSpacing:"0.06em", lineHeight:1.15 }}>
+          <span style={{ color:"#4d4d4d" }}>THE PROLOGUE </span>
+          <span style={{ color:"#6aba8a", textShadow:"0 0 14px rgba(74,158,107,0.55), 0 0 34px rgba(74,158,107,0.2)", animation:"dsFlick 5s steps(1) infinite" }}>ENDS HERE</span>
+        </h1>
+
+        <p className="rise" style={{ animationDelay:".2s", color:"#b7aa80", fontSize:"clamp(0.82rem, 1.8vw, 0.95rem)", lineHeight:1.85, letterSpacing:"0.03em", maxWidth:"34rem", margin:"0 0 2rem" }}>
+          You crossed a dead city and reached the gate. The floodlights are still burning,
+          the compound is quiet, and the voice that guided you is closer than ever.
+          <br />What waits inside Haven is the rest of the story.
+        </p>
+
+        {/* Run summary — the crossing you actually made */}
+        <div className="rise" style={{ animationDelay:".28s", width:"min(30rem, 100%)", border:"1px solid rgba(74,158,107,0.18)", background:"rgba(3,8,5,0.5)", margin:"0 0 1.6rem" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"0.5rem 0.85rem", borderBottom:"1px solid rgba(74,158,107,0.14)", color:"#4a9e6b", fontSize:"0.54rem", letterSpacing:"0.2em" }}>
+            <span>YOUR CROSSING</span><span style={{ color:"#c87a40" }}>HARWICK → HAVEN</span>
+          </div>
+          <div style={{ display:"grid", gap:"0.5rem", padding:"0.75rem 0.95rem", fontSize:"0.66rem" }}>
+            {runSummary.map(([k,v]) => (
+              <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:"1rem" }}>
+                <span style={{ color:"#59634f", letterSpacing:"0.1em", textTransform:"uppercase" }}>{k}</span>
+                <strong style={{ color:"#d9c88f", fontWeight:500 }}>{v}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Full-game promo — spoiler-safe teaser of Phase 3 */}
+        <div className="rise" style={{ animationDelay:".36s", width:"min(34rem, 100%)", border:"1px solid rgba(200,122,64,0.28)", background:"linear-gradient(180deg, rgba(20,12,6,0.5), rgba(7,7,7,0.4))", padding:"1.1rem 1.2rem 1.25rem", marginBottom:"1.8rem" }}>
+          <div style={{ color:"#c87a40", fontSize:"0.6rem", letterSpacing:"0.26em", marginBottom:"0.9rem" }}>THE FULL GAME</div>
+          <div style={{ display:"grid", gap:"0.7rem", textAlign:"left" }}>
+            {[
+              "Step inside Haven and walk the empty compound alone.",
+              "Open the investigation — assemble the evidence that keeps naming you.",
+              "Reach the final call. Make the choice. Two endings are waiting.",
+            ].map((line,i) => (
+              <div key={i} style={{ display:"flex", gap:"0.7rem", alignItems:"flex-start", color:"#a9b199", fontSize:"0.76rem", lineHeight:1.6 }}>
+                <span style={{ color:"#4a9e6b", flexShrink:0, textShadow:"0 0 8px rgba(74,158,107,0.5)" }}>▸</span>
+                <span>{line}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop:"1rem", paddingTop:"0.8rem", borderTop:"1px solid rgba(200,122,64,0.18)", color:"#6f6a5a", fontSize:"0.58rem", letterSpacing:"0.18em" }}>FULL GAME &nbsp;·&nbsp; COMING SOON</div>
+        </div>
+
+        <div className="rise" style={{ animationDelay:".44s", display:"flex", flexWrap:"wrap", gap:"0.8rem", justifyContent:"center" }}>
+          <button className="rb rb--go" onClick={withMenuSound(restartDay1Demo)}>▸&nbsp;&nbsp;REPLAY PROLOGUE</button>
+          {onDemoExit && <button className="rb" onClick={withMenuSound(onDemoExit)}>EXIT</button>}
         </div>
       </div>
     );

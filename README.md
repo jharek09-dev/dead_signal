@@ -32,7 +32,6 @@ The entire game lives in a single React component: [`src/DeadSignal.jsx`](src/De
 ## Current status
 
 - Full prologue, Haven handoff, Phase 3 investigation, finale, and endings are implemented.
-- Browser demo shell and playable game route are included.
 - GitHub Pages deployment is configured through `.github/workflows/deploy.yml`.
 - The project is still evolving through polish passes: dialogue pacing, HUD layout, story continuity,
   save/load behavior, and presentation cleanup.
@@ -56,20 +55,6 @@ Open the URL Vite prints, usually `http://localhost:5173`.
 
 No configuration or API keys are required.
 
-### Browser demo
-
-The marketing/demo shell is served from:
-
-```text
-http://localhost:5173/demo.html
-```
-
-The playable route inside that shell uses:
-
-```text
-http://localhost:5173/demo.html#play
-```
-
 ### Persistence
 
 The game stores three save profiles plus accumulated progress between runs. In the Claude sandbox
@@ -90,7 +75,6 @@ onto `localStorage`.
 ```text
 .
 |-- index.html                 # Vite entry HTML and PWA meta
-|-- demo.html                  # Browser demo shell entry
 |-- vite.config.js             # Vite config
 |-- package.json
 |-- docs/                      # All documentation — GDD, PRD, DESIGN, Production, Audio, Art,
@@ -102,8 +86,7 @@ onto `localStorage`.
 `-- src/
     |-- main.jsx               # App mount and storage shim
     |-- audio.js               # Procedural audio engine
-    |-- DeadSignal.jsx         # The game
-    `-- demo/                  # Browser landing page and embedded game wrapper
+    `-- DeadSignal.jsx         # The game
 ```
 
 ## Documentation
@@ -117,7 +100,7 @@ The full design, product, and engineering documentation lives in **[`docs/`](doc
   Art, Localization, and Accessibility docs)
 
 [`STORY.md`](docs/narrative/STORY.md) contains major spoilers and is the internal canon source. The
-README, browser page, and in-game Story page stay spoiler-safe on purpose.
+README and in-game Story page stay spoiler-safe on purpose.
 
 ## License
 
