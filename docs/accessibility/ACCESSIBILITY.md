@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | Living — some features shipped, an option set + audits remain |
 | **Last updated** | 2026-07-06 |
 | **Owner** | Jharek (design/QA) |
@@ -134,13 +134,13 @@ Strong by construction:
 - **The Signal cue is audio-visual (shipped).** The `signal()` distortion is always paired with the
   on-screen `sigFlicker` (Art Bible §5.2 / Audio Bible §5.2), so deaf/HoH players still receive the
   "the Signal is here" beat.
-- **The Echo recovery cue needs a visual equivalent — Expansion v2 · build: PLANNED.** Echoes surface
+- **The Echo recovery cue needs a visual equivalent — Expansion v2 · build: BUILT 2026-07-10.** Echoes surface
   by a story-gated **audio cue** — a sibling of the existing `signal()` distortion (`STORY.md` §3).
   Because that cue signals *an Echo is recoverable here*, it must ship paired with an on-screen
   counterpart, exactly as the Signal cue is paired with `sigFlicker` — so a deaf/HoH or muted player
   never misses that a fragment is present. All Echo **content is textual** (2–4 lines of found text,
   read on the board), so recovery and reading are already fully playable muted; this only extends the
-  existing "audio cue always has a visual twin" rule to the new cue. Verify in the muted playthrough.
+  existing "audio cue always has a visual twin" rule to the new cue. **Built (2026-07-10):** the cue is `audioEngine.echo()` and its visual twin is the **ECHO RECOVERED** card — it renders the fragment's 2–4 lines as text (cyan) plus a `sigFlicker` pulse, so a muted/deaf/HoH player both sees the recovery and reads the fragment. Present in code; confirm in the on-device muted run.
 - **No spoken dialogue**, so captions/subtitles are not required — but if voiced content is ever
   added, it must ship with captions.
 - **Action:** make sure the visual counterparts are *sufficient on their own* (test a full playthrough
@@ -164,7 +164,7 @@ flicker**.
   with a static, non-flashing indicator (e.g. a steady border tint) while keeping the *meaning* of
   the Signal beat.
 - **Never** stack the flash with a full-screen luminance jump.
-- **Expansion v2 — fold the Echo cue into this audit · build: PLANNED.** The Echo recovery cue's
+- **Expansion v2 — fold the Echo cue into this audit · build: BUILT 2026-07-10.** The Echo recovery cue's
   visual twin (§6) is planned as a **sibling/extension of the Signal distortion**. If it reuses or
   extends the `sigFlicker`/green-glow visual, it falls under the same WCAG 2.3.1 audit — measure it
   for flash rate, area, and luminance change, and make sure the "reduce flashing" toggle and OS
@@ -183,7 +183,7 @@ flicker**.
 - **Save-anywhere + resume-safe** reduces the penalty for interruptions.
 - **Optional simplified motion/quiet mode** (ties to §7) for lower sensory load.
 - **Reading load.** The text-speed/instant option (§5) is also a cognitive-load lever.
-- **Expansion v2 — the structural advantage holds · build: PLANNED.** The added content (Echoes,
+- **Expansion v2 — the structural advantage holds · build: BUILT 2026-07-10.** The added content (Echoes,
   region sub-stories, truth-by-assembly, the deepened prologue) is **authored text and Case File
   entries — reading and tapping, no new mechanics** (`STORY.md` §5, §9 carve-out). It adds no reflex
   demand, no timing fail state, and nothing that can't be paused: every new beat is read at the
@@ -206,7 +206,7 @@ The gap that needs the most engineering:
   (e.g. "battery 34 percent" not just "34%"). Icons/glyphs get text alternatives.
 - **State changes announced.** Resource changes, a new Case File entry, and phase transitions should
   be perceivable without sight.
-- **Expansion v2 — the new board content inherits every rule · build: PLANNED.** The new **`ECHOES`**
+- **Expansion v2 — the new board content inherits every rule · build: BUILT 2026-07-10.** The new **`ECHOES`**
   Case File category and **truth-by-assembly** (`STORY.md` §6) are additional board/journal content and
   must meet the same bar as the existing categories: keyboard-navigable, screen-reader friendly, and
   readable against the `#070707` canvas (the §3 contrast/scaling work and the §5 text-speed/instant-
@@ -231,9 +231,9 @@ philosophical horror about the loss of self. Accessibility includes **psychologi
   reduction choice.
 - If distributed on storefronts, mirror these in the store's content descriptors.
 
-**Expansion v2 — raised emotional intensity · build: PLANNED.** The Echoes and the *unchosen* thread
+**Expansion v2 — raised emotional intensity · build: BUILT 2026-07-10.** The Echoes and the *unchosen* thread
 (`STORY.md` §2, §3, §5) push the emotional register harder than the shipped build, so the content-notes
-surface must widen to cover them (still spoiler-safe — themes named, twist withheld). Add coverage for:
+surface must widen to cover them (still spoiler-safe — themes named, twist withheld). **BUILT 2026-07-10 — the specific beats that landed:** Theo (a child among the uploaded), Priya (the regretter), Rosa's sealed ward at Mercy (the un-selected dying), Marcus + the City Hall citizen petitions + the prologue's child's-shoe traces (the unchosen / people left behind), patient zero (consent — the terminally ill 'volunteers'), Sorkin (you were warned by name), and the decision log (you chose 143 over safety). All spoiler-safe; the §4 restraint ceiling (Echoes crack, 2–4 lines, no gore, never staged for shock) held throughout. Add coverage for:
 
 - **A child among the uploaded** (Theo) — the game's hardest line by design; the prologue second act
   also implies child loss by object (a child's shoe as a trace of those who didn't make it, `STORY.md`
@@ -310,5 +310,6 @@ Include an accessibility smoke test in the release gate (PRD §8).
 | --- | --- | --- |
 | 1.0 | 2026-07-06 | First accessibility plan. Credits shipped features (reduced-motion, muted-playable, no-reflex, native buttons, ARIA); measured contrast; scoped the option set + screen-reader + photosensitivity work. |
 | 1.1 | 2026-07-06 | **Expansion v2 (build: PLANNED, docs only).** Widened the content/trauma notes (§10) for the raised intensity — a child among the uploaded, the regretter, the left-behind/*unchosen*, the un-selected dying. Added a visual equivalent for the Echo recovery audio cue (§6) and folded that cue into the photosensitivity audit (§7). Brought the new `ECHOES` board category + truth-by-assembly under the screen-reader/keyboard/contrast bar (§9). Reaffirmed the structural advantage — new content is reading + tapping, no reflexes, pausable (§8). WCAG 2.2 AA framing unchanged. |
+| 1.2 | 2026-07-10 | **Expansion v2 content BUILT — a11y delta logged (M-EXP crit: a11y deltas).** Flipped the content flags PLANNED→BUILT. Confirmed the Echo cue's **visual twin exists** (`audioEngine.echo()` + the ECHO RECOVERED text card + `sigFlicker`, §6); folded the echo cue + the S1 `assembly_note` flash into the photosensitivity audit (§7); recorded the specific raised-intensity beats now in the build (§10 — Theo, Priya, Rosa's ward, Marcus/petitions/child's-shoe unchosen, patient-zero consent, Sorkin's warning, the 143 decision); brought the `ECHOES` board category + the S1 assembly card + the prologue midpoint/shelter under the SR/keyboard/contrast/text-speed bar (§8/§9). Structural advantage holds — all reading + tapping, pausable, muted-playable. The **a11y option set + audit (M-A11Y) is still PLANNED** — only the content it must cover has landed. WCAG 2.2 AA framing unchanged. |
 
 *End of document.*

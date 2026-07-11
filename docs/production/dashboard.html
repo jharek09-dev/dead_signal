@@ -9,7 +9,7 @@
 /* ============================================================
    DEAD SIGNAL — SIGNAL RESTORATION CONSOLE
    In-world production milestone dashboard. Self-contained, offline.
-   Source of truth: docs/production/PRODUCTION.md v1.10 (2026-07-10)
+   Source of truth: docs/production/PRODUCTION.md v1.11 (2026-07-10)
    State persists to localStorage; RESYNC restores plan baseline.
    // 143
    ============================================================ */
@@ -294,7 +294,7 @@ body{
 
 <script>
 /* ================= DATA MODEL — canonical baseline from PRODUCTION.md v1.2 ================= */
-const PLAN_VERSION = "1.10";
+const PLAN_VERSION = "1.11";
 const BASELINE = {
   milestones: [
     { id:"M-P", name:"Polish & Consistency", prio:"P0", status:"done",
@@ -322,19 +322,19 @@ const BASELINE = {
         ["Accessibility Plan — v1.1",true],
         ["Word/PDF exports generated + indexed in docs/README",true],
       ]},
-    { id:"M-EXP", name:"Expansion v2 (Narrative Depth)", prio:"P1", status:"active",
+    { id:"M-EXP", name:"Expansion v2 (Narrative Depth)", prio:"P1", status:"done",
       goal:"Implement the sanctioned narrative-density pass — Echoes, region sub-stories, the unchosen thread, truth-by-assembly, the prologue second act — as authored text + nodes only, no new mechanics.",
       depends:["M-P"], branch:true,
-      staging:"Stage 1 canon <b>✅</b> · Stage 2 doc propagation <b>✅</b> · Stage 3 content + code <b>🚧 started</b>",
-      note:{txt:"Stage 3 STARTED (2026-07-10): the ECHOES Case File category, recover-Echo mechanic, a dedicated Echo audio cue, and all 14 fragments across the 7-face cast are wired into DeadSignal.jsx and build-clean (995 modules) — spoiler-safe, save round-trip extended. ~30-node criterion in progress region-by-region: Haven 'the last day' ✅ (children's room, infirmary, quiet room, gate log, bunk 143) + Mercy 'the sealed ward means something' ✅ (ward antechamber, nurses' station, room 307, day room, charge office) + Comms 'Kim dramatized' ✅ (operator's workspace, saved transmissions, recording booth, transmitter control, side door) + the E3 Kim-absence beat at the Signal Core; + City Hall 'the selection' ✅ (sub-level, selection office, mail room, applicant files, dissent record) with the U1 'who did you leave out?' upgrade; Phase 3 34→54; Theo/Walt/Rosa/June/Marcus echoes re-homed to their canonical rooms. + Research Annex 'patient zero was a person' ✅ (subject records, first cell, containment office, warning file, decision log) — answers why-143 (the containment limit). ALL FIVE region sub-stories + U1 complete; Phase 3 34→59 (≈2×); all 14 echoes re-homed to canonical rooms. + S1 truth-by-assembly ✅ (2026-07-10) — a region's truth now resolves only once its 2–3 evidence pieces are found; the Case File assembles evidence → ∴ deduction → TRUTH. + Prologue second act ✅ (2026-07-10): a real midpoint per route (traces of others who ran before you — the unchosen, seeded early + spoiler-safe), the shelter as a scene (previous occupant + a faint broadcast wrongness), and deeper Ellie — economy unchanged, zero answers. Next: loc/a11y logging + the regression bar. Truths / gates / endings frozen.",cls:"exp"},
+      staging:"Stage 1 canon <b>✅</b> · Stage 2 doc propagation <b>✅</b> · Stage 3 content + code <b>✅</b>",
+      note:{txt:"Stage 3 STARTED (2026-07-10): the ECHOES Case File category, recover-Echo mechanic, a dedicated Echo audio cue, and all 14 fragments across the 7-face cast are wired into DeadSignal.jsx and build-clean (995 modules) — spoiler-safe, save round-trip extended. ~30-node criterion in progress region-by-region: Haven 'the last day' ✅ (children's room, infirmary, quiet room, gate log, bunk 143) + Mercy 'the sealed ward means something' ✅ (ward antechamber, nurses' station, room 307, day room, charge office) + Comms 'Kim dramatized' ✅ (operator's workspace, saved transmissions, recording booth, transmitter control, side door) + the E3 Kim-absence beat at the Signal Core; + City Hall 'the selection' ✅ (sub-level, selection office, mail room, applicant files, dissent record) with the U1 'who did you leave out?' upgrade; Phase 3 34→54; Theo/Walt/Rosa/June/Marcus echoes re-homed to their canonical rooms. + Research Annex 'patient zero was a person' ✅ (subject records, first cell, containment office, warning file, decision log) — answers why-143 (the containment limit). ALL FIVE region sub-stories + U1 complete; Phase 3 34→59 (≈2×); all 14 echoes re-homed to canonical rooms. + S1 truth-by-assembly ✅ (2026-07-10) — a region's truth now resolves only once its 2–3 evidence pieces are found; the Case File assembles evidence → ∴ deduction → TRUTH. + Prologue second act ✅ (2026-07-10): a real midpoint per route (traces of others who ran before you — the unchosen, seeded early + spoiler-safe), the shelter as a scene (previous occupant + a faint broadcast wrongness), and deeper Ellie — economy unchanged, zero answers. + Loc/a11y deltas logged ✅ (LOCALIZATION + ACCESSIBILITY updated: string delta, the Echo cue's visual twin, content/trauma notes for the new beats). <b>§6.1 regression bar GREEN + crit[4] frozen — M-EXP COMPLETE (on-device QA, 2026-07-11).</b> All 3 routes (hospital/metro/route9) driven start→crossing→Haven→Phase 3, each route's own midpoint (the traces of others — child's shoe / stuffed rabbit / dropped backpack) + the shelter scene (occupant + broadcast 'hitch' + Ellie's 'don't listen too close') firing; midpointFired persists so a resume doesn't replay it. Zero console errors, no external network across the arcs. Both endings reached + recorded to profile.ending ('accept'/'refuse'); save round-trip resumed to a safe decision point on all 3 slots with Echoes/truths/evidence intact. Expansion content verified live: one Echo recovered in each of the 5 regions (ECHO RECOVERED card fires even muted; all 14 homed in code, HUD N/14); truth-by-assembly — Comms + City Hall detours each play withhold ('still missing…') → nudge → THE CASE COMES TOGETHER → TRUTH, while Mercy + Annex assemble on the direct path; U1 evolves to 'who did you leave out — and why?' after the selection office; the 4 truths gate the finale. crit[4] frozen confirmed by additive-only code diff (DeadSignal.jsx + audio.js; main.jsx untouched) and both endings observed live. Truths / gates / endings frozen.",cls:"exp"},
       crit:[
         ["~14 Echo fragments + 7-face cast authored, wired to new ECHOES Case File category",true],
         ["~30 new Phase-3 nodes integrated (region sub-stories + U1 unchosen thread): Phase 3 34 → 59 (≈2×), all 5 regions + U1",true],
         ["S1 truth-by-assembly live (region truth resolves only after 2–3 supporting pieces found)",true],
         ["Prologue second act (P1–P3) integrated spoiler-safe",true],
-        ["Every shipped truth, gate, and both endings unchanged",false],
-        ["Loc / a11y deltas from the added text logged",false],
-        ["Full regression bar (§6.1) green",false],
+        ["Every shipped truth, gate, and both endings unchanged",true],
+        ["Loc / a11y deltas from the added text logged",true],
+        ["Full regression bar (§6.1) green",true],
       ]},
     { id:"M-A11Y", name:"Accessibility", prio:"P1", status:"queued",
       goal:"Deliver the accessibility option set and pass an audit to a WCAG 2.2 AA baseline.",
@@ -400,7 +400,7 @@ const BASELINE = {
     ["PWA + deploy","done","P1"],
     ["Spoiler / canon consistency pass","active","P0"],
     ["Documentation suite","done","P1"],
-    ["Expansion v2 (Narrative Depth)","active","P1"],
+    ["Expansion v2 (Narrative Depth)","done","P1"],
     ["Accessibility option set","queued","P1"],
     ["Localization","queued","P2"],
     ["Mobile platform matrix","queued","P0"],

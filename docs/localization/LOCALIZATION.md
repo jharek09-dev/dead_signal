@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | Planning — pre-implementation (strings not yet externalized) |
 | **Last updated** | 2026-07-06 |
 | **Owner** | Jharek (loc/eng) |
@@ -74,7 +74,7 @@ game read from it by key.
 runtime fetch (respects PRD NFR-1). Locale is chosen from device/browser language with a manual
 override in Options.
 
-> **Expansion v2 · build: PLANNED — the Phase-3 surface roughly doubles.** The Expansion v2 narrative
+> **Expansion v2 · build: BUILT 2026-07-10 — the Phase-3 surface roughly doubles.** The Expansion v2 narrative
 > pass (`STORY.md` §3/§5/§8 + Changelog — Expansion v2) adds a large block of *new translatable
 > content*: **~14 Echo fragments** (2–4 lines each, the 7-face cast), **~30 new Phase-3 node
 > onEnter/atmosphere strings** (region sub-stories; Phase 3 text roughly **doubles**, ~35 → ~65
@@ -104,7 +104,7 @@ override in Options.
   needs ICU). Keep placeholders named, not positional.
 - **Registers as metadata.** Tag each content string with its **voice** (`ellie` / `narrator` /
   `player-choice` / `hud`) so translators keep the register (§5) and so a per-locale style guide can
-  target them. **Expansion v2 (build: PLANNED)** adds an **`echo`** voice tag for the recovered
+  target them. **Expansion v2 (build: BUILT 2026-07-10)** adds an **`echo`** voice tag for the recovered
   fragments of the 142 minds — a distinct, terse, mid-thought register that must not be flattened into
   `narrator` (§5.1).
 - **What NOT to externalize.** Purely numeric/`·` continuation tokens, internal ids, the `143`
@@ -141,14 +141,14 @@ literal translation.
   everywhere. The *cultural resonance* — 143 as pager/text shorthand for "I love you" (letter counts
   1-4-3) — is an **English-culture Easter egg**, not load-bearing. Do not try to localize it; just
   ensure no translated line leans on the "love" reading. Document it so translators understand why
-  the number is fixed. **Expansion v2 note (build: PLANNED):** the motif now also underpins **Echo /
+  the number is fixed. **Expansion v2 note (build: BUILT 2026-07-10):** the motif now also underpins **Echo /
   roster content** — the 143 is a *count of people* (bunk 143 = Kim's empty refused bunk, the roster
   the architect signed, the evolving `why only 143?` question). Keep it fixed as a number there too;
   the watch-item is unchanged but its footprint grows.
 - **`KIM → ELLIE` contact-name flip.** Proper names carry across languages; keep **Kim** and **Ellie**
   as-is (or apply standard transliteration for non-Latin scripts — e.g. キム／エリー in JA). The *beat*
   (the reader noticing the name change) works in any language — protect it by keeping the flip
-  visually obvious in every locale. **Expansion v2 note (build: PLANNED):** the flip's meaning now
+  visually obvious in every locale. **Expansion v2 note (build: BUILT 2026-07-10):** the flip's meaning now
   extends into Echo/roster content — Kim is deliberately **not** an Echo (the Signal Core "absence
   beat," `STORY.md` §3), while Ellie is the connected voice; the contrast the flip sets up must stay
   legible wherever both names appear across Phase 3.
@@ -164,7 +164,7 @@ literal translation.
   answers* rule (`STORY.md` §4): a line that merely implies must not become a line that states. Ship
   translators the relevant `STORY.md` context under NDA so they translate the subtext correctly.
 
-### 5.1 Expansion v2 culturalization watch-items — build: PLANNED
+### 5.1 Expansion v2 culturalization watch-items — build: BUILT 2026-07-10
 
 New traps introduced by the Expansion v2 narrative pass (`STORY.md` §3/§5/§8). Design-only; no code
 exists yet. Fold these into the per-language style guide alongside the items above.
@@ -193,7 +193,7 @@ exists yet. Fold these into the per-language style guide alongside the items abo
   to **culpability** ("who did *you* leave out") is the load-bearing shift — protect the second-person
   "you" and the shift itself; some languages will need a deliberate choice of address/formality to keep
   the accusation personal (see the Ellie register note on informality above).
-- **Character names — consistency across locales (build: PLANNED).** Expansion v2 adds a named cast
+- **Character names — consistency across locales (build: BUILT 2026-07-10).** Expansion v2 adds a named cast
   that recurs across many strings (Echoes, roster, City Hall, Case File `PEOPLE`). **Lock a single
   rendering per name per locale** to avoid drift: **Theo · Rosa · Walt · Priya · Marcus · Dr. Lena
   Sorkin · June · Kim · Ellie**. Latin-script locales keep them as-is; non-Latin scripts apply a
@@ -287,13 +287,20 @@ M-LOC4  Tier 2 (JA/ZH/KO/RU) — self-host + subset fonts, CJK face, per-script 
 Externalization (M-LOC0) is the large, one-time engineering cost. Everything after it is
 per-language content + LQA. Localization can land **post-launch** without blocking release (PRD §8).
 
-> **Expansion v2 · build: PLANNED — budget impact.** The Expansion v2 pass roughly **doubles the
+> **Expansion v2 · build: BUILT 2026-07-10 — budget impact.** The Expansion v2 pass roughly **doubles the
 > Phase-3 translatable word count** (Echoes + ~30 new node strings + the unchosen; §2). Every
 > per-language line (M-LOC2 onward) scales with word count, so **each locale's translation + LQA cost
 > for Phase 3 grows by ~2×** versus the pre-expansion estimate. M-LOC0 itself does not get 2× harder if
 > it lands *first* (it externalizes today's surface once), but it **does** balloon if the new content
 > is authored inline before extraction — reinforcing the sequencing above. Re-baseline the per-language
-> effort figures against the ~65-node Phase 3 once the Expansion v2 strings are authored.
+> effort figures against the ~59-node Phase 3, now that the Expansion v2 strings are authored.
+>
+> **Actuals (2026-07-10) — the pass is BUILT, authored INLINE.** Delta landed: Phase 3 **34→59 nodes** (≈2×);
+> **14 Echoes** across the 7-face cast + the patient-zero echo; **~25 new node string-sets** (onEnter/revisit)
+> + **~25 new Case-File facts** + the **U1 `who did you leave out?`** question upgrade; the **S1 assembly**
+> strings (evidence / ∴ deduction / withhold / hint per truth); the **prologue second act** (a route midpoint ×3
+> + the enriched shelter scene). Because it landed inline (M-LOC0 did **not** precede it), externalization is now
+> a **single full extraction** of the ~59-node Phase 3 + Echoes + prologue — the risk row below has materialized.
 
 ---
 
@@ -307,8 +314,8 @@ per-language content + LQA. Localization can land **post-launch** without blocki
 | Phone-UI overflow (DE/RU/CJK) | Clipped choices/HUD | Pseudo-loc first; length budgets per key |
 | CJK font cost/aesthetic shift | Bundle bloat, look breaks | Self-host + subset; lazy-load CJK; validate the terminal look per script |
 | Google-Fonts runtime import | Breaks offline determinism | Self-host fonts as part of M-LOC0/M-LOC4 |
-| Expansion v2 content authored inline (build: PLANNED) | Externalization debt compounds; per-language cost balloons | Land M-LOC0 before the ~2× Phase-3 content; author Echoes/new nodes/unchosen as keyed strings from day one (§2, §10) |
-| Echo restraint lost in translation (build: PLANNED) | Terse fragments become melodrama; child Echo mis-registered | `echo` voice tag + per-language brief on clipped length/ambiguity; Theo flagged for per-market content-rating review (§5.1) |
+| Expansion v2 content authored inline (build: BUILT 2026-07-10) | Externalization debt compounds; per-language cost balloons | **REALIZED 2026-07-10** — the ~2× content is now authored **inline** (M-LOC0 did not precede it). Mitigation shifts to: M-LOC0 extracts the **full built set** in one pass (the ~59-node Phase 3 + Echoes + S1 + prologue), and per-language Phase-3 effort is budgeted against 59 nodes, not today's surface (§2, §10) |
+| Echo restraint lost in translation (build: BUILT 2026-07-10) | Terse fragments become melodrama; child Echo mis-registered | `echo` voice tag + per-language brief on clipped length/ambiguity; Theo flagged for per-market content-rating review (§5.1) |
 
 ---
 
@@ -320,9 +327,9 @@ per-language content + LQA. Localization can land **post-launch** without blocki
 - **Pseudo-loc** — a fake locale that stress-tests length/encoding before real translation.
 - **ICU MessageFormat** — the standard for plurals/interpolation across languages.
 - **Voice tag** — per-string metadata (`ellie`/`narrator`/`hud`/`echo`) that preserves register.
-- **Echo** (Expansion v2, build: PLANNED) — a recovered 2–4-line fragment of one of the 142 uploaded
+- **Echo** (Expansion v2, build: BUILT 2026-07-10) — a recovered 2–4-line fragment of one of the 142 uploaded
   minds (`STORY.md` §3); its own terse `echo` voice tag, restraint-critical in translation.
-- **The unchosen** (Expansion v2, build: PLANNED) — the moral thread (*who did you leave out?*, §5.1);
+- **The unchosen** (Expansion v2, build: BUILT 2026-07-10) — the moral thread (*who did you leave out?*, §5.1);
   a second-person, accusatory-but-restrained register to preserve per locale.
 
 ### 12.2 Related documents
@@ -336,5 +343,6 @@ per-language content + LQA. Localization can land **post-launch** without blocki
 | --- | --- | --- |
 | 1.0 | 2026-07-06 | First localization plan. Grounded in the real (hardcoded) string surface + the IBM Plex Mono font reality. |
 | 1.1 | 2026-07-06 | Expansion v2 (build: PLANNED, docs-only): flagged the ~2× Phase-3 string growth (Echoes + ~30 new nodes + the unchosen) and its budget/critical-path impact (§2, §10); added §5.1 culturalization watch-items (child Echo/Theo register + content-rating, terse-Echo restraint, the "unchosen" framing) and a locked cast name list; added the `echo` voice tag (§3) and two Expansion v2 risk rows (§11). No canon changed; `STORY.md` remains source of truth. |
+| 1.2 | 2026-07-10 | **Expansion v2 content BUILT — string delta logged (M-EXP crit: loc deltas).** Flipped the Expansion-v2 content flags from PLANNED to BUILT. Recorded the measured delta (§10): Phase 3 34→59 nodes (≈2×); 14 Echoes / 7-face cast; ~25 node string-sets + ~25 Case-File facts + the U1 question upgrade; the S1 assembly strings; the prologue second act (midpoint ×3 + shelter). All authored **inline** — the externalization risk (§11) has materialized: M-LOC0 is now a single full extraction of the built set, and per-language Phase-3 effort re-baselines against 59 nodes. The **loc work itself (string externalization / M-LOC0) is still PLANNED** — only the *content* it must cover has landed. |
 
 *End of document.*
