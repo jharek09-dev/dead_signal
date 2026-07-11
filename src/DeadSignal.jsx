@@ -1025,6 +1025,49 @@ const PHASE3_TRUTHS = {
 // (The Research Annex, 3E, will gate on a truth COUNT rather than a single id.)
 const TRUTH_UNLOCKS = { you: "cityhall" };
 
+// ─── S1 truth-by-assembly (Expansion v2, STORY §6). A region's truth resolves only once its 2–3
+// supporting evidence pieces (existing caseFile keys, on/near the path to its room) are collected AND
+// its room is reached; the Case File assembles evidence → ∴ deduction → TRUTH instead of the room
+// dumping it. Reach the room without the pieces → a withholding beat naming what's missing. Truth ids,
+// gates, and both endings are UNCHANGED. ───────────────────────────────────────────────────────────
+const TRUTH_PIECES = {
+  you:           ["p3_mercy_staff", "p3_admit", "p3_mercy_procedure"],
+  signal:        ["p3_comms_loop", "p3_kim_refused"],
+  project_haven: ["p3_ch_dept", "p3_ch_authorized"],
+  outbreak:      ["p3_an_breach", "p3_an_lab", "p3_an_patientzero"],
+};
+const TRUTH_ROOM = { you:"mercy:patient_room_312", signal:"comms:signal_core", project_haven:"cityhall:charter_vault", outbreak:"annex:containment_core" };
+const S1_EVIDENCE = {  // the short evidence phrasing shown in the assembly card
+  p3_mercy_staff:"you were this hospital's director — and Project Haven's",
+  p3_admit:"you admitted yourself the day before the broadcast",
+  p3_mercy_procedure:"the memory-wipe was a procedure here, on your own signature",
+  p3_comms_loop:"the Haven broadcast loops out of this array, on a timer",
+  p3_kim_refused:"Kim refused it — 'it isn't sleep' — and went to find you",
+  p3_ch_dept:"Project Haven was a department kept off the public signs",
+  p3_ch_authorized:"it was approved by a vote no one minuted",
+  p3_an_breach:"containment was breached here, and it pushed toward the city",
+  p3_an_lab:"the work is yours — your handwriting is on it",
+  p3_an_patientzero:"the things behind the glass are people",
+};
+const S1_HINT = {  // the "still missing" hint when a piece is absent
+  p3_mercy_staff:"who you were in this building", p3_admit:"why you were admitted", p3_mercy_procedure:"what they did to you here",
+  p3_comms_loop:"where the broadcast comes from", p3_kim_refused:"what Kim refused, and why she ran",
+  p3_ch_dept:"what this department was", p3_ch_authorized:"who signed it into being",
+  p3_an_breach:"how it got loose", p3_an_lab:"whose work this was", p3_an_patientzero:"what's behind the glass",
+};
+const S1_ROOM_LINE = {  // the room-establishing line on a not-ready visit (no conclusion)
+  you:"room 312. your name's on the door. the answer is in here — but you can't make it hold yet.",
+  signal:"the cold room behind the transmitters, the racks still running. it's here — but it won't resolve. not yet.",
+  project_haven:"the vault. the charter, the roster, a signature at the bottom. you can read it, but you can't place it. not yet.",
+  outbreak:"the containment core, where the breach began. you can feel the shape of it. it won't come together. not yet.",
+};
+const S1_DEDUCTION = {  // the "∴" line on the assembly card
+  you:"you built it — then had yourself erased rather than carry it.",
+  signal:"the Signal is where the connected went. no hand ever held the phone.",
+  project_haven:"Project Haven put the 143 inside it — and your name is on the order.",
+  outbreak:"your Signal got loose here. the things you fought were people.",
+};
+
 // ─── Phase 3F — the finale: the Accept / Refuse ending ──────────────────────────────
 // Triggered by a final call at Haven once all 4 truths are uncovered (bookends the prologue's
 // first call). The call pays off the last held threads — what Ellie IS, that the 143 walked out
@@ -1399,7 +1442,7 @@ const buildLeadQueue = (section) => {
     { kind: "encounter", plan: "power" },
     { kind: "calm" },
     { kind: "encounter", plan: "hazard" },
-    { kind: "atmo", drain: "path_mid" },
+    { kind: "midpoint", drain: "path_mid" },
     { kind: "encounter", plan: "search" },
     { kind: "discovery" },
     { kind: "memory" },
@@ -1487,6 +1530,18 @@ const CALM_BEAT = {
   metro:    { msgs: ["a stretch of empty platform. the rails hum, low and steady.", "for a minute, nothing moves.", "just your own breathing."] },
   route9:   { msgs: ["the road crests a rise. the valley below, still as a photograph.", "for a minute, nothing moves.", "just your own breathing."] },
   ellie: ["...you're doing okay. i mean it.", "...take a second. i'm not going anywhere."],
+};
+
+// ─── P1 — the midpoint of the crossing (Expansion v2, STORY §8) ────────────────
+// A real midpoint per route: a trace of others who ran before you — seeding the
+// UNCHOSEN theme early, spoiler-safe ("people were here, and they didn't make it").
+// Never named, never explained. Choiceless like the calm beat; auto-flows back to
+// nav. Ellie's line is warmth + one faint crack (P3): the guide as a relationship.
+const MIDPOINT_BEAT = {
+  hospital: { msgs: ["a stairwell landing, halfway up. someone stopped here before you.", "a duffel bag spilled across the steps — clothes, a water bottle gone dry, a child's shoe.", "an arrow scratched into the paint, pointing up. beneath it, in a shakier hand: 'don't.'", "you don't find who left it. you step around it, and keep climbing."] },
+  metro:    { msgs: ["a stretch of tunnel where people bedded down. flattened cardboard, a ring of cold ash.", "a phone on the rail bed, screen still faintly lit, hunting for a network that's long gone. a stuffed rabbit beside it.", "chalk arrows on the wall, marking a way out — and then, without warning, they stop.", "you don't find where they went. you don't want to. you move on."] },
+  route9:   { msgs: ["a knot of cars nose to tail, doors flung open, packed to run. empty now.", "a suitcase burst across two lanes. a small backpack, dropped, on the center line.", "a bedsheet lashed to the overpass rail, spray-painted: WE'RE GETTING OUT. the paint long faded.", "they ran, the same as you. you don't catch them up. you keep going."] },
+  ellie: ["...you're not the first one through here. i've got you.", "don't look too long. eyes up — i'm right here.", "...just keep moving. i'm not going anywhere."],
 };
 
 // ─── ENCOUNTER POOLS (8 per path, 9 crossing) ─────────────────────────────────
@@ -2024,6 +2079,17 @@ const MessageRow = memo(function MessageRow({ m }) {
       </div>
     );
   }
+  if (m.from === "assembly_note") {
+    return (
+      <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.9s ease" }}>
+        <div style={{ color:"#c8a020", fontSize:"0.6rem", letterSpacing:"0.18em" }}>THE CASE COMES TOGETHER</div>
+        <div style={{ margin:"0.4rem 0 0.35rem" }}>
+          {(m.evidence || []).map((e, i) => (<div key={i} style={{ color:"#8aaa90", fontSize:"0.68rem", fontStyle:"italic", lineHeight:1.5 }}>&rsaquo; {e}</div>))}
+        </div>
+        {m.deduction && <div style={{ color:"#e0c89a", fontSize:"0.8rem", fontStyle:"italic", letterSpacing:"0.02em" }}>&there4; {m.deduction}</div>}
+      </div>
+    );
+  }
   if (m.from === "truth_note")
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.7rem 1.4rem", border:"1px solid #5a3a1a", background:"#0d0703", boxShadow:"0 0 18px rgba(200,120,40,0.18)", animation:"fi 1s ease" }}>
@@ -2087,6 +2153,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const [aiExchangeTarget, setAiExchangeTarget] = useState(7);
   const [fragFired, setFragFired]               = useState(false);
   const [calmFired, setCalmFired]               = useState(false);
+  const [midpointFired, setMidpointFired]       = useState(false);
   const [currentEncounter, setCurrentEncounter] = useState(null);
   const [selectedFragment, setSelectedFragment] = useState(null);
   const [recoveredMemories, setRecoveredMemories] = useState([]);
@@ -2129,6 +2196,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const aiTargetRef         = useRef(aiExchangeTarget);
   const fragFiredRef        = useRef(fragFired);
   const calmFiredRef        = useRef(calmFired);
+  const midpointFiredRef    = useRef(midpointFired);
   const currentEncounterRef = useRef(currentEncounter);
   const selectedFragmentRef  = useRef(selectedFragment);
   const recoveredMemoriesRef = useRef(recoveredMemories);
@@ -2183,6 +2251,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   aiTargetRef.current       = aiExchangeTarget;
   fragFiredRef.current      = fragFired;
   calmFiredRef.current      = calmFired;
+  midpointFiredRef.current  = midpointFired;
   currentEncounterRef.current  = currentEncounter;
   selectedFragmentRef.current  = selectedFragment;
   recoveredMemoriesRef.current = recoveredMemories;
@@ -2439,7 +2508,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     messages, choices, lastMessage,
     resources, weapon, noise, contactName,
     gamePhase, chosenPath, currentPath, exchangePhase, p2BeatIndex,
-    aiExchangeCount, aiExchangeTarget, fragFired, calmFired,
+    aiExchangeCount, aiExchangeTarget, fragFired, calmFired, midpointFired,
     day1: { scene: day1SceneRef.current, visited: day1VisitedRef.current, flags: day1FlagsRef.current },
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
     recoveredMemories, // this run's cumulative collection (profile + new this run)
@@ -2610,7 +2679,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     setDay1Scene(day1SceneRef.current); setDay1Visited(day1VisitedRef.current); setDay1Flags(day1FlagsRef.current);
     setP2BeatIndex(run.p2BeatIndex || 0); setAiExchangeCount(run.aiExchangeCount || 0);
     setAiExchangeTarget(run.aiExchangeTarget || 7);
-    setFragFired(!!run.fragFired); setCalmFired(!!run.calmFired); setCurrentEncounter(run.currentEncounter || null);
+    setFragFired(!!run.fragFired); setCalmFired(!!run.calmFired); setMidpointFired(!!run.midpointFired); setCurrentEncounter(run.currentEncounter || null);
     setSelectedFragment(run.selectedFragment || null); setDayThree(!!run.dayThree);
     setHavenFinalIndex(run.havenFinalIndex || 0);
     setCurrentPhase3Region(currentPhase3RegionRef.current); setCurrentPhase3Node(currentPhase3NodeRef.current);
@@ -3157,15 +3226,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           setGamePhase("shelter");
           let t = addTypedEllie("it's getting dark.", 600);
           t = addTypedEllie("you need to find somewhere to stop.", t);
-          addMsg("narrator", "emergency shelter.", t + 900);
-          addMsg("narrator", "cots still unfolded.", t + 2500);
-          addMsg("narrator", "names written on tape above each one.", t + 4000);
-          addMsg("narrator", "one of them is yours.", t + 5500);
+          addMsg("narrator", "emergency shelter. cots still unfolded.", t + 900);
+          addMsg("narrator", "someone bedded down here not long ago — a blanket still holding the shape of a body, a mug with a skin of cold coffee.", t + 2600);
+          addMsg("narrator", "a hand-crank radio on the crate, tuned to the haven broadcast. the loop plays on, patient, to no one.", t + 4700);
+          addMsg("narrator", "for a second the voice on it catches — a hitch, a skip — like it's reading, not remembering. then it smooths over.", t + 6900);
+          t = addTypedEllie("...don't listen to that too close.", t + 9000);
+          addMsg("narrator", "names on tape above each cot. one of them is yours.", t + 1500);
           pendingRef.current.push(setT(() => setChoices([
             "Sleep here. [-1 Food] [-1 Water]",
             "Barricade the door first. [+1 Noise] [-1 Food] [-1 Water]",
             "Keep moving. [danger]",
-          ]), t + 7100));
+          ]), t + 2900));
 
         } else if (pending.type === "haven_final") {
           setGamePhase("haven_final");
@@ -3193,6 +3264,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           const ct = scheduleMessages(calm.msgs, null, "narrator");
           const calmDone = addTypedEllie(pickRandom(CALM_BEAT.ellie), ct + 900);
           pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(); }, Math.max(ct + 2600, calmDone + 300)));
+        } else if (pending.type === "midpoint") {
+          // P1 (STORY §8) — a trace of others who ran before you. Choiceless; the mid-leg drain
+          // already applied on the lead. Auto-flows back to nav, like the calm beat.
+          const mid = MIDPOINT_BEAT[path] || MIDPOINT_BEAT.hospital;
+          const mt = scheduleMessages(mid.msgs, null, "narrator");
+          const midDone = addTypedEllie(pickRandom(MIDPOINT_BEAT.ellie), mt + 900);
+          pendingRef.current.push(setT(() => { setIsTyping(true); localBeat(); }, Math.max(mt + 2600, midDone + 300)));
         }
 
       }, aiMsgTime + 600));
@@ -3794,16 +3872,22 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       visitedPhase3NodesRef.current = [...visitedPhase3NodesRef.current, key];
       setVisitedPhase3Nodes(visitedPhase3NodesRef.current);
       // Case File hooks — questions announce a NEW QUESTION card; silent keys only gate facts.
-      if (node.caseFile?.raise) node.caseFile.raise.forEach(k => raiseQuestion(k));
+      if (node.caseFile?.raise && !node.truth) node.caseFile.raise.forEach(k => raiseQuestion(k));
     }
 
-    // Route-aware nodes (records_office) pull their first-visit beat from a per-path map so the
-    // text matches what the player actually found on their leg (file/face · log/voice · order/name).
+    // Route-aware nodes (records_office) pull their first-visit beat from a per-path map.
+    // S1 (STORY §6): a truth room withholds its reveal until its evidence pieces are collected.
+    const truthDone  = !!node.truth && discoveredTruthsRef.current.includes(node.truth);
+    const s1Reveal   = !!node.truth && !truthDone && (TRUTH_PIECES[node.truth] || []).every(k => raisedQuestionsRef.current.includes(k));
+    const s1Withhold = !!node.truth && !truthDone && !s1Reveal;
     let beatMsgs, beatFrom = "narrator";
     if (firstVisit && node.routeRecords) {
       beatMsgs = PHASE3_RECORDS[currentPathRef.current] || PHASE3_RECORDS.hospital;
+    } else if (s1Withhold) {
+      const missing = (TRUTH_PIECES[node.truth] || []).filter(k => !raisedQuestionsRef.current.includes(k)).map(k => S1_HINT[k] || k);
+      beatMsgs = [ S1_ROOM_LINE[node.truth] || "it's here — but it won't come together yet.", "still missing: " + missing.join("; ") + "." ];
     } else {
-      const beat = (firstVisit ? node.onEnter : (node.revisit || node.onEnter))?.[0];
+      const beat = ((firstVisit || s1Reveal) ? node.onEnter : (node.revisit || node.onEnter))?.[0];
       beatMsgs = beat?.msgs || ["..."]; beatFrom = beat?.from || "narrator";
     }
     let t = scheduleMessages(beatMsgs, null, beatFrom);
@@ -3828,10 +3912,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       t += 900;
     }
 
-    // Truth payoff — a region's one answer, delivered ONCE, only where it's earned (STORY.md §5).
-    if (firstVisit && node.truth && !discoveredTruthsRef.current.includes(node.truth)) {
+    // Truth payoff (S1) — fires only once all evidence pieces are in hand (s1Reveal). The Case File
+    // assembles evidence → ∴ deduction → TRUTH instead of a bare room-dump (STORY §6).
+    if (s1Reveal) {
+      if (node.caseFile?.raise) node.caseFile.raise.forEach(k => raiseQuestion(k)); // truth-room facts fire with the reveal
       discoveredTruthsRef.current = [...discoveredTruthsRef.current, node.truth];
       setDiscoveredTruths(discoveredTruthsRef.current);
+      const _tid = node.truth, _pcs = (TRUTH_PIECES[_tid] || []).map(k => S1_EVIDENCE[k]).filter(Boolean);
+      if (_pcs.length) {  // assemble the case only when there IS an evidence trail (all 4 truths are keyed)
+        pendingRef.current.push(setT(() => setMessages(p => [...p, { id: nextId("asm"), from: "assembly_note", truthId: _tid, evidence: _pcs, deduction: S1_DEDUCTION[_tid] || "" }]), t));
+        t += 1300 + _pcs.length * 500;
+      }
       pendingRef.current.push(setT(() => {
         setSigFlicker(true); audioEngine.signal(); announceTruth(node.truth);
         pendingRef.current.push(setT(() => setSigFlicker(false), 1300));
@@ -3859,9 +3950,23 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         pendingRef.current.push(setT(() => addMsg("system", `▸ new lead · ${PHASE3_REGIONS.annex.label} — reachable from the road`, 0), t));
         t += 900;
       }
+    } else if (firstVisit && node.caseFile?.raise) {
+      // S1 nudge — if entering this evidence node just completed a truth whose room you've already
+      // seen (but couldn't resolve), point you back to it to assemble the case.
+      Object.keys(TRUTH_PIECES).forEach(tid => {
+        if (discoveredTruthsRef.current.includes(tid)) return;
+        if (!node.caseFile.raise.some(k => TRUTH_PIECES[tid].includes(k))) return;
+        if (!TRUTH_PIECES[tid].every(k => raisedQuestionsRef.current.includes(k))) return;
+        if (!visitedPhase3NodesRef.current.includes(TRUTH_ROOM[tid])) return;
+        const [rg, rm] = TRUTH_ROOM[tid].split(":");
+        const label = PHASE3_REGIONS[rg]?.nodes?.[rm]?.label || "the truth room";
+        pendingRef.current.push(setT(() => addMsg("system", `▸ that's the last of it — go back to ${label} to put the case together`, 0), t));
+        t += 900;
+      });
     }
 
-    // Ellie's crack (first visit only) lands after the narrator beat, then the exits return.
+    // Ellie's crack lands after the narrator beat, then the exits return. For truth rooms it rides the
+    // reveal (s1Reveal), not a not-ready visit.
     // presentPhase3Node (not showPhase3Exits) — it checks the day clock and may trigger nightfall.
     // Echo recovery (first visit) — a fragment of the 142 lands after the room's beat/truth,
     // before Ellie's crack. Phase-3 only; never the prologue (Expansion v2, STORY §3).
@@ -3874,7 +3979,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       t += 1400 + echoLines * 450;
     }
 
-    if (firstVisit && node.ellie) {
+    if (node.ellie && ((firstVisit && !node.truth) || s1Reveal)) {
       pendingRef.current.push(setT(() => {
         setIsTyping(true);
         const et = scheduleMessages(node.ellie, null, "ellie");
@@ -4278,7 +4383,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         // exploration cursor and the one-shot memory guard, then show the first nav screen.
         const startLeg = () => {
           applyTransitionDrain("path_start");
-          setFragFired(false); setCalmFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
+          setFragFired(false); setCalmFired(false); setMidpointFired(false); setAiExchangeCount(0); setGamePhase("p2_ai");
           leadQueueRef.current = buildLeadQueue("path"); leadCursorRef.current = 0; // explore at your pace
           localBeat(null, "p2_ai"); // first nav screen of the path leg
         };
@@ -4482,7 +4587,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       const drain = lead?.drain ? applyTransitionDrain(lead.drain) : { food: 0, water: 0 }; // mid-leg squeeze
 
       let pendingBeat = null;
-      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "calm" || lead.kind === "encounter")) {
+      if (noiseRef.current >= 3 && (!lead || lead.kind === "atmo" || lead.kind === "calm" || lead.kind === "midpoint" || lead.kind === "encounter")) {
         // Loud → they found you. Forced fight (never overrides a memory/discovery beat).
         // The planned lead is NOT consumed — rewind the cursor so it replays on the next
         // explore (otherwise a cornered fight could silently eat the leg's guaranteed
@@ -4499,6 +4604,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       } else if (lead?.kind === "calm" && !calmFiredRef.current) {
         setCalmFired(true);
         pendingBeat = { type: "calm" };
+      } else if (lead?.kind === "midpoint" && !midpointFiredRef.current) {
+        setMidpointFired(true);
+        pendingBeat = { type: "midpoint" };
       } else if (lead?.kind === "encounter") {
         pendingBeat = pickEncounterBeat(section, path, lead.plan);
       }
@@ -4579,7 +4687,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     setDay1Visited([]); day1VisitedRef.current = [];
     setDay1Flags([]); day1FlagsRef.current = [];
     setGamePhase("phase1"); setCurrentPath(null); setP2BeatIndex(0);
-    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false); setCalmFired(false);
+    setAiExchangeCount(0); setAiExchangeTarget(7); setFragFired(false); setCalmFired(false); setMidpointFired(false);
     setCurrentEncounter(null); setSelectedFragment(null); setDayThree(false);
     setHavenFinalIndex(0); shelterForcedRef.current = false;
     // Phase 3 — clear the investigation so a fresh prologue run starts clean.
