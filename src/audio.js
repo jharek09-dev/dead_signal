@@ -70,7 +70,12 @@ function build() {
   sigNoise.connect(sigFilter);
   const sigChirp  = mk({ oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.09, sustain: 0, release: 0.05 } }, -22);
 
-  nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve, sigNoise, sigChirp };
+  // Echo recovery cue (Expansion v2) — a soft, reverbed "voice surfacing"; warmer and quieter
+  // than the Signal artifact. A mind heard for a moment, not the corrupted carrier.
+  const echoVoice = mk({ oscillator: { type: "sine" }, envelope: { attack: 0.05, decay: 0.5, sustain: 0, release: 1.3 } }, -17);
+  echoVoice.connect(reverb);
+
+  nodes = { master, reverb, tapResp, tapMenu, blip, sting, resolve, sigNoise, sigChirp, echoVoice };
 }
 
 const audioEngine = {
@@ -157,6 +162,18 @@ const audioEngine = {
       nodes.sigNoise.triggerAttackRelease(0.18, t);
       nodes.sigChirp.triggerAttackRelease("B5", 0.05, t + 0.02);
       nodes.sigChirp.triggerAttackRelease("F#5", 0.06, t + 0.14);
+    } catch (e) {}
+  },
+
+  // Echo recovery — a recovered fragment of one of the 142 running minds (Expansion v2).
+  // A soft rising two-note "voice" with a reverb tail; distinct from the Signal artifact.
+  echo() {
+    if (!unlocked || muted) return;
+    const t = Tone.now();
+    try {
+      nodes.sigNoise.triggerAttackRelease(0.10, t);            // a breath of carrier
+      nodes.echoVoice.triggerAttackRelease("A3", 0.5, t + 0.03);
+      nodes.echoVoice.triggerAttackRelease("E4", 0.8, t + 0.26); // rises, then the reverb holds
     } catch (e) {}
   },
 

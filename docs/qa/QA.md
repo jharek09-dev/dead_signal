@@ -419,7 +419,7 @@ bar (§3) without clicking through the game. All three ran green on the 2026-07-
   over the real `PHASE3_REGIONS` in Node: extract the object literal, then assert the entry-node
   exists, no dead ends, every `to`/`region` exit resolves, full reachability from each entry, and the
   `HARD_CHOICE_CAP` never-cut set fits. A clean run means no soft-lock is reachable by the auto-driver.
-  Expected: **5 regions / 34 nodes, 0 warnings**.
+  Expected: **5 regions / 59 nodes, 0 warnings** (34 shipped + 5 per region across all five Expansion-v2 sub-stories = ≈2× depth).
 - **Save-schema round-trip** — run `validRun` / `normalizeSlot` (DeadSignal.jsx ~line 2079) over
   fixtures: a valid v2 run resumes; a legacy v1 body migrates to `{profile, run}`; a v2 slot whose run
   fails `validRun` **and** has no profile progress → `null` (cleaned); profile progress with no run is

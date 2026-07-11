@@ -9,7 +9,7 @@
 /* ============================================================
    DEAD SIGNAL — SIGNAL RESTORATION CONSOLE
    In-world production milestone dashboard. Self-contained, offline.
-   Source of truth: docs/production/PRODUCTION.md v1.1 (2026-07-06)
+   Source of truth: docs/production/PRODUCTION.md v1.8 (2026-07-10)
    State persists to localStorage; RESYNC restores plan baseline.
    // 143
    ============================================================ */
@@ -294,7 +294,7 @@ body{
 
 <script>
 /* ================= DATA MODEL — canonical baseline from PRODUCTION.md v1.2 ================= */
-const PLAN_VERSION = "1.2";
+const PLAN_VERSION = "1.8";
 const BASELINE = {
   milestones: [
     { id:"M-P", name:"Polish & Consistency", prio:"P0", status:"done",
@@ -325,11 +325,11 @@ const BASELINE = {
     { id:"M-EXP", name:"Expansion v2 (Narrative Depth)", prio:"P1", status:"active",
       goal:"Implement the sanctioned narrative-density pass — Echoes, region sub-stories, the unchosen thread, truth-by-assembly, the prologue second act — as authored text + nodes only, no new mechanics.",
       depends:["M-P"], branch:true,
-      staging:"Stage 1 canon <b>✅</b> · Stage 2 doc propagation <b>✅</b> · Stage 3 content + code <b>🔜 future</b>",
-      note:{txt:"Design-locked; build: PLANNED (2026-07-06). Fully specified across every doc but not yet in code — this is the near-term code milestone once M-P is clean.",cls:"exp"},
+      staging:"Stage 1 canon <b>✅</b> · Stage 2 doc propagation <b>✅</b> · Stage 3 content + code <b>🚧 started</b>",
+      note:{txt:"Stage 3 STARTED (2026-07-10): the ECHOES Case File category, recover-Echo mechanic, a dedicated Echo audio cue, and all 14 fragments across the 7-face cast are wired into DeadSignal.jsx and build-clean (995 modules) — spoiler-safe, save round-trip extended. ~30-node criterion in progress region-by-region: Haven 'the last day' ✅ (children's room, infirmary, quiet room, gate log, bunk 143) + Mercy 'the sealed ward means something' ✅ (ward antechamber, nurses' station, room 307, day room, charge office) + Comms 'Kim dramatized' ✅ (operator's workspace, saved transmissions, recording booth, transmitter control, side door) + the E3 Kim-absence beat at the Signal Core; + City Hall 'the selection' ✅ (sub-level, selection office, mail room, applicant files, dissent record) with the U1 'who did you leave out?' upgrade; Phase 3 34→54; Theo/Walt/Rosa/June/Marcus echoes re-homed to their canonical rooms. + Research Annex 'patient zero was a person' ✅ (subject records, first cell, containment office, warning file, decision log) — answers why-143 (the containment limit). ALL FIVE region sub-stories + U1 complete; Phase 3 34→59 (≈2×); all 14 echoes re-homed to canonical rooms. Next: S1 truth-by-assembly and the prologue second act. Truths / gates / endings frozen.",cls:"exp"},
       crit:[
-        ["~14 Echo fragments + 7-face cast authored, wired to new ECHOES Case File category",false],
-        ["~30 new Phase-3 nodes integrated (region sub-stories + U1 unchosen thread): Phase 3 ~35 → ~65",false],
+        ["~14 Echo fragments + 7-face cast authored, wired to new ECHOES Case File category",true],
+        ["~30 new Phase-3 nodes integrated (region sub-stories + U1 unchosen thread): Phase 3 34 → 59 (≈2×), all 5 regions + U1",true],
         ["S1 truth-by-assembly live (region truth resolves only after 2–3 supporting pieces found)",false],
         ["Prologue second act (P1–P3) integrated spoiler-safe",false],
         ["Every shipped truth, gate, and both endings unchanged",false],

@@ -356,10 +356,13 @@ const PHASE3_REGIONS = {
           { label: "Back to the gate yard.", to: "gate_yard" },
           { label: "Back to the dining hall.", to: "dining_hall" },
           { label: "Down the corridor of photos.", to: "photo_wall" },
+          { label: "Into the children's room.", to: "childrens_room" },
+          { label: "To the last bunk — 143.", to: "bunk_143" },
         ],
       },
       photo_wall: {
         label: "Photo Wall", kind: "room",
+        echo: "theo_one",
         onEnter: [{ from: "narrator", msgs: ["a corridor of corkboard. photographs, edge to edge.", "haven residents. everyone smiling.", "a date in the corner. three weeks before day one."] }],
         revisit: [{ from: "narrator", msgs: ["the wall of faces. all still smiling."] }],
         ellie: ["i remember the light in there.", "..."],
@@ -378,6 +381,7 @@ const PHASE3_REGIONS = {
           { label: "Back to the photo wall.", to: "photo_wall" },
           { label: "Over to the communications desk.", to: "communications_desk" },
           { label: "Into the records office.", to: "records_office" },
+          { label: "Over to the gate log station.", to: "gate_log" },
         ],
       },
       communications_desk: {
@@ -407,6 +411,62 @@ const PHASE3_REGIONS = {
         exits: [
           { label: "Back to the gate yard.", to: "gate_yard" },
           { label: "Up to the dining hall.", to: "dining_hall" },
+        ],
+      },
+      // ── Expansion v2 · Haven "the last day" (STORY §5 deepening). Sub-story rooms off the
+      // dormitories + operations; no new truth (Haven's is Ellie, held for the finale). Spoiler-
+      // safe: the 143 walked out on their own feet, no bodies — the absence is the clue.
+      childrens_room: {
+        label: "Children's Room", kind: "room",
+        echo: "theo_nap",
+        onEnter: [{ from: "narrator", msgs: ["a room off the dormitories. smaller bunks, low to the floor.", "a shelf of picture books. crayon drawings taped at a child's height — a bus, a fence, stick figures holding hands.", "a stuffed rabbit face-down on a pillow. a shoebox of toys, lid off.", "the 143 counted children. no one says that part out loud."] }],
+        revisit: [{ from: "narrator", msgs: ["the children's room. the drawings still hold hands."] }],
+        caseFile: { raise: ["p3_children"] },
+        exits: [
+          { label: "Back to the dormitories.", to: "dormitories" },
+          { label: "On to the infirmary wing.", to: "infirmary" },
+        ],
+      },
+      bunk_143: {
+        label: "Bunk 143", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["you go back to the last bunk. 143.", "made like all the others — corners tight, blanket squared — but the dust lies even. no dent, no crease, no warmth.", "the locker beside it stands open and empty, its name tag blank.", "every other bunk was slept in. this one was only ever made."] }],
+        revisit: [{ from: "narrator", msgs: ["bunk 143. made, waiting, never used."] }],
+        ellie: ["that one's not like the others.", "someone kept it ready. i don't know who."],
+        caseFile: { raise: ["p3_bunk143"] },
+        exits: [
+          { label: "Back to the dormitories.", to: "dormitories" },
+        ],
+      },
+      infirmary: {
+        label: "Infirmary", kind: "room",
+        echo: "walt_chose",
+        onEnter: [{ from: "narrator", msgs: ["an infirmary wing. a row of care beds, rails up, charts still clipped to the footboards.", "people were dying here — more than one. oxygen lines coiled neat, a tray of meds sorted by the hour.", "the last chart stops mid-week. no death note. it just… stops.", "they nursed the sick right up to the quiet. then the sick left too, like everyone else."] }],
+        revisit: [{ from: "narrator", msgs: ["the infirmary. the beds made, the charts still clipped."] }],
+        caseFile: { raise: ["p3_infirmary"] },
+        exits: [
+          { label: "Back to the children's room.", to: "childrens_room" },
+          { label: "Through to the quiet room.", to: "quiet_room" },
+          { label: "Out to the dining hall.", to: "dining_hall" },
+        ],
+      },
+      quiet_room: {
+        label: "Quiet Room", kind: "room",
+        echo: "walt_door",
+        onEnter: [{ from: "narrator", msgs: ["a room at the end of the wing. no sign on the door. chairs in rows, a low table, a candle burned to its base.", "the chairs all face one wall — and there's nothing on it but a window onto the dark yard.", "no mess. no struggle. the kind of room you sit in to be sure of a thing before you do it.", "whatever they decided in here, they decided it calm."] }],
+        revisit: [{ from: "narrator", msgs: ["the quiet room. the chairs still face the window."] }],
+        caseFile: { raise: ["p3_quietroom"] },
+        exits: [
+          { label: "Back to the infirmary.", to: "infirmary" },
+          { label: "Back toward the dining hall.", to: "dining_hall" },
+        ],
+      },
+      gate_log: {
+        label: "Gate Log", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a monitoring station just off the operations floor — the perimeter gate's own log, still scrolling.", "the last day fills the screen. gate cycles, one after another, all outbound.", "no forced entries. no alarms. each one opened from the inside, on foot.", "the timestamps run down the final hour and stop. nobody ever badged back in."] }],
+        revisit: [{ from: "narrator", msgs: ["the gate log. outbound cycles, the last hour, then nothing."] }],
+        caseFile: { raise: ["p3_gatelog"] },
+        exits: [
+          { label: "Back to operations.", to: "operations" },
         ],
       },
       outer_road: {
@@ -450,7 +510,7 @@ const PHASE3_REGIONS = {
         exits: [
           { label: "Back to the ambulance bay.", to: "ambulance_bay" },
           { label: "Down the administration wing.", to: "admin_wing" },
-          { label: "Toward the sealed ward — where the hum is.", to: "dark_ward" },
+          { label: "Toward the sealed ward — where the hum is.", to: "ward_antechamber" },
         ],
       },
       admin_wing: {
@@ -495,10 +555,66 @@ const PHASE3_REGIONS = {
       },
       dark_ward: {
         label: "Sealed Ward", kind: "room", power: true, shelter: true,
+        echo: "rosa_warm",
         onEnter: [{ from: "narrator", msgs: ["a sealed ward. a generator grinds somewhere below it — the one thing still running.", "the only lit hallway in the building. the lights buzz, wrong, and hold.", "the doors are taped shut from the outside. you don't open them.", "a crash cart by the nurses' station. its battery still holds a charge."] }],
         revisit: [{ from: "narrator", msgs: ["the sealed ward. the lights still buzz. the doors stay shut."] }],
         exits: [
+          { label: "Back to the ward antechamber.", to: "ward_antechamber" },
+        ],
+      },
+      // ── Expansion v2 · Mercy "the sealed ward means something" (STORY §5 deepening). The taped-shut
+      // ward held the dying Haven had no bed for; Rosa kept them comfortable. Threads the unchosen (U1)
+      // one floor from your own erasure. No new truth (Mercy's is YOU, at 312). Spoiler-safe: shows a
+      // closed list existed + the care cost; NEVER who authored the roster (that's City Hall), never upload.
+      ward_antechamber: {
+        label: "Ward Antechamber", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the approach to the sealed ward. a nurses' whiteboard, half-erased.", "a bed list, still legible. every name flagged the same: PALLIATIVE — TRANSFER DECLINED.", "transfer where? the only place anyone was being moved was haven. these were the ones who never got a bed there.", "the ward behind the tape isn't a quarantine. it's where mercy kept the people haven had no room for."] }],
+        revisit: [{ from: "narrator", msgs: ["the ward antechamber. the bed list, every name flagged the same."] }],
+        caseFile: { raise: ["p3_mercy_ward"] },
+        exits: [
           { label: "Back to the lobby.", to: "lobby" },
+          { label: "To the nurses' station.", to: "nurses_station" },
+          { label: "Up to the taped doors — the sealed ward.", to: "dark_ward" },
+        ],
+      },
+      nurses_station: {
+        label: "Nurses' Station", kind: "room",
+        echo: "rosa_last",
+        onEnter: [{ from: "narrator", msgs: ["the nurses' station for the ward. a chair pushed back, a cardigan left over it.", "the care log runs for weeks past the day the rest of mercy emptied. someone kept coming in.", "two columns: the ones marked for transfer, and the ones marked 'comfort.' the comfort column is longer.", "whoever worked this desk stayed to the end, for the people no one else was coming back for."] }],
+        revisit: [{ from: "narrator", msgs: ["the nurses' station. the cardigan still over the chair."] }],
+        caseFile: { raise: ["p3_mercy_nurse"] },
+        exits: [
+          { label: "Back to the antechamber.", to: "ward_antechamber" },
+          { label: "Into the day room.", to: "day_room" },
+          { label: "To the room at the far end — 307.", to: "second_patient_room" },
+        ],
+      },
+      second_patient_room: {
+        label: "Room 307", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["room 307. not yours — but you knew it was here before you reached the door.", "the name on the chart is in your own hand: admitted by you, years back, when this was still your hospital.", "the file ends the way the others do. considered for haven. not selected. kept comfortable.", "one floor under the room where you'd have yourself erased, someone you admitted ran out of time. you never came down to see them."] }],
+        revisit: [{ from: "narrator", msgs: ["room 307. the chart in your own hand. not selected."] }],
+        caseFile: { raise: ["p3_mercy_unchosen"] },
+        exits: [
+          { label: "Back to the nurses' station.", to: "nurses_station" },
+        ],
+      },
+      day_room: {
+        label: "Day Room", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a day room off the ward. a window, a ring of chairs, a television long dead.", "a wall calendar, days crossed off in different hands, stopping mid-month.", "a shelf of paperbacks and half-finished puzzles. a card propped up, unsigned: 'thinking of you all.'", "the people haven couldn't fit spent their last days here, watching the light move. someone made sure they weren't alone."] }],
+        revisit: [{ from: "narrator", msgs: ["the day room. the calendar, days crossed off, then stopped."] }],
+        caseFile: { raise: ["p3_mercy_dayroom"] },
+        exits: [
+          { label: "Back to the nurses' station.", to: "nurses_station" },
+          { label: "Into the charge nurse's office.", to: "charge_office" },
+        ],
+      },
+      charge_office: {
+        label: "Charge Office", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the charge nurse's office. a filing cabinet, one drawer left open.", "haven transfer requests, sorted into two trays. a thin tray of approvals. a thick tray of the rest.", "clipped to the thick tray, a note in a tired hand: 'stop asking. the list is closed.'", "someone kept requesting beds for the dying long after the answer stopped changing."] }],
+        revisit: [{ from: "narrator", msgs: ["the charge office. the thick tray, the closed list."] }],
+        caseFile: { raise: ["p3_mercy_office"] },
+        exits: [
+          { label: "Back to the day room.", to: "day_room" },
         ],
       },
     },
@@ -547,10 +663,66 @@ const PHASE3_REGIONS = {
         caseFile: { raise: ["p3_kim_refused"] },
         exits: [
           { label: "Back to the control room.", to: "control_room" },
+          { label: "Into the operator's workspace.", to: "operator_bay" },
+        ],
+      },
+      // ── Expansion v2 · Comms "Kim, dramatized" (STORY §5 deepening): the refusal, and the warning
+      // nobody heard. No new truth (Comms's is THE SIGNAL, at signal_core; E3 lands there). Spoiler-
+      // safe: Kim's warning stays moral ("it isn't sleep" register), never names the upload; "the
+      // architect" is a lead, not pinned to the player.
+      operator_bay: {
+        label: "Operator's Workspace", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a workspace off the control room floor. one station, lived-in in a way the others aren't.", "a chipped mug, a cardigan over the chair, a wall of sticky notes in a small, fast hand.", "shift schedules, call signs, a reminder to water a plant that died weeks ago.", "kim worked here. the last one still doing the job when everyone else had stopped."] }],
+        revisit: [{ from: "narrator", msgs: ["kim's station. the mug, the dead plant, the fast handwriting."] }],
+        caseFile: { raise: ["p3_kim_workspace"] },
+        exits: [
+          { label: "Back to the operator's booth.", to: "kim_booth" },
+          { label: "Into her saved transmissions.", to: "argument_logs" },
+          { label: "To the recording booth.", to: "counter_broadcast" },
+        ],
+      },
+      argument_logs: {
+        label: "Saved Transmissions", kind: "room",
+        echo: "june_lost",
+        onEnter: [{ from: "narrator", msgs: ["her terminal, still logged in, open to a folder of saved messages.", "not broadcasts — arguments. her, trying to warn people. the same message, sent again and again.", "\"don't do this. it isn't what they're telling you.\" most of the replies are silence.", "one name wrote back every time. a councilwoman — june. she listened. it wasn't enough."] }],
+        revisit: [{ from: "narrator", msgs: ["the saved transmissions. her warnings, sent again and again. june, listening."] }],
+        caseFile: { raise: ["p3_kim_warned"] },
+        exits: [
+          { label: "Back to the workspace.", to: "operator_bay" },
+          { label: "To the last log entry.", to: "walkout" },
+        ],
+      },
+      counter_broadcast: {
+        label: "Recording Booth", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a recording booth. one file on the desk, timestamped the night the uploads began.", "she cut a broadcast of her own — a warning, meant to go out on every channel the array had.", "her voice, steady, reading coordinates and one line: \"if you can hear this, don't go to haven. stay yourself.\"", "the file was never sent. something else had the transmitter, and it wouldn't let go."] }],
+        revisit: [{ from: "narrator", msgs: ["the recording booth. her warning, cut, never sent."] }],
+        caseFile: { raise: ["p3_counter_broadcast"] },
+        exits: [
+          { label: "Back to the workspace.", to: "operator_bay" },
+          { label: "Behind the booth — the transmitter control.", to: "override_room" },
+        ],
+      },
+      override_room: {
+        label: "Transmitter Control", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the transmitter control, behind the booth. one channel lit, locked, priority-flagged.", "the haven loop — the same broadcast going out on a timer, holding the whole array.", "her warning sits in the queue behind it, stamped REJECTED · LOWER PRIORITY. every attempt.", "she couldn't out-shout it. the loop held the array the entire time, and never once yielded."] }],
+        revisit: [{ from: "narrator", msgs: ["the transmitter control. the haven loop, still locked to priority."] }],
+        caseFile: { raise: ["p3_override"] },
+        exits: [
+          { label: "Back to the recording booth.", to: "counter_broadcast" },
+        ],
+      },
+      walkout: {
+        label: "Side Door", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["the operator's log, last page. final entries minutes apart — then one line, off-protocol.", "\"they won't listen. i'm going to find the one who built it. he can still stop this.\"", "a badge-out at the side door, timestamped just after. she didn't take the road the others took.", "she walked out into the city alone, toward harwick — to find the architect. the one who built it."] }],
+        revisit: [{ from: "narrator", msgs: ["the side door. where she walked out, alone, to find the architect."] }],
+        caseFile: { raise: ["p3_walkout"] },
+        exits: [
+          { label: "Back to the saved transmissions.", to: "argument_logs" },
         ],
       },
       transmitter_hall: {
         label: "Transmitter Hall", kind: "room", power: true, shelter: true,
+        echo: "priya_bell",
         onEnter: [{ from: "narrator", msgs: ["the transmitter hall. the hum is a roar here, felt in the sternum.", "racks of hardware, indicator lights crawling. it draws its own power — it has never once stopped.", "a maintenance battery bank by the door, still holding a charge."] }],
         revisit: [{ from: "narrator", msgs: ["the transmitter hall. the roar, the crawling lights."] }],
         exits: [
@@ -560,10 +732,10 @@ const PHASE3_REGIONS = {
       },
       signal_core: {
         label: "Signal Core", kind: "room", truth: "signal",
-        onEnter: [{ from: "narrator", msgs: ["a cold room behind the transmitters. server racks, frost on the housings.", "the logs aren't broadcasts. they're people — names, then patterns. minds, written down and kept running.", "the haven 143. they didn't die. they were copied in here, and they're still running.", "you look at your phone. every text ellie ever sent you.", "they came over kim's number — but no hand ever held that phone. the words were a transmission, reaching from in here."] }],
+        onEnter: [{ from: "narrator", msgs: ["a cold room behind the transmitters. server racks, frost on the housings.", "the logs aren't broadcasts. they're people — names, then patterns. minds, written down and kept running.", "the haven 143. they didn't die. they were copied in here, and they're still running.", "you look at your phone. every text ellie ever sent you.", "they came over kim's number — but no hand ever held that phone. the words were a transmission, reaching from in here.", "and you go looking for one name among them, the way you'd look for it in a list.", "the operator. the one who refused. you already know you won't find her.", "haven's board counted one hundred forty-three. the racks in here come up one short.", "she isn't running. she isn't anywhere. she meant it."] }],
         revisit: [{ from: "narrator", msgs: ["the cold room. the racks hum. the minds keep running."] }],
         ellie: ["i can still hear them.", "all of them. all the time."],
-        caseFile: { raise: ["p3_signal_uploadnet", "p3_phone", "p3_voice"] },
+        caseFile: { raise: ["p3_signal_uploadnet", "p3_phone", "p3_voice", "p3_kim_absent"] },
         exits: [
           { label: "Back to the transmitter hall.", to: "transmitter_hall" },
         ],
@@ -596,6 +768,7 @@ const PHASE3_REGIONS = {
           { label: "Back to the rotunda.", to: "rotunda" },
           { label: "Into the clerk's records.", to: "records_room" },
           { label: "Up to the council chamber.", to: "council_chamber" },
+          { label: "Down to the sub-level — Project Haven.", to: "subbasement" },
         ],
       },
       records_room: {
@@ -637,6 +810,62 @@ const PHASE3_REGIONS = {
           { label: "Back to the council chamber.", to: "council_chamber" },
         ],
       },
+      // ── Expansion v2 · City Hall "the selection" (STORY §5 deepening + U1 unchosen): how a lifeboat
+      // picks who drowns. Deepens the truth to "you chose 143 names" (truth id unchanged). Spoiler-safe:
+      // WHY only 143 (the containment limit) stays HELD for the Annex; no outbreak / "what the end was";
+      // the narrator stays cold — June's struck dissent carries the moral framing.
+      subbasement: {
+        label: "Sub-Level", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a stairwell down from the atrium, behind an unmarked door. the directory called it project haven, sub-level.", "no windows. a corridor of offices the public building was raised on top of, and kept off its own maps.", "this is where the program actually ran — under city hall, out of the light.", "upstairs they debated. down here, someone had already been deciding."] }],
+        revisit: [{ from: "narrator", msgs: ["the sub-level. project haven, under the building, off the maps."] }],
+        caseFile: { raise: ["p3_ch_sublevel"] },
+        exits: [
+          { label: "Back up to the atrium.", to: "atrium" },
+          { label: "Into the selection office.", to: "selection_desk" },
+          { label: "Through to the mail room.", to: "petitions_room" },
+        ],
+      },
+      selection_desk: {
+        label: "Selection Office", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a long office, desks in a row. this is where the list was made.", "a scoring sheet, blank copies stacked: age, health, projected viability, contribution — and a column for a final yes or no.", "the finished sheets are sorted into two trays. a short stack, and a tall one. the tall one is stamped the same word, over and over.", "the master list sits under a paperweight. one hundred forty-three names — and in the corner, initialed, approved. yours."] }],
+        revisit: [{ from: "narrator", msgs: ["the selection office. the scoring sheets, the two trays, your initials."] }],
+        caseFile: { raise: ["p3_ch_selection", "p3_wholeftout"] },
+        exits: [
+          { label: "Back to the sub-level.", to: "subbasement" },
+          { label: "To the applicant files.", to: "applicant_files" },
+        ],
+      },
+      petitions_room: {
+        label: "Mail Room", kind: "room",
+        echo: "marcus_transfer",
+        onEnter: [{ from: "narrator", msgs: ["a mail room off the sub-level. sacks of it, unopened. the opened ones are worse.", "petitions. applications. letters in every hand — careful, frantic, a child's. all asking for the same thing: a place on the list.", "you read a few. 'my daughter is only six.' 'i can still work.' 'please. we don't take up much room.'", "none of them knew the list had closed before they ever set pen to paper."] }],
+        revisit: [{ from: "narrator", msgs: ["the mail room. the letters, all asking for the same thing."] }],
+        caseFile: { raise: ["p3_ch_petitions"] },
+        exits: [
+          { label: "Back to the sub-level.", to: "subbasement" },
+          { label: "To the sealed dissent record.", to: "dissent_record" },
+        ],
+      },
+      applicant_files: {
+        label: "Applicant Files", kind: "room",
+        echo: "marcus_form",
+        onEnter: [{ from: "narrator", msgs: ["a records room of applications, filed by disposition. two drawers.", "the 'selected' drawer slides open easy — near empty, the files pulled long ago.", "the 'declined' drawer is jammed full. hundreds. each one a person who applied, and waited, and got a stamp back.", "you read a few of the names. you don't know any of them. you decided, and you never had to."] }],
+        revisit: [{ from: "narrator", msgs: ["the applicant files. the declined drawer, jammed full."] }],
+        caseFile: { raise: ["p3_ch_declined"] },
+        exits: [
+          { label: "Back to the selection office.", to: "selection_desk" },
+        ],
+      },
+      dissent_record: {
+        label: "Dissent Record", kind: "room",
+        echo: "june_struck",
+        onEnter: [{ from: "narrator", msgs: ["a clerk's alcove. the official minutes of the vote, bound and sealed — and beside them, a second folder, unofficial.", "someone kept what the record wouldn't. a transcript of the testimony that was struck.", "a councilwoman — june — on her feet: 'a lifeboat this small doesn't save a city. it just decides which part of it drowns.'", "the motion carried anyway. the chair had her words removed. this copy is the only place they survived."] }],
+        revisit: [{ from: "narrator", msgs: ["the dissent record. june's struck testimony, the only copy left."] }],
+        caseFile: { raise: ["p3_ch_dissent"] },
+        exits: [
+          { label: "Back to the mail room.", to: "petitions_room" },
+        ],
+      },
     },
   },
   // ── Research Annex (3E) — truth: THE OUTBREAK. "the worst place; the answer." Blunt, NOT softened
@@ -675,6 +904,7 @@ const PHASE3_REGIONS = {
           { label: "Back to the airlock.", to: "airlock" },
           { label: "Into the cold lab.", to: "cold_lab" },
           { label: "Down to the observation wing.", to: "observation" },
+          { label: "Into the containment office.", to: "containment_office" },
         ],
       },
       cold_lab: {
@@ -694,6 +924,7 @@ const PHASE3_REGIONS = {
         exits: [
           { label: "Back to the labs.", to: "labs" },
           { label: "To the containment chamber at the heart of it.", to: "containment_core" },
+          { label: "Through to the subject records.", to: "subject_records" },
         ],
       },
       containment_core: {
@@ -704,6 +935,61 @@ const PHASE3_REGIONS = {
         caseFile: { raise: ["p3_an_truth"] },
         exits: [
           { label: "Back to the observation wing.", to: "observation" },
+        ],
+      },
+      // ── Expansion v2 · Research Annex "patient zero was a person" (STORY §5 deepening): the price of
+      // being first, and being right. This region ANSWERS why-143 (the containment limit) and indicts you
+      // by name. No new truth (the outbreak lands at containment_core). Spoiler-safe: SET UP but do not
+      // pre-land containment_core's blunt reveal (infected = half-connected); hold all finale items.
+      subject_records: {
+        label: "Subject Records", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a records room off the observation wing. the earliest files, from when this was research, not a program.", "the first subjects. a dozen of them, numbered, before anyone had a name for what this was.", "the intake notes read the same, over and over: terminal. months to live. nothing left to try.", "'volunteers,' the files say. every one already dying. you can call it a choice. they didn't have another one."] }],
+        revisit: [{ from: "narrator", msgs: ["the first-subject records. terminal, every one. 'volunteers.'"] }],
+        caseFile: { raise: ["p3_an_subjects"] },
+        exits: [
+          { label: "Back to the observation wing.", to: "observation" },
+          { label: "To the oldest cell, at the end.", to: "first_cell" },
+        ],
+      },
+      first_cell: {
+        label: "First Cell", kind: "room",
+        echo: "pz_first",
+        onEnter: [{ from: "narrator", msgs: ["the oldest cell, at the end of the wing. subject one. the first mind ever copied.", "the others behind glass are wrong, slow, moving. this one is just a terminal, still running.", "the copy is old and degrading — the words come apart as you read them, and knit back wrong.", "it's been in there longer than anything. long enough to forget it was ever a person. almost."] }],
+        revisit: [{ from: "narrator", msgs: ["subject one's cell. the oldest copy, coming apart."] }],
+        caseFile: { raise: ["p3_an_firstmind"] },
+        exits: [
+          { label: "Back to the subject records.", to: "subject_records" },
+        ],
+      },
+      containment_office: {
+        label: "Containment Office", kind: "room",
+        echo: "sorkin_numbers",
+        onEnter: [{ from: "narrator", msgs: ["a containment office off the labs. one desk, kept exactly as its owner left it. a nameplate: dr. l. sorkin.", "the whiteboard is covered in her hand — load curves, failure thresholds, one number circled three times.", "the number is 143. past it, the containment couldn't hold; the breach-risk climbed off the chart.", "so that was the cap. not mercy, not a lottery. one hundred forty-three was simply the most the system could take before it broke."] }],
+        revisit: [{ from: "narrator", msgs: ["sorkin's office. the whiteboard, 143 circled three times."] }],
+        caseFile: { raise: ["p3_an_containment"] },
+        exits: [
+          { label: "Back to the labs.", to: "labs" },
+          { label: "To the sealed warning file.", to: "warning_file" },
+          { label: "To the decision log.", to: "decision_record" },
+        ],
+      },
+      warning_file: {
+        label: "Warning File", kind: "room",
+        echo: "sorkin_room",
+        onEnter: [{ from: "narrator", msgs: ["a sealed cabinet by the containment door, where the breach actually started. her filing, not the program's.", "memos, dated and signed, addressed to you by name — each one colder than the last.", "'the margin is gone.' 'we are past safe.' 'if we proceed at this volume, containment fails here.' — and an arrow, drawn to this exact door.", "she filed the last one the day before you signed the order to proceed. you were warned, in writing, in this room. you did it anyway."] }],
+        revisit: [{ from: "narrator", msgs: ["sorkin's warnings. filed at the door she said would break. it broke."] }],
+        caseFile: { raise: ["p3_an_warned"] },
+        exits: [
+          { label: "Back to the containment office.", to: "containment_office" },
+        ],
+      },
+      decision_record: {
+        label: "Decision Log", kind: "room",
+        onEnter: [{ from: "narrator", msgs: ["a decision log, your account, kept in the annex where the work was.", "the choice laid out in your own dry hand: wait, and expand containment, and maybe save more — or proceed now, at 143, clean and certain.", "you chose now. one hundred forty-three saved for sure, over an unknown number saved later, at a risk you'd been told was climbing.", "the ones past 143 weren't refused a place. there was no place. you spent the margin on speed — and the margin was the city."] }],
+        revisit: [{ from: "narrator", msgs: ["the decision log. 143 now, clean and certain. the margin spent."] }],
+        caseFile: { raise: ["p3_an_decision"] },
+        exits: [
+          { label: "Back to the containment office.", to: "containment_office" },
         ],
       },
     },
@@ -886,26 +1172,57 @@ const BOARD_FACTS = [
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_livedin"),       text:"Haven was lived-in — they left in the middle of a meal." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_143everywhere"), text:"143 bunks, 143 of everything — and not a body anywhere." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_records"),       text:"Your evidence and hers are filed together at Haven — before Day 1." },
+  // Phase 3 — Haven "the last day" sub-story (Expansion v2; spoiler-safe — no upload/Signal named).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_children"),  text:"Haven's 143 included children — a room of small bunks and crayon drawings." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_infirmary"), text:"Haven nursed its dying to the end — then the infirmary emptied like everywhere else." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_quietroom"), text:"They left calm — a quiet room mid-use, chairs still facing the window. No struggle, no bodies." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_bunk143"),   text:"One bunk — 143 — was made up and never slept in. Kept ready for someone who never came." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_gatelog"),   text:"The gate log's last day is a run of outbound cycles — each opened from inside, on foot. None came back." },
   // Phase 3 — Mercy General investigation (raised by Mercy nodes; the last is the truth itself).
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_staff"),     text:"You were Mercy's director — and Project Haven's." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_admit"),           text:"You admitted yourself to Mercy — the day before the broadcast." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_procedure"), text:"The wipe was a procedure here. You signed the authorization." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_truth"),     text:"You built Project Haven — then erased yourself rather than carry it." },
+  // Phase 3 — Mercy "the sealed ward means something" sub-story (Expansion v2; spoiler-safe).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_ward"),     text:"Mercy's sealed ward wasn't a quarantine — it held the dying Haven had no bed for, kept comfortable to the end." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_nurse"),    text:"One nurse kept the ward running for weeks after Mercy emptied — the 'comfort' list ran longer than the 'transfer' list." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_unchosen"), text:"A patient you'd admitted was considered for Haven, not selected, and died a floor from your own room." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_dayroom"),  text:"The un-selected spent their last days in the ward's day room — tended, not alone — while Haven filled up across town." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_mercy_office"),   text:"Haven transfer requests split two ways: a thin tray approved, a thick tray declined. The list was closed." },
   // Phase 3 — Communications Array (the Signal). Holds what Ellie *is* + the outbreak/infected truth.
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_comms_loop"),       text:"The Haven broadcast comes from the array — going out on a timer since the first night." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_kim_refused"),      text:"Kim refused the upload, warned you it isn't sleep, and went looking for you." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_signal_uploadnet"), text:"The Signal is an upload network. The connected aren't dead — they're inside it. The 143 are in there." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_phone"),            text:"No one holds Kim's phone. The texts are a transmission from inside the Signal." },
+  // Phase 3 — Comms "Kim, dramatized" sub-story + E3 (Expansion v2; spoiler-safe — warning stays moral).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_kim_workspace"),   text:"Kim worked the array to the end — the last operator still at her post after everyone else stopped." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_kim_warned"),      text:"Kim sent the same warning again and again — 'don't do this.' One councilwoman, June, wrote back every time. Most didn't." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_counter_broadcast"), text:"Kim cut a counter-broadcast for the whole city — 'don't go to Haven. stay yourself.' It was never sent." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_override"),        text:"The Haven loop held the array on locked priority — Kim's warning was rejected every time. She couldn't out-shout it." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_walkout"),         text:"Kim logged off, badged out a side door, and walked into the city alone — to find the architect who built it." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_kim_absent"),      text:"You searched the running minds for Kim. She isn't there — she never connected. She meant it." },
   // Phase 3 — City Hall (restrained: the documents, not the editorial). Holds the moral framing + cause.
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_dept"),          text:"Project Haven was a sanctioned city department — off the public signs." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_authorized"),    text:"Project Haven was approved by vote. No public minutes were kept." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_truth"),         text:"Project Haven preserved minds — it uploaded the 143 into the Signal before 'the end.'" },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_truth"),         text:"The 143 were a fixed roster — Kim's name, and yours. The charter is signed by you, as architect." },
+  // Phase 3 — City Hall "the selection" sub-story + U1 (Expansion v2; WHY-143 stays held for the Annex).
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_sublevel"),  text:"Project Haven ran from a sub-level under City Hall — off the building's own maps, out of the public debate." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_selection"), text:"The 143 weren't drawn by lot — scored on age, health, 'viability,' capped at 143, the master list initialed by you. You chose the names." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_petitions"), text:"Citizens petitioned for a place on the list — 'my daughter is only six' — not knowing it had already closed." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_declined"),  text:"The 'declined' drawer dwarfs the 'selected' one — hundreds applied, waited, and got a stamp back." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_ch_dissent"),   text:"One councilwoman, June, testified that a lifeboat this small only decides which part of the city drowns. Her words were struck from the minutes." },
   // Phase 3 — Research Annex (the outbreak). Blunt; the combat reveal must land (STORY.md §2).
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_report"),        text:"Containment failed at the Annex. The Signal got out — uncontained." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_patientzero"),   text:"The 'infected' are people — minds half-pulled into the Signal, the bodies still moving." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_truth"),         text:"Every thing you fought through in the prologue was a half-connected person." },
   { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_truth"),         text:"The outbreak was your Signal breaching Haven. The 143 went in clean; the city got the spill — you built both." },
+  // Phase 3 — Research Annex "patient zero was a person" sub-story (Expansion v2). p3_an_containment answers why-143.
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_subjects"),    text:"The first subjects were the terminally ill — 'volunteers' with months to live and nothing left to try." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_firstmind"),   text:"Subject one — the first mind ever copied — is still running, old and degrading, in the oldest cell." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_containment"), text:"143 wasn't mercy or a lottery — it was the most Sorkin's containment could hold before the breach-risk spiked. That was the cap." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_warned"),      text:"Sorkin warned you in writing, by name, that containment would fail here. You signed the order to proceed the next day." },
+  { reveal:(c, reached, raised) => !!raised?.includes?.("p3_an_decision"),    text:"You chose 143 clean and certain over more saved later — spending the safety margin on speed. The margin was the city." },
 ];
 // CONTRADICTIONS — two KNOWN facts that can't both be true, paired into the open question they
 // force. The investigation layer the bible says to protect: it makes the Case File read like a
@@ -942,11 +1259,56 @@ const BOARD_QUESTIONS = [
   // Phase 3 — Communications Array. Deliberately UNANSWERED — the hook to the finale (what Ellie is).
   { key:"p3_voice",       text:"If no hand ever held the phone — what's been texting you?" },
   // Phase 3 — City Hall. UNANSWERED — the hook to the Research Annex (the outbreak / what was coming).
-  { key:"p3_why143",      text:"Why only 143 — and what were they so sure was coming?" },
+  { key:"p3_why143",      text:"Why only 143 — and what were they so sure was coming?", evolved:{ key:"p3_wholeftout", text:"Who did you leave out — and why?" } },
 ];
 // Base question keys (top-level) — used to decide whether a raiseQuestion() announces a "NEW
 // QUESTION" card. Evolution keys (kim143/haven143) aren't here, so they don't double-announce.
 const BASE_QUESTION_TEXT = Object.fromEntries(BOARD_QUESTIONS.map(q => [q.key, q.text]));
+
+// ─── Echoes — recovered fragments of the 142 running minds (Expansion v2, STORY §3/§6). ────
+// Phase-3 ONLY, surfaced at Signal-dense / powered nodes (node.echo → recoverEcho). Each is a
+// 2–4 line CRACK, never a confession: it makes the 143 into people, it never narrates the
+// mystery or names the upload/Signal mechanism. Kim is NOT here — her absence at the Signal
+// Core is the beat (§3). The 7-face cast (Theo · Walt · Rosa · Priya · Marcus · June · Sorkin)
+// recurs across regions, plus the oldest, half-degraded first-subject echo. Homed on existing
+// nodes now; re-home to the canonical rooms with the ~30-node deepening.
+const BOARD_ECHOES = [
+  // — Haven, "the last day." Theo (a child, ~8) · Walt (old, terminal — the moral counterweight).
+  { id:"theo_nap",   who:"Theo",   kind:"a voice note, looping",       region:"haven",
+    lines:["mom says it's like a nap on the bus.","you close your eyes and wake up somewhere better.","...is she coming too?"] },
+  { id:"theo_one",   who:"Theo",   kind:"a note, in a child's hand",   region:"haven",
+    lines:["they said pack one thing. just one.","i couldn't choose, so i drew everybody.","that way nobody gets left."] },
+  { id:"walt_chose", who:"Walt",   kind:"a voice note",                region:"haven",
+    lines:["i was going to die with tubes in me, on somebody else's clock.","this one i picked.","don't you dare grieve me. i beat it."] },
+  { id:"walt_door",  who:"Walt",   kind:"a diary, still writing",      region:"haven",
+    lines:["the young nurse keeps checking on me like i'm frightened.","son, i've been dying for a year.","this is the first door i ever got to open myself."] },
+  // — Mercy, the sealed ward. Rosa (kept the un-selected dying comfortable to the end).
+  { id:"rosa_warm",  who:"Rosa",   kind:"a voice note, from the ward", region:"mercy",
+    lines:["the ones with a slot, i kept comfortable for the trip.","the ones without, i kept warm.","nobody warns you those are two different jobs."] },
+  { id:"rosa_last",  who:"Rosa",   kind:"a diary, still writing",      region:"mercy",
+    lines:["i stayed till the last one stopped needing me.","then it was just the humming, and a slot with my name on it.","i washed my hands first. habit."] },
+  // — Comms, "Kim, dramatized." June (believed the comms tech; went in anyway) · Priya (regretter).
+  { id:"june_lost",  who:"June",   kind:"a frozen message thread",     region:"comms",
+    lines:["the comms tech kept saying it isn't sleep. i believed her.","i took it to the council. i said we don't understand this yet.","they'd already voted. i went in with the rest of them."] },
+  { id:"priya_bell", who:"Priya",  kind:"a voice note, looping",       region:"comms",
+    lines:["i said stop. i said i'd changed my mind.","the tech looked at me like i'd asked to un-ring a bell.","he was already reaching for the next name."] },
+  // — City Hall, the selection. June's struck dissent · Marcus (the unchosen, in one human).
+  { id:"june_struck", who:"June",  kind:"a struck line from the minutes", region:"cityhall",
+    lines:["for the record: widen the list, or we take no one.","the amendment fails, five to one.","strike it, the chair says. leave no record i objected."] },
+  { id:"marcus_transfer", who:"Marcus", kind:"a frozen message thread", region:"cityhall",
+    lines:["i asked if he could have my slot instead.","they said it doesn't transfer. it's you or it's nobody.","so it was me. and he's still out there.","what does that make me."] },
+  { id:"marcus_form", who:"Marcus", kind:"a form, filled and kept",    region:"cityhall",
+    lines:["application to amend beneficiary — denied.","reason given: the roster is final.","i kept the form. proof i tried, maybe."] },
+  // — Research Annex, "patient zero was a person." Sorkin (the warned breach) · the first subject.
+  { id:"sorkin_numbers", who:"Dr. Sorkin", kind:"a memo, unsent",      region:"annex",
+    lines:["i ran the breach numbers three times. the same answer three times.","i carried them to your office three times.","you signed anyway. you looked at me, and you signed."] },
+  { id:"sorkin_room", who:"Dr. Sorkin", kind:"a final log entry",      region:"annex",
+    lines:["for whoever reads this after:","it will fail here. this seal, this wall, this room.","i filed the warning standing exactly where it broke."] },
+  { id:"pz_first",   who:"the first subject", kind:"the oldest echo — half-degraded", region:"annex",
+    lines:["subject one. they said the first of many. they were right.","i signed the form. i think i signed the form.","am i still the one who volunteered — or only what's left of him—"] },
+];
+const ECHO_BY_ID = Object.fromEntries(BOARD_ECHOES.map(e => [e.id, e]));
+const ECHO_TOTAL = BOARD_ECHOES.length;
 
 // Location-specific loot when SEARCH succeeds (encounter id → possible finds)
 const SEARCH_LOOT = {
@@ -1648,6 +2010,20 @@ const MessageRow = memo(function MessageRow({ m }) {
       </div>
     );
   }
+  if (m.from === "echo_note") {
+    const e = ECHO_BY_ID[m.echoId];
+    if (!e) return null;
+    return (
+      <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #1a4a52", background:"#02090c", boxShadow:"0 0 16px rgba(74,181,200,0.14)", animation:"fi 1s ease" }}>
+        <div style={{ color:"#4ab5c8", fontSize:"0.6rem", letterSpacing:"0.2em", textShadow:"0 0 8px rgba(74,181,200,0.45)" }}>ECHO RECOVERED</div>
+        <div style={{ color:"#6a8a90", fontSize:"0.56rem", letterSpacing:"0.1em", margin:"0.28rem 0 0.45rem" }}>{e.who} · {e.kind}</div>
+        {e.lines.map((ln, i) => (
+          <div key={i} style={{ color:"#9fd0d8", fontSize:"0.8rem", fontStyle:"italic", lineHeight:1.6, margin:"0.12rem 0" }}>{ln}</div>
+        ))}
+        {typeof m.count === "number" && <div style={{ color:"#2f6a72", fontSize:"0.55rem", letterSpacing:"0.12em", marginTop:"0.5rem" }}>{m.count} of {ECHO_TOTAL} recovered</div>}
+      </div>
+    );
+  }
   if (m.from === "truth_note")
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.7rem 1.4rem", border:"1px solid #5a3a1a", background:"#0d0703", boxShadow:"0 0 18px rgba(200,120,40,0.18)", animation:"fi 1s ease" }}>
@@ -1714,6 +2090,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const [currentEncounter, setCurrentEncounter] = useState(null);
   const [selectedFragment, setSelectedFragment] = useState(null);
   const [recoveredMemories, setRecoveredMemories] = useState([]);
+  const [recoveredEchoes, setRecoveredEchoes]   = useState([]);   // Phase-3 Echoes recovered this run (ids, Expansion v2)
   const [sigFlicker, setSigFlicker] = useState(false);
   const [battPulse, setBattPulse]   = useState(false); // P6c — battery pickup HUD flourish
   const [dayThree, setDayThree]     = useState(false);
@@ -1776,6 +2153,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const activeSlotRef       = useRef(null);  // P4 — slot index (0–2) the in-progress run auto-saves to
   const activeProfileRef    = useRef(isDay1Demo ? { playthroughs:0, fragments:[], clues:[], complete:false } : null);  // per-slot progression profile for the active run (playthroughs/fragments/clues)
   const raisedQuestionsRef  = useRef([]);    // case-file OPEN QUESTIONS raised this run (by story beat)
+  const recoveredEchoesRef  = useRef([]);    // Echoes recovered this run (ids); mirrors the raisedQuestions pattern
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
   const currentPhase3RegionRef = useRef(null); // Phase 3 — mirrors for async timers / handlers
@@ -1957,6 +2335,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // and announce it in-chat as a NEW QUESTION card so the player follows the mystery as it
   // builds. Evolution keys (kim143/haven143) aren't base questions → no NEW card (the UPDATED
   // card is emitted at the 143 record instead).
+  // Recover an Echo — a fragment of one of the 142 running minds (Expansion v2, STORY §3).
+  // First-visit hook on Signal-dense / powered Phase-3 nodes (node.echo). Dedupe, mirror
+  // ref→state, play the Echo cue, and drop an ECHO RECOVERED card carrying the fragment.
+  const recoverEcho = (id) => {
+    if (recoveredEchoesRef.current.includes(id) || !ECHO_BY_ID[id]) return;
+    recoveredEchoesRef.current = [...recoveredEchoesRef.current, id];
+    setRecoveredEchoes(recoveredEchoesRef.current);
+    audioEngine.echo();
+    setMessages(p => [...p, { id: nextId("echo"), from: "echo_note", echoId: id, count: recoveredEchoesRef.current.length }]);
+  };
+
   const raiseQuestion = (key) => {
     if (raisedQuestionsRef.current.includes(key)) return;
     raisedQuestionsRef.current = [...raisedQuestionsRef.current, key];
@@ -2054,6 +2443,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     day1: { scene: day1SceneRef.current, visited: day1VisitedRef.current, flags: day1FlagsRef.current },
     currentEncounter, selectedFragment, dayThree, havenFinalIndex,
     recoveredMemories, // this run's cumulative collection (profile + new this run)
+    recoveredEchoes: recoveredEchoesRef.current, // Phase-3 Echoes recovered (Expansion v2)
     raisedQuestions: raisedQuestionsRef.current, // case-file OPEN QUESTIONS surfaced so far
     pendingStoryBeat: pendingStoryBeatRef.current,
     returnToPhase: returnToPhaseRef.current,
@@ -2231,6 +2621,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     // memories: prefer the run's own cumulative set; else committed profile; else legacy global
     setRecoveredMemories(run.recoveredMemories || legacyMemoriesRef.current || memsFromProfile(slot.profile));
     raisedQuestionsRef.current = run.raisedQuestions || []; setRaisedQuestions(raisedQuestionsRef.current);
+    recoveredEchoesRef.current = Array.isArray(run.recoveredEchoes) ? run.recoveredEchoes : []; setRecoveredEchoes(recoveredEchoesRef.current);
     setIsTyping(false); setShowNotif(false); setShownLines([]); setMenuOpen(false);
     if (gateWakeAtRef.current && !DAY_GATES_ENABLED) {
       // Gates dormant: a save parked on the resting screen resumes straight through the
@@ -3472,6 +3863,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
     // Ellie's crack (first visit only) lands after the narrator beat, then the exits return.
     // presentPhase3Node (not showPhase3Exits) — it checks the day clock and may trigger nightfall.
+    // Echo recovery (first visit) — a fragment of the 142 lands after the room's beat/truth,
+    // before Ellie's crack. Phase-3 only; never the prologue (Expansion v2, STORY §3).
+    if (firstVisit && node.echo && !recoveredEchoesRef.current.includes(node.echo)) {
+      const echoLines = ECHO_BY_ID[node.echo]?.lines?.length || 3;
+      pendingRef.current.push(setT(() => {
+        setSigFlicker(true); recoverEcho(node.echo);
+        pendingRef.current.push(setT(() => setSigFlicker(false), 1000));
+      }, t));
+      t += 1400 + echoLines * 450;
+    }
+
     if (firstVisit && node.ellie) {
       pendingRef.current.push(setT(() => {
         setIsTyping(true);
@@ -3694,6 +4096,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     currentPhase3NodeRef.current   = null;     setCurrentPhase3Node(null);
     visitedPhase3NodesRef.current  = [];       setVisitedPhase3Nodes([]);
     discoveredTruthsRef.current    = [];       setDiscoveredTruths([]);
+    recoveredEchoesRef.current     = [];       setRecoveredEchoes([]);
     phase3UnlockedRef.current      = ["haven"];setPhase3UnlockedRegions(["haven"]);
     phase3DayRef.current = PHASE3_START_DAY; setPhase3Day(PHASE3_START_DAY); // the week resumes: Day 4
     daylightRef.current  = PHASE3_DAYLIGHT;  setDaylight(PHASE3_DAYLIGHT);
@@ -4275,7 +4678,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em", flexShrink:0 }}>what you've pieced together</div>
         <div style={{ textAlign:"center", color:"#4f5f55", fontSize:"0.6rem", letterSpacing:"0.12em", margin:"0.55rem 0 0.15rem", flexShrink:0 }}>
           <span style={{ color:"#7a9a82" }}>● {cFrags.size}/9</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◉ {cClues.size}/3</span>
-          {discoveredTruths.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#a8763f" }}>◆ {discoveredTruths.length}/4</span></>}
+          {discoveredTruths.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#a8763f" }}>◆ {discoveredTruths.length}/4</span></>} {recoveredEchoes.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◌ {recoveredEchoes.length}/{ECHO_TOTAL}</span></>}
         </div>
 
         {secRow("mem", "MEMORIES", `${cFrags.size}/9`)}
@@ -4290,6 +4693,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           {BOARD_CLUES.map((cl, i) => cClues.has(cl.name)
             ? itemRow(`clue:${cl.name}`, "◉", cl.name, cl.note, { color:"#7accd4", detailColor:"#5a6a6e" })
             : lockedRow(`cluelock${i}`, "◉", "???"))}
+        </>)}
+
+        {recoveredEchoes.length > 0 && secRow("echo", "ECHOES", `${recoveredEchoes.length}/${ECHO_TOTAL}`)}
+        {boardSection === "echo" && recoveredEchoes.length > 0 && panel(<>
+          {BOARD_ECHOES.map((e, i) => recoveredEchoes.includes(e.id)
+            ? itemRow(`echo:${e.id}`, "◌", `${e.who} — ${e.kind}`, e.lines.map((ln, j) => <div key={j}>{ln}</div>), { color:"#7accd4", detailColor:"#6a8a90", italic:true })
+            : lockedRow(`echolock${i}`, "◌"))}
         </>)}
 
         {discoveredTruths.length > 0 && secRow("truth", "TRUTHS", `${discoveredTruths.length}/4`)}
@@ -4811,7 +5221,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em", flexShrink:0 }}>what you've pieced together</div>
             <div style={{ textAlign:"center", color:"#4f5f55", fontSize:"0.6rem", letterSpacing:"0.12em", margin:"0.55rem 0 0.15rem", flexShrink:0 }}>
               <span style={{ color:"#7a9a82" }}>◈ {cFrags.size}/9</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◉ {cClues.size}/3</span>
-              {discoveredTruths.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#a8763f" }}>◆ {discoveredTruths.length}/4</span></>}
+              {discoveredTruths.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#a8763f" }}>◆ {discoveredTruths.length}/4</span></>} {recoveredEchoes.length > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◌ {recoveredEchoes.length}/{ECHO_TOTAL}</span></>}
             </div>
 
             {secRow("mem", "MEMORIES", `${cFrags.size}/9`)}
@@ -4829,6 +5239,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             </>)}
 
             {/* TRUTHS — hidden until the first one is earned (no early spoiler that there are 4). */}
+            {recoveredEchoes.length > 0 && secRow("echo", "ECHOES", `${recoveredEchoes.length}/${ECHO_TOTAL}`)}
+            {boardSection === "echo" && recoveredEchoes.length > 0 && panel(<>
+              {BOARD_ECHOES.map((e, i) => recoveredEchoes.includes(e.id)
+                ? itemRow(`echo:${e.id}`, "◌", `${e.who} — ${e.kind}`, e.lines.map((ln, j) => <div key={j}>{ln}</div>), { color:"#7accd4", detailColor:"#6a8a90", italic:true })
+                : lockedRow(`echolock${i}`, "◌"))}
+            </>)}
+
             {discoveredTruths.length > 0 && secRow("truth", "TRUTHS", `${discoveredTruths.length}/4`)}
             {boardSection === "truth" && discoveredTruths.length > 0 && panel(<>
               {discoveredTruths.map(id => itemRow(`truth:${id}`, "◆", PHASE3_TRUTHS[id]?.title || id, PHASE3_TRUTHS[id]?.line || "", { color:"#c87a40", detailColor:"#b89a6a", italic:true }))}
