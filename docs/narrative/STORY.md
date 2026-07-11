@@ -185,7 +185,7 @@ live in `DeadSignal.jsx`; all **14 fragments** across the 7-face cast are author
 dedicated Echo audio cue. Homed on Phase-3 nodes in their canon regions. **Haven's are now re-homed to their canonical
 rooms** (Theo → the children's room, Walt → the infirmary + the quiet room) as part of the Haven
 "last day" deepening (2026-07-10); Mercy (Rosa), Comms (June), and City Hall (Marcus → mail room / applicant files, June → dissent record) are re-homed too. All 14 fragments are now re-homed to their canonical rooms across all five regions (2026-07-10). (Patient zero — the oldest, half-degraded Echo — is a *research-phase* subject who predates the 143 program: a distinct, earlier population, not one of the 142 running minds.)
-Still PLANNED: the City Hall + Annex rooms, **S1 truth-by-assembly**, and the prologue second act. **E3** — the Kim-absence beat — is now **built** at the Signal Core (2026-07-10).
+Still PLANNED: the prologue second act (P1–P3), loc/a11y logging, and the regression bar. Everything else in this pass is **built** (2026-07-10): all five region sub-story node sets, **E3** (the Kim-absence beat at the Signal Core), and **S1 truth-by-assembly**.
 
 ## 4. Tone & writing rules — LOCKED
 - **Survival carries over, softened.** Not removed. P1–2 = "battery is life"; P3 = "battery is
@@ -329,11 +329,11 @@ Investigation Board + Journal). Implemented, opened from the in-game **FILE** bu
 - **Example Open Questions:** Why did I erase my memory? · Who was Kim? · Why did I call Ellie? ·
   Why is Haven empty? · Who is Ellie?
 
-- **Expansion v2 — the board becomes an investigation (build: PARTIAL).** Two additions: the
-  **`ECHOES`** category (the 142 minds, §3) — **live 2026-07-10** — and **S1 truth-by-assembly**
-  (build: PLANNED) — a region's truth surfaces
+- **Expansion v2 — the board becomes an investigation (build: BUILT).** Two additions: the
+  **`ECHOES`** category (the 142 minds, §3) — **live 2026-07-10** — and **S1 truth-by-assembly** —
+  **live 2026-07-10** — a region's truth surfaces
   only once its 2–3 supporting facts are collected, and the Journal shows the deduction assembling
-  (evidence → contradiction → **TRUTH**) instead of a single truth-room dump. The unchosen adds one
+  (evidence → deduction → **TRUTH**) instead of a single truth-room dump. The unchosen adds one
   evolving question: `why only 143?` → **`who did you leave out — and why?`** (§2).
 
 ## 7. Haven = the first crack, NOT the answer — LOCKED
@@ -375,7 +375,7 @@ The prologue ends at Haven. It must **crack** the mystery, never explain it.
   stings, a rare **Signal-distortion** artifact at memory recovery / the approach / the 143 record /
   the call).
 
-### Prologue second act — Expansion v2 — LOCKED (design) · build: PLANNED
+### Prologue second act — Expansion v2 — LOCKED (design) · build: BUILT (2026-07-10)
 Give the crossing a real journey without breaking the tight battery economy or the spoiler discipline
 (the prologue still only *cracks* — zero answers, no Echoes).
 - **P1 — a real midpoint per route.** Each route gains a **second leg** with its own character. The
