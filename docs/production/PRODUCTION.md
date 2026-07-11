@@ -2,9 +2,9 @@
 
 | | |
 | --- | --- |
-| **Version** | 1.2 |
+| **Version** | 1.8 |
 | **Status** | Living — active plan from current build to release |
-| **Last updated** | 2026-07-06 |
+| **Last updated** | 2026-07-10 |
 | **Owner** | Jharek (production/design/dev) |
 | **Supersedes** | [`PLAN.md`](PLAN.md) (the completed M0–M8 AI-removal + battery roadmap — now historical) |
 | **Companion docs** | [PRD](../product/PRD.md) · [GDD](../design/GDD.md) · [Technical Design](../technical/DESIGN.md) · canon [`STORY.md`](../narrative/STORY.md) |
@@ -74,7 +74,7 @@ Priority: **P0** ship-blocking · **P1** wanted for a polished launch · **P2** 
 | PWA + deploy | ✅ Done | P1 | Manifest, icons, iOS meta, Pages CI |
 | **Spoiler/canon consistency pass** | 🔧 Ongoing | **P0** | Standing gate before any release |
 | **Documentation suite** | 🔧 In progress | P1 | GDD/PRD/DESIGN/Production done; 4 docs left |
-| **Expansion v2 (Narrative Depth)** | 📝 Docs-only pass | P1 | Canon ✅; doc propagation 🔧; content/code a **future** milestone (M-EXP, §11) — no code exists yet |
+| **Expansion v2 (Narrative Depth)** | 🚧 M-EXP stage 3 started | P1 | Canon ✅; doc propagation ✅; content/code **in progress** (M-EXP, §11) — Echoes + all five region sub-story node sets + U1 built (Phase 3 59 nodes, ≈2×); S1 + prologue second act next |
 | **Accessibility option set** | 🔜 Planned | P1 | Text-speed, contrast/scaling, audio-cue visual equiv. |
 | **Localization** | 🔜 Planned | P2 | Externalize strings first |
 | **Mobile platform matrix** | 🔜 Planned | P0 | iOS Safari + Android Chrome, installed + in-browser |
@@ -96,7 +96,8 @@ The path to release, in dependency order. Each milestone lists its **goal** and 
     (`import("tone")`), not a request. Determinism pillar intact. ✅
   - **Console-clean by construction** — the only `console.warn`s are the dev-only map/label/day1
     validators (`import.meta.env.DEV` / `GATE_BYPASS`), no-op in a production build. The Phase-3 map
-    integrity validator runs **clean** — 5 regions / 34 nodes, no dead ends, dangling exits,
+    integrity validator runs **clean** — 5 regions / 59 nodes (34 shipped + 5 per region across all five, from the
+    Expansion-v2 deepening; → ~65 target), no dead ends, dangling exits,
     unreachable nodes, or choice-cap soft-locks. ✅ *(headless)*
   - **Live per-route playthrough** (hospital / metro / route 9) — **verified 2026-07-06** in a live
     browser via the QA auto-driver ([`docs/qa/QA.md` §6](../qa/QA.md#6-automated-qa-harness)): all three
@@ -121,7 +122,7 @@ The path to release, in dependency order. Each milestone lists its **goal** and 
   source + polished Word/PDF export, indexed in [`docs/README.md`](../README.md).
 - **Sequence (agreed):** Production → Audio → Art+wireframes → Localization → Accessibility.
 
-### M-EXP — Expansion v2 (Narrative Depth) `P1` 🔜 *code milestone future; docs in progress*
+### M-EXP — Expansion v2 (Narrative Depth) `P1` 🚧 *stage 3 started — Echoes system live; nodes / S1 / prologue next*
 - **Goal:** implement the sanctioned narrative-density pass — Echoes, region sub-stories, the
   unchosen thread, truth-by-assembly, and the prologue second act — **as authored text + nodes only,
   no new mechanics** (`STORY.md` §9 carve-out). Full deliverable list and staging in [§11](#11-expansion-v2-narrative-depth--work-track).
@@ -373,6 +374,12 @@ That plan is historical; this document is the living production plan going forwa
 | 1.0 | 2026-07-06 | First production plan. Supersedes `PLAN.md`. Grounded in the shipped build, the `PLAYTESTING.md` QA methodology, and the Pages CI. |
 | 1.1 | 2026-07-06 | Added the **Expansion v2 (Narrative Depth)** work track (§11) + milestone **M-EXP**; scope-ledger in-scope/held-open entries; risk rows R10/R11; §2 status row. Docs-only pass; content/code is a later milestone. |
 | 1.2 | 2026-07-06 | **M-P QA pass.** Clean production build + headless Phase-3 map / label / save-schema verification; spoiler audit of all public copy vs `STORY.md` §2/§4; corrected the exit-criteria section ref (`§4/§7` → `§2/§4`); fixed the QA harness doctored-save recipe (region-id / truth-id) in [`docs/qa/QA.md`](../qa/QA.md) §6 and re-pointed §6.2 to it; the same section-ref fix also lands in [PRD §8](../product/PRD.md#8-release-criteria-definition-of-done) and QA.md. Consistency pass complete; one on-device gate (live per-route playthrough) remains. |
+| 1.3 | 2026-07-10 | **M-EXP stage 3 started — first exit criterion built.** The `ECHOES` Case File category, recover-Echo mechanic, a dedicated Echo audio cue, and all **14 Echo fragments** across the 7-face cast (+ the half-degraded first-subject echo) are wired into `DeadSignal.jsx` and build-clean (995 modules); homed on existing Phase-3 nodes in their canon regions, spoiler-safe (Phase-3 only), save round-trip extended. Canon flags flipped in `STORY.md` §3/§6. Remaining M-EXP criteria (~30 nodes, S1 truth-by-assembly, prologue second act, E3 Kim-absence beat, loc/a11y logging, regression bar) still open. |
+| 1.4 | 2026-07-10 | **M-EXP — ~30-node criterion started, region-by-region: Haven "the last day" built.** 5 new Phase-3 nodes (children's room, infirmary, quiet room/chapel, gate log, bunk 143 = the made-but-empty refused bunk); Phase 3 **34 → 39 nodes**; map integrity re-validated (all reachable, ≤5-choice cap, no dead ends). Theo/Walt echoes re-homed to their canonical rooms. Spoiler-safe (no bodies; the gate log seeds the "left on their own feet" mystery without doing the finale's payoff — an audit nit that conflated the 143rd/Kim was tightened). Haven's truth (Ellie) / gates / endings unchanged. Mercy/Comms/City Hall/Annex sub-stories still to build. |
+| 1.5 | 2026-07-10 | **M-EXP — ~30-node criterion, region 2: Mercy "the sealed ward means something" built.** 5 new Phase-3 nodes (ward antechamber, nurses’ station, room 307, day room, charge office); Phase 3 **39 → 44 nodes**; map re-validated (reachable, ≤5-choice cap, no dead ends). Rosa’s `rosa_last` echo re-homed to the nurses’ station. The sealed ward reframed as the dying Haven had no bed for; Rosa’s two-tier care; a patient you’d admitted, not selected, a floor from room 312 — threads the unchosen (U1) **spoiler-safe** (a closed list existed + the care cost; never who authored the roster — held for City Hall — never the upload). Mercy truth (YOU) / gates / endings unchanged. Canon audit PASS. Comms/City Hall/Annex still to build. |
+| 1.6 | 2026-07-10 | **M-EXP — ~30-node criterion, region 3: Comms "Kim, dramatized" built + E3.** 5 new Phase-3 nodes (operator's workspace, saved transmissions, recording booth, transmitter control, side door); Phase 3 **44 → 49 nodes**; map re-validated (reachable, ≤5-choice cap, no dead ends). June's `june_lost` echo re-homed to the saved transmissions. The refusal + the warning nobody heard — Kim's counter-broadcast the Haven loop wouldn't let out, June listening, the moment she walked to find the architect. **E3 — the Kim-absence beat — now built at the Signal Core** (you search the running minds for Kim; she isn't there; Haven's board counted 143, the racks come up one short; 'she meant it'). Spoiler-safe per canon audit (PASS): Kim's warning stays moral (never names the upload); the 'architect' stays a lead, not pinned to the player; no Ellie/Annex leak. Comms truth (THE SIGNAL) / gates / endings unchanged. City Hall / Annex still to build. |
+| 1.7 | 2026-07-10 | **M-EXP — ~30-node criterion, region 4: City Hall "the selection" built + U1.** 5 new Phase-3 nodes (sub-level, selection office, mail room, applicant files, dissent record); Phase 3 **49 → 54 nodes**; map re-validated. Marcus's `marcus_transfer`/`marcus_form` and June's `june_struck` echoes re-homed to the mail room / applicant files / dissent record. Deepens the truth to **you chose the 143 names** (truth id unchanged) — the scoring criteria, the citizen petitions in their own hand, June's struck dissent ("a lifeboat this small only decides which part of the city drowns"). **U1 question upgrade** shipped: `why only 143?` now sharpens to `who did you leave out — and why?`. Spoiler-safe per canon audit (PASS): **WHY** the cap was 143 (the containment limit) stays HELD for the Annex; no outbreak / "what the end was"; the narrator stays documentary — the moral rides only on June's testimony. City Hall truth (PROJECT HAVEN) / gates / endings unchanged. Annex still to build. |
+| 1.8 | 2026-07-10 | **M-EXP — ~30-node criterion, region 5 (LAST): Research Annex "patient zero was a person" built.** 5 new Phase-3 nodes (subject records, first cell, containment office, warning file, decision log); Phase 3 **54 → 59 nodes** — **all five region sub-stories + U1 now complete** (Phase 3 34→59, ≈2× the shipped depth); all 14 echoes re-homed. Sorkin's `sorkin_numbers`/`sorkin_room` and `pz_first` re-homed to the containment office / warning file / first cell. The price of being first (terminal 'volunteers,' the oldest degrading mind) and being right (Sorkin warned you by name, you signed anyway). **Answers why-143** — 143 was the most Sorkin's containment could hold before the breach-risk spiked; you chose 143 clean over waiting, spending the safety margin (the margin was the city). Audit **PASS**: sets up but does not pre-land containment_core's blunt outbreak reveal (infected = half-connected); no finale leak (where the 143 went / what Ellie is / Accept-Refuse held). Annex truth (THE OUTBREAK) / gates / endings unchanged. **Remaining M-EXP criteria: S1 truth-by-assembly, the prologue second act, loc/a11y logging, the regression bar.** |
 
 ---
 
@@ -397,26 +404,30 @@ The work runs in three staged phases; **each gate must land before the next star
 | --- | --- | --- | --- |
 | **1 — Canon** | Lock all Expansion v2 design in `STORY.md` (Echoes, unchosen, Sorkin, region deepening, S1, prologue second act). | ✅ **Done** | Canon locked, `build: PLANNED` flags set. |
 | **2 — Doc propagation** | Fan the locked canon into the design-doc suite (this Production track; GDD/PRD/DESIGN as applicable). No code. | 🔧 **In progress** | Every companion doc reflects the canon; counts/scope tables updated; no contradictions. |
-| **3 — Content + code** | Author the ~14 Echoes + 7-face cast, build the ~30 new Phase-3 nodes, wire the `ECHOES` category + S1 assembly, integrate the prologue second act. | 🔜 **Future (M-EXP)** | M-EXP exit criteria (§3) green. |
+| **3 — Content + code** | Author the ~14 Echoes + 7-face cast, build the ~30 new Phase-3 nodes, wire the `ECHOES` category + S1 assembly, integrate the prologue second act. | 🚧 **In progress (M-EXP)** — Echoes system + **14 fragments** + `ECHOES` category + audio cue done (2026-07-10). **Region nodes (region-by-region):** Haven *"last day"* ✅ **5 nodes** (34→39) + Mercy *sealed ward* ✅ **5 nodes** (39→44) + Comms *Kim dramatized* ✅ **5 nodes + E3** (44→49) + City Hall *the selection* ✅ **5 nodes + U1** (49→54) + Annex *patient zero* ✅ **5 nodes** (54→59); **all five region sub-stories + U1 done, all 14 echoes re-homed**; **next: S1 truth-by-assembly + the prologue second act**. | M-EXP exit criteria (§3) green. |
 
 **Explicit:** stages 1–2 are **documentation only.** Code implementation is **stage 3 (M-EXP)** — a
 separate, later milestone. Nothing in this pass ships player-facing content.
 
 ### 11.2 Content deliverables (to build in stage 3)
 
-All **build: PLANNED**. Restraint is the ceiling; the shipped truths, gates, and both endings are the
-fixed base and stay **unchanged**.
+Echoes are **BUILT** (2026-07-10); the rest are **build: PLANNED**. Restraint is the ceiling; the
+shipped truths, gates, and both endings are the fixed base and stay **unchanged**.
 
-- **Echoes — ~14 fragments + the 7-face recurring cast.** Terse found fragments (2–4 lines) of the
+- **Echoes — ~14 fragments + the 7-face recurring cast. ✅ BUILT (2026-07-10).** All 14 fragments
+  authored, the `ECHOES` Case File category + recover-Echo mechanic + a dedicated Echo audio cue are
+  live in `DeadSignal.jsx` and build-clean; homed on existing Phase-3 nodes in their canon regions
+  (re-home to the new canonical rooms with the ~30-node work). Terse found fragments (2–4 lines) of the
   142 running minds, Phase 3 only, at Signal-dense/powered nodes. Cast: **Theo** (child), **Rosa**
   (Mercy nurse), **Walt** (chose upload — the moral counterweight), **Priya** (recanted too late),
   **Marcus** (his loved one was cut from the list), **Dr. Lena Sorkin** (containment lead who warned
   the architect 3× and went in anyway), **June** (sided with Kim). **Kim is deliberately NOT an
   Echo** — her absence at the Signal Core (E3) is an authored beat, not a fragment.
-- **~30 new Phase-3 nodes — region sub-stories** (the human thread under each unchanged plot-truth):
-  Haven *"last day"* · Mercy *sealed ward* (the dying not selected) · Comms *"Kim dramatized"* · City
-  Hall *"the selection"* · Research Annex *"patient zero was a person"* (+ the oldest, half-degraded
-  Echo). Roughly doubles each region.
+- **~30 new Phase-3 nodes — region sub-stories** (the human thread under each unchanged plot-truth),
+  built region-by-region: **Haven *"last day"* ✅ built** (2026-07-10 — children's room, infirmary,
+  quiet room/chapel, gate log, and bunk 143 = the made-but-empty refused bunk; 34→39 nodes; Theo/Walt
+  echoes re-homed here; spoiler-safe, no bodies, the gate log seeds "they left on their own feet"
+  without doing the finale's payoff) · **Mercy *sealed ward* ✅ built** (2026-07-10 — ward antechamber, nurses’ station, room 307, day room, charge office; 39→44; the un-selected dying / Rosa’s two-tier care; Rosa echo re-homed; sets up U1, spoiler-safe) · **Comms *Kim dramatized* ✅ built** (2026-07-10 — operator's workspace, saved transmissions, recording booth, transmitter control, side door; 44→49; Kim's refusal + the warning nobody heard; June echo re-homed; **E3** Kim-absence beat at the Signal Core; spoiler-safe) · **City Hall *the selection* ✅ built** (2026-07-10 — sub-level, selection office, mail room, applicant files, dissent record; 49→54; you chose 143 names, the unchosen in their own hand, June's struck dissent; Marcus/June echoes re-homed; U1 question upgrade `why only 143?`→`who did you leave out?`; WHY-143 held for the Annex) · **Research Annex *patient zero was a person* ✅ built** (2026-07-10 — subject records, first cell, containment office, warning file, decision log; 54→59; the terminal 'volunteers,' the oldest degrading mind, Sorkin's breach warnings by name, you chose 143 over safety; Sorkin/pz echoes re-homed; **answers why-143** = the containment limit). **All five region sub-stories + U1 complete — Phase 3 34→59 (≈2×).**
 - **The unchosen thread (U1)** — *why only 143* threaded (not a new region): City Hall selection +
   Marcus's Echo + Rosa's ward + the evolving Case File question (`why only 143?` → `who did you leave
   out — and why?`).
@@ -433,9 +444,9 @@ Updates to the shipped content counts. All figures are **planned targets**, not 
 | Metric | Shipped now | Expansion v2 (planned) |
 | --- | --- | --- |
 | Phase-3 nodes | ~35 | **~65** (region sub-stories + U1; ~2× per region) |
-| Case File board categories | `MEMORIES`, `CLUES`, `PEOPLE`, `LOCATIONS` | **+ `ECHOES`** (the 142 running minds) |
-| Echo fragments | 0 | **~14** across regions |
-| Recurring named cast (Echoes) | — | **7** (Theo · Rosa · Walt · Priya · Marcus · Sorkin · June) |
+| Case File board categories | `MEMORIES`, `CLUES`, `PEOPLE`, `LOCATIONS`, **`ECHOES`** ✅ | (ECHOES built 2026-07-10) |
+| Echo fragments | **14** ✅ | 14 authored + wired (built 2026-07-10) |
+| Recurring named cast (Echoes) | **7** ✅ (Theo · Rosa · Walt · Priya · Marcus · Sorkin · June) | + the oldest, half-degraded first-subject echo |
 | Truth delivery | single-room truth-dump | **S1 truth-by-assembly** (2–3 pieces → deduction → TRUTH) |
 | Region truths / gates / endings | 4 truths, gating, Accept/Refuse | **unchanged** (depth layered on, spine frozen) |
 | Prologue | P1–P2, 3 routes | **+ second act** (P1–P3: midpoint/shelter-scene/deeper Ellie) |

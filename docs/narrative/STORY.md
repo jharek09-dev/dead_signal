@@ -154,7 +154,7 @@ whiteboards, sticky notes) **without explanation**, then pay it off later as "14
 They are not missing and not dead: they connected, and **the Signal walked them out the gate.**
 Connected minds actually number **142** (Kim refused); the board's 143 is the player's slot (§2).
 
-### The Echoes — LOCKED (design) · build: PLANNED
+### The Echoes — LOCKED (design) · build: STARTED (system + 14 fragments wired 2026-07-10)
 The Signal holds **142 running minds**. Phase 3 lets the player **recover Echoes** of them — not
 talking characters, but fragments the Signal keeps replaying: a frozen text thread, a looped voice
 note, a diary still writing itself. Terse, found, unbearable. Echoes are the SOMA move in Dead
@@ -179,6 +179,13 @@ her in the Signal. At the **Signal Core** the player goes looking for her among 
 she isn't there: *"you look for her the way you look for a name in a list. she isn't running. she isn't
 anywhere. she meant it."* The one voice you trusted is the one the Signal can't give you. Pure restraint
 — it costs nothing and lands hardest. (Reinforces Kim as the counterweight, §2/§3.)
+
+**Build (2026-07-10) — STARTED.** The `ECHOES` Case File category and the recover-Echo mechanic are
+live in `DeadSignal.jsx`; all **14 fragments** across the 7-face cast are authored and wired, with a
+dedicated Echo audio cue. Homed on Phase-3 nodes in their canon regions. **Haven's are now re-homed to their canonical
+rooms** (Theo → the children's room, Walt → the infirmary + the quiet room) as part of the Haven
+"last day" deepening (2026-07-10); Mercy (Rosa), Comms (June), and City Hall (Marcus → mail room / applicant files, June → dissent record) are re-homed too. All 14 fragments are now re-homed to their canonical rooms across all five regions (2026-07-10). (Patient zero — the oldest, half-degraded Echo — is a *research-phase* subject who predates the 143 program: a distinct, earlier population, not one of the 142 running minds.)
+Still PLANNED: the City Hall + Annex rooms, **S1 truth-by-assembly**, and the prologue second act. **E3** — the Kim-absence beat — is now **built** at the Signal Core (2026-07-10).
 
 ## 4. Tone & writing rules — LOCKED
 - **Survival carries over, softened.** Not removed. P1–2 = "battery is life"; P3 = "battery is
@@ -306,7 +313,8 @@ Memories/Clues are no longer passive rewards — they feed a persistent **Case F
 Investigation Board + Journal). Implemented, opened from the in-game **FILE** button:
 
 - **Board categories (built):** `MEMORIES` (9), `CLUES` (3), `PEOPLE`, `LOCATIONS`. **Expansion v2
-  adds `ECHOES`** — the recovered fragments of the 142 running minds (§3); build: PLANNED.
+  adds `ECHOES`** — the recovered fragments of the 142 running minds (§3); build: STARTED — category +
+  14 fragments live (2026-07-10).
 - **Journal:** `KNOWN FACTS` (what you've proven) + `OPEN QUESTIONS` (what you haven't).
 - Entries start locked (`???`) and unlock as the matching fragment/clue is collected. People/Locations
   reveal names/notes over time (kept spoiler-safe in the prologue per §3).
@@ -321,8 +329,9 @@ Investigation Board + Journal). Implemented, opened from the in-game **FILE** bu
 - **Example Open Questions:** Why did I erase my memory? · Who was Kim? · Why did I call Ellie? ·
   Why is Haven empty? · Who is Ellie?
 
-- **Expansion v2 — the board becomes an investigation (build: PLANNED).** Two additions: the
-  **`ECHOES`** category (the 142 minds, §3), and **S1 truth-by-assembly** — a region's truth surfaces
+- **Expansion v2 — the board becomes an investigation (build: PARTIAL).** Two additions: the
+  **`ECHOES`** category (the 142 minds, §3) — **live 2026-07-10** — and **S1 truth-by-assembly**
+  (build: PLANNED) — a region's truth surfaces
   only once its 2–3 supporting facts are collected, and the Journal shows the deduction assembling
   (evidence → contradiction → **TRUTH**) instead of a single truth-room dump. The unchosen adds one
   evolving question: `why only 143?` → **`who did you leave out — and why?`** (§2).
