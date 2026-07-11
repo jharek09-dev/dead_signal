@@ -1799,6 +1799,15 @@ const GATE_BYPASS = (() => {
   try { return !!import.meta.env?.DEV || (typeof location !== "undefined" && /[?&]debug/.test(location.search)); }
   catch (e) { return false; }
 })();
+// Instant mode — collapse every message/typing/choice delay to 0 so playtesting doesn't wait out
+// the chat pacing. ON automatically in the dev server (import.meta.env.DEV); add ?slow to the URL
+// to feel the real dramatic timing. A production build is never instant (DEV is false there).
+const INSTANT_MODE = (() => {
+  try {
+    if (typeof location !== "undefined" && /[?&]slow\b/.test(location.search)) return false;
+    return !!import.meta.env?.DEV;
+  } catch (e) { return false; }
+})();
 const fmtCountdown = (ms) => {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(total / 60);
@@ -1875,7 +1884,14 @@ const parseText = (text, ctx = "button") => {
 };
 
 // Shared style fragments (L2 — hoisted so the three screens don't duplicate them)
-const getChoiceKind = (choice) => {
+// Bare imperative openers = world ACTIONS ("Search the bedroom.", "Keep moving.", "Cross to the
+// hall."). The \b anchor is deliberate: it matches the base form but NOT the -ing/inflected reply
+// acks the content favours ("Moving.", "Heading north.", "Following them."), which stay replies.
+const ACTION_VERB_RE = /^(search|inspect|secure|look|check|crack|sleep|try|back|keep|stay|step|move|go|head|cross|leave|push|cover|freeze|stop|slip|climb|weave|cut|find|ignore|take|wait|pick|pull|break|hide|rest|bed|enter|approach|drop|force|put|turn|ease|lose|follow|use|open|read|hurry|listen|watch|hold|duck|crouch|kneel|avoid|block|close|lock|unlock|grab|reach|scan|peek|walk|creep|sneak|dash|flee|escape|help|drag|carry|lift|set|place|gather|collect|examine|scout|explore|kick|smash|throw|aim|swing|strike|hit|dodge)\b/;
+// `ctx` is the VOICE of the beat that produced this choice: "reply" when Ellie was speaking, else
+// "action". It only decides genuinely ambiguous non-imperative choices — every explicit content
+// rule and the imperative-verb test below win first.
+const getChoiceKind = (choice, ctx = "action") => {
   const text = stripMarkers(choice).toLowerCase();
   if (choice === "·") return "continue";
   if (
@@ -1896,7 +1912,14 @@ const getChoiceKind = (choice) => {
     text === "ellie"
   ) return "dialogue";
   if (text.includes("charger") || text.includes("save") || text.includes("load")) return "utility";
-  return "action";
+  // A bracketed interaction ([pick up knife], [examine]…) or an imperative opener is a world action,
+  // even inside an Ellie-voiced beat (the apartment hub: Kim talks, but "Search the bedroom." is an
+  // action). Guard both before the voice fallthrough.
+  if (/\[.+?\]/.test(choice)) return "action";
+  if (ACTION_VERB_RE.test(text)) return "action";
+  // Non-imperative and no lexical tell: fall back to the beat's voice. Under Ellie it's a text back
+  // ("Understood.", "Got it.", "Yeah. I'm here."); under the narrator it's an action.
+  return ctx === "reply" ? "dialogue" : "action";
 };
 
 const choiceButtonStyle = (kind, index = 0, overrides = {}) => {
@@ -1917,7 +1940,7 @@ const choiceButtonStyle = (kind, index = 0, overrides = {}) => {
     cursor:"pointer",
     fontFamily:"inherit",
     fontSize:"clamp(0.8rem, 3.4vw, 0.85rem)",
-    fontWeight:300,
+    fontWeight:(kind === "action" || kind === "risk") ? 600 : 300,
     letterSpacing:"0.04em",
     lineHeight:"1.5",
     transition:"border-color 0.15s, color 0.15s, box-shadow 0.15s",
@@ -2030,6 +2053,10 @@ const MessageRow = memo(function MessageRow({ m }) {
     return <div style={{ alignSelf:"center", fontSize:"0.63rem", letterSpacing:"0.09em", color:"#2a3d2c", padding:"0.25rem 0", animation:"fi 0.6s ease" }}>{m.text}</div>;
   if (m.from === "narrator")
     return <div style={{ alignSelf:"center", textAlign:"center", fontSize:"0.78rem", letterSpacing:"0.12em", color:"#c8b98a", opacity:0.4, padding:"0.6rem 0", fontStyle:"italic", animation:"fi 1.2s ease" }}>{parseText(m.text, "msg")}</div>;
+  // A tapped ACTION (what you DID) — a dim, centered stage-direction line. Greenish-grey + a lead
+  // chevron set it apart from tan environmental narration above and the green "sent text" bubble.
+  if (m.from === "player_action")
+    return <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", fontSize:"0.76rem", letterSpacing:"0.1em", color:"#7d8f74", opacity:0.85, padding:"0.45rem 0", fontStyle:"italic", animation:"fi 0.5s ease" }}>› {parseText(m.text, "msg")}</div>;
   if (m.from === "memory_note")
     return (
       <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:`1px solid ${m.kind==="discovery"?"#1a4a52":"#1a3a24"}`, background:m.kind==="discovery"?"#010a0d":"#010a04", animation:"fi 0.8s ease" }}>
@@ -2273,9 +2300,14 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // effects still use plain setTimeout) so clearPending can clear a mixed bag.
   const timersRef = useRef(new Set());
   const pausedRef = useRef(false);
+  // Voice of the beat that produced the currently-showing choices: "reply" when Ellie was
+  // speaking (choices are texts back to her), "action" otherwise. getChoiceKind reads it to
+  // classify choices that carry no lexical tell; set in scheduleMessages, reset in clearPending.
+  const choiceCtxRef = useRef("action");
   const setT = (fn, delay) => {
-    const rec = { fn, remaining: delay, fireAt: Date.now() + delay, id: 0 };
-    if (!pausedRef.current) rec.id = setTimeout(() => { timersRef.current.delete(rec); fn(); }, delay);
+    const d = INSTANT_MODE ? 0 : delay;
+    const rec = { fn, remaining: d, fireAt: Date.now() + d, id: 0 };
+    if (!pausedRef.current) rec.id = setTimeout(() => { timersRef.current.delete(rec); fn(); }, d);
     timersRef.current.add(rec);
     return rec;
   };
@@ -2305,6 +2337,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     dialogueRef.current.forEach(clearT); dialogueRef.current = [];
     pendingPostQuestionNarrationRef.current = [];
     pendingDeferredChoicesRef.current = null;
+    choiceCtxRef.current = "action"; // next direct-set menu defaults to action until a beat sets it
+
     // Pending question cards deliberately survive this: the fallback flush timer may die here,
     // but the stable-point effect re-flushes them — a fast tap can no longer lose a card.
     qFlushArmedRef.current = false;
@@ -2967,6 +3001,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       }, t));
       t += pace.postGapMs;
     });
+    // Record the beat's voice so getChoiceKind can classify voice-only choices when they render.
+    // Set synchronously here; nothing overwrites it during this beat's own reveal timers, and it
+    // survives the deferred-choice path (question cards auto-flush without a player click between).
+    choiceCtxRef.current = msgType === "ellie" ? "reply" : "action";
     const visibleChoices = capVisibleChoices(choiceList, `scheduleMessages:${msgType}`);
     const choiceDelay = msgType === "ellie" ? ellieChatPacing(msgs[msgs.length - 1] || "").choiceDelayMs : 80;
     if (visibleChoices?.length) dialogueRef.current.push(setT(() => {
@@ -3474,7 +3512,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const choices = [];
     if (!day1Has(DAY1_FLAGS.CHARGER)) choices.push("Search the bedroom.");
     if (!day1Has(DAY1_FLAGS.SUPPLIES)) choices.push("Search the kitchen.");
-    if (!day1Has(DAY1_FLAGS.ELLIE)) choices.push("Text back: who are you?");
+    if (!day1Has(DAY1_FLAGS.ELLIE)) choices.push("Who are you?");
     else if (!day1Has(DAY1_FLAGS.BROADCAST)) choices.push("Check the radio static.");
     if (!day1Has(DAY1_FLAGS.DOOR)) choices.push("Secure the hallway door.");
     return choices;
@@ -3498,7 +3536,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
     const untouchedOpening = !day1Has(DAY1_FLAGS.CHARGER) && !day1Has(DAY1_FLAGS.SUPPLIES) && !day1Has(DAY1_FLAGS.ELLIE);
     if (untouchedOpening) {
-      return ["Search the bedroom.", "Search the kitchen.", "Text back: who are you?", "Inspect the apartment."];
+      return ["Search the bedroom.", "Search the kitchen.", "Who are you?", "Inspect the apartment."];
     }
 
     const choices = day1RequiredChoices().slice(0, MAX_VISIBLE_CHOICES);
@@ -4281,6 +4319,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   };
 
   const handleChoice = (choice) => {
+    // Classify with the beat's voice BEFORE clearPending() resets choiceCtxRef, so the log echo
+    // below can tell a text reply (green sent bubble) from an action (stage-direction line).
+    const echoKind = getChoiceKind(choice, choiceCtxRef.current);
     audioEngine.tapResponse(); // audio — response/choice tap
     clearPending();
     setChoices([]);
@@ -4293,7 +4334,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const drainCost  = isNarContinue ? 0 : beatBatteryCost(gamePhaseRef.current);
     const newBattery = Math.max(0, resourcesRef.current.battery - drainCost);
     if (drainCost) setResources(p => ({ ...p, battery: Math.max(0, p.battery - drainCost) }));
-    if (!isNarContinue) setMessages(p => [...p, { id: nextId("p"), from: "player", text: choice }]);
+    if (!isNarContinue) setMessages(p => [...p, { id: nextId("p"), from: echoKind === "dialogue" ? "player" : "player_action", text: choice }]);
     if (!isEncounter && !isNarContinue) setIsTyping(true);
 
     if (isEncounter) { resolveEncounterChoice(choice, currentEncounterRef.current); return; }
@@ -5719,7 +5760,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       {/* Messages */}
       <div ref={chatScrollRef} className="ds-message-pane" style={messagePaneStyle}>
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
-        {isTyping && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
+        {isTyping && !INSTANT_MODE && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
       </div>
 
@@ -5733,17 +5774,22 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
               Use the charger [+{chargerAmt}% Battery]
             </button>
           )}
-          {choices.map((c,i) => {
-            if (c === "·") {
-              return <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>;
-            }
-            const kind = getChoiceKind(c);
-            return (
-              <button key={i} className={`cb choice-btn choice-${kind}`} onClick={()=>handleChoice(c)} style={choiceButtonStyle(kind, i + (canUseCharger ? 1 : 0))}>
-                {parseText(c,"button")}
-              </button>
-            );
-          })}
+          {choices
+            .map((c, i) => ({ c, i, kind: getChoiceKind(c, choiceCtxRef.current) }))
+            // Text replies (dialogue) float to the top; everything else keeps its authored order
+            // below them (stable — original index breaks ties). Routing is by label, so reordering
+            // the display is safe. The lone "·" continue sentinel (rank 1) is unaffected.
+            .sort((a, b) => (a.kind === "dialogue" ? 0 : 1) - (b.kind === "dialogue" ? 0 : 1) || a.i - b.i)
+            .map(({ c, i, kind }, sortedIdx) => {
+              if (c === "·") {
+                return <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>;
+              }
+              return (
+                <button key={i} className={`cb choice-btn choice-${kind}`} onClick={()=>handleChoice(c)} style={choiceButtonStyle(kind, sortedIdx + (canUseCharger ? 1 : 0))}>
+                  {parseText(c,"button")}
+                </button>
+              );
+            })}
         </div>
       )}
 
