@@ -1800,11 +1800,20 @@ const GATE_BYPASS = (() => {
   catch (e) { return false; }
 })();
 // Instant mode — collapse every message/typing/choice delay to 0 so playtesting doesn't wait out
-// the chat pacing. ON automatically in the dev server (import.meta.env.DEV); add ?slow to the URL
-// to feel the real dramatic timing. A production build is never instant (DEV is false there).
+// the chat pacing. Precedence: ?slow always wins (real pacing) and forgets the sticky flag; ?instant
+// turns it on for ANY build — including the deployed site — and REMEMBERS it in localStorage so you
+// set it once and it stays on across reloads; otherwise a remembered ?instant keeps it on, and the
+// dev server is instant by default. A normal production visit (no flag, nothing remembered) is never
+// instant, so real players are unaffected.
 const INSTANT_MODE = (() => {
   try {
-    if (typeof location !== "undefined" && /[?&]slow\b/.test(location.search)) return false;
+    const q = typeof location !== "undefined" ? location.search : "";
+    const remember = (on) => { try { on ? localStorage.setItem("ds_instant", "1") : localStorage.removeItem("ds_instant"); } catch (e) {} };
+    if (/[?&]slow\b/.test(q))    { remember(false); return false; }
+    if (/[?&]instant\b/.test(q)) { remember(true);  return true; }
+    let sticky = false;
+    try { sticky = localStorage.getItem("ds_instant") === "1"; } catch (e) {}
+    if (sticky) return true;
     return !!import.meta.env?.DEV;
   } catch (e) { return false; }
 })();
