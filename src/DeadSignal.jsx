@@ -1884,10 +1884,13 @@ const parseText = (text, ctx = "button") => {
 };
 
 // Shared style fragments (L2 — hoisted so the three screens don't duplicate them)
-// Bare imperative openers = world ACTIONS ("Search the bedroom.", "Keep moving.", "Cross to the
-// hall."). The \b anchor is deliberate: it matches the base form but NOT the -ing/inflected reply
-// acks the content favours ("Moving.", "Heading north.", "Following them."), which stay replies.
-const ACTION_VERB_RE = /^(search|inspect|secure|look|check|crack|sleep|try|back|keep|stay|step|move|go|head|cross|leave|push|cover|freeze|stop|slip|climb|weave|cut|find|ignore|take|wait|pick|pull|break|hide|rest|bed|enter|approach|drop|force|put|turn|ease|lose|follow|use|open|read|hurry|listen|watch|hold|duck|crouch|kneel|avoid|block|close|lock|unlock|grab|reach|scan|peek|walk|creep|sneak|dash|flee|escape|help|drag|carry|lift|set|place|gather|collect|examine|scout|explore|kick|smash|throw|aim|swing|strike|hit|dodge)\b/;
+// Deliberate world-actions that stay bold even when Ellie is the speaker: the apartment
+// search/inspect menu verbs, plus "move" for the "Move on — …" progress button. Movement and
+// traversal verbs (keep, stay, step, slip, go, cross, …) are deliberately NOT here — inside an
+// Ellie-voiced beat they read as texts back to her ("Keep moving.", "Stay low.") and fall through
+// to green replies, while a narrator beat's voice fallthrough still makes them bold actions. The
+// \b anchor keeps base "move" (the progress button) distinct from the reply ack "Moving.".
+const ACTION_VERB_RE = /^(search|inspect|secure|look|check|crack|sleep|try|move)\b/;
 // `ctx` is the VOICE of the beat that produced this choice: "reply" when Ellie was speaking, else
 // "action". It only decides genuinely ambiguous non-imperative choices — every explicit content
 // rule and the imperative-verb test below win first.
@@ -1912,13 +1915,12 @@ const getChoiceKind = (choice, ctx = "action") => {
     text === "ellie"
   ) return "dialogue";
   if (text.includes("charger") || text.includes("save") || text.includes("load")) return "utility";
-  // A bracketed interaction ([pick up knife], [examine]…) or an imperative opener is a world action,
-  // even inside an Ellie-voiced beat (the apartment hub: Kim talks, but "Search the bedroom." is an
-  // action). Guard both before the voice fallthrough.
+  // A bracketed interaction ([pick up knife], [examine]…) or a deliberate-action verb
+  // (search / inspect / move-on) is a world action even under Ellie's voice — guard both first.
   if (/\[.+?\]/.test(choice)) return "action";
   if (ACTION_VERB_RE.test(text)) return "action";
-  // Non-imperative and no lexical tell: fall back to the beat's voice. Under Ellie it's a text back
-  // ("Understood.", "Got it.", "Yeah. I'm here."); under the narrator it's an action.
+  // Otherwise the beat's voice decides: under Ellie it's a text back — a reply or a movement ack
+  // ("Keep moving.", "Understood.", "Yeah. I'm here."); under the narrator it's an action.
   return ctx === "reply" ? "dialogue" : "action";
 };
 
