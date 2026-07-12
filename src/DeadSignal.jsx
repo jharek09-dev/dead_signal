@@ -4340,8 +4340,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   };
 
   const handleChoice = (choice) => {
-    // Classify with the beat's voice BEFORE clearPending() resets choiceCtxRef, so the log echo
-    // below can tell a text reply (green sent bubble) from an action (stage-direction line).
+    // Classify with the beat's voice BEFORE clearPending() resets choiceCtxRef, so the echo below
+    // knows whether this pick is a text reply (only replies echo, as the player's green "sent" bubble).
     const echoKind = getChoiceKind(choice, choiceCtxRef.current);
     audioEngine.tapResponse(); // audio — response/choice tap
     clearPending();
@@ -4355,7 +4355,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const drainCost  = isNarContinue ? 0 : beatBatteryCost(gamePhaseRef.current);
     const newBattery = Math.max(0, resourcesRef.current.battery - drainCost);
     if (drainCost) setResources(p => ({ ...p, battery: Math.max(0, p.battery - drainCost) }));
-    if (!isNarContinue) setMessages(p => [...p, { id: nextId("p"), from: echoKind === "dialogue" ? "player" : "player_action", text: choice }]);
+    // Only a text reply echoes into the chat (the player's green "sent" bubble). An action isn't a
+    // message to Ellie, so it no longer adds a chat line — you just see its result. (Old saves may
+    // still carry from:"player_action" lines; MessageRow keeps rendering those.)
+    if (!isNarContinue && echoKind === "dialogue") setMessages(p => [...p, { id: nextId("p"), from: "player", text: choice }]);
     if (!isEncounter && !isNarContinue) setIsTyping(true);
 
     if (isEncounter) { resolveEncounterChoice(choice, currentEncounterRef.current); return; }
