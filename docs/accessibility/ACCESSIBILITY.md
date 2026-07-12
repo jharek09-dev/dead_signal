@@ -2,9 +2,9 @@
 
 | | |
 | --- | --- |
-| **Version** | 1.2 |
-| **Status** | Living — some features shipped, an option set + audits remain |
-| **Last updated** | 2026-07-06 |
+| **Version** | 1.4 |
+| **Status** | Living — the option set + screen-reader semantics are built (M-A11Y stages 1–2); the photosensitivity audit, content notes and on-device AT passes remain |
+| **Last updated** | 2026-07-12 |
 | **Owner** | Jharek (design/QA) |
 | **Standard** | WCAG 2.2 AA (baseline) |
 | **Companion docs** | [PRD](../product/PRD.md) · [Art Bible](../art/ART.md) · [Audio Bible](../audio/AUDIO.md) · [Technical Design](../technical/DESIGN.md) |
@@ -83,13 +83,30 @@ That's a strong baseline. The rest of this plan hardens it and fills the gaps.
 | `#7a7a7a` mid-grey | secondary text | ≈ 4.7 : 1 | ✅ AA normal (borderline) |
 | `#6a6a6a` dim-grey | de-emphasized labels | **≈ 3.7 : 1** | ⚠️ **fails AA for small text** |
 
-**Action:** audit every use of the dimmest greys (`#6a6a6a` and below). Where they carry real text at
-small sizes, brighten to ≥ `#7a7a7a` (AA) or promote to large text. Purely decorative/disabled text
-can stay but should be verified as non-essential.
+**Contrast — done (M-A11Y stage 1, 2026-07-12).** Every text color that carries meaning now resolves
+through a CSS custom property (`A11Y_TOKENS` in `DeadSignal.jsx`) instead of a hardcoded hex, and the
+**HIGH CONTRAST** option (§11) swaps the whole set for AA-clearing values. Measured on `#070707`:
+
+| Token | Default | Ratio | High contrast | Ratio |
+| --- | --- | --- | --- | --- |
+| `--ds-dim` | `#6a6a6a` | ⚠️ 3.7 : 1 | `#a6a6a6` | ✅ 8.3 : 1 |
+| `--ds-mid` | `#7a7a7a` | 4.7 : 1 | `#b4b4b4` | ✅ 9.7 : 1 |
+| `--ds-faint` | `#5a5a5a` | ⚠️ 2.9 : 1 | `#9a9a9a` | ✅ 7.2 : 1 |
+| `--ds-locked` | `#2f2f2f` | ⚠️ 1.5 : 1 | `#7a7a7a` | ✅ 4.7 : 1 |
+| `--ds-note` | `#8a8a7a` | 5.8 : 1 | `#c0c0ae` | ✅ 10.9 : 1 |
+| `--ds-sub` | `#7a8a7e` | 5.5 : 1 | `#adc2b3` | ✅ 10.7 : 1 |
+| `--ds-subhead` | `#5a7a64` | ⚠️ 4.2 : 1 | `#93bda0` | ✅ 9.6 : 1 |
+| `--ds-warm` | `#7a6a6a` | ⚠️ 3.9 : 1 | `#b39f9f` | ✅ 8.0 : 1 |
+
+The locked (`———`) board rows are included deliberately: they carry meaning ("not found yet"), so they
+are not treated as decoration. The signal-green (6.1 : 1) and parchment (10.3 : 1) already pass and are
+untouched — the terminal aesthetic stays the default, and the lift is opt-in.
 
 **Other visual work:**
-- **Text scaling.** The UI uses `rem`/`clamp()` sizing (good), but there is no in-game **text-size
-  option** yet. Add a size/scale control; verify layout holds at 200% zoom (WCAG 1.4.4) without loss.
+- **Text scaling — done (2026-07-12).** The **TEXT SIZE** option (100/115/130/150%) scales the document
+  root font-size, which the `rem`/`clamp()` sizing carries through the whole UI; it stacks with browser
+  zoom rather than replacing it. *Still to verify on device: layout holds at 150% + 200% zoom together
+  (WCAG 1.4.4) with no clipping.*
 - **Reflow.** Confirm the phone layout reflows to 320px CSS width with no horizontal scroll (WCAG 1.4.10) — it's already phone-first, so this should largely hold; verify.
 - **Dyslexia-friendly option.** Offer an alternate readable font (e.g. Atkinson Hyperlegible) as an
   option — note this trades against the IBM Plex Mono terminal aesthetic (Art Bible §4), so it's a
@@ -116,10 +133,9 @@ can stay but should be verified as non-essential.
 
 - **Pause-freezes-dialogue (shipped)** and **no forced timeouts** (real-time gates dropped) satisfy
   WCAG 2.2.1 comfortably.
-- **Text-speed / instant reveal — the key gap.** Messages currently stream at a fixed human pace
-  (`scheduleMessages`, `NOTIF_DELAY`). Add an **Options control**: *Slow / Normal / Fast / Instant*,
-  and a tap-to-complete (tap reveals the rest of the current line immediately). This helps slow
-  readers, fast readers, and screen-reader users alike, and is the single highest-value a11y add.
+- **Text-speed / instant reveal — done (M-A11Y stage 1, 2026-07-12).** The **TEXT SPEED** option
+  (*Slow / Normal / Fast / Instant*) and **tap-to-complete** are built — see §11 for how. This was the
+  single highest-value a11y add: it serves slow readers, fast readers and screen-reader users alike.
 - **No auto-advancing content** that can't be paused — confirm every timed reveal is pause-covered.
 
 ---
@@ -160,9 +176,13 @@ flicker**.
   **general flash threshold** — no more than **3 general flashes per second**, and limited area/
   luminance change. The cue is brief and infrequent (story-gated), which helps, but it must be
   measured, not assumed.
-- **Add a "reduce flashing" toggle** (independent of OS reduced-motion) that replaces the flicker
-  with a static, non-flashing indicator (e.g. a steady border tint) while keeping the *meaning* of
-  the Signal beat.
+- **"Reduce flashing" toggle — built (2026-07-12).** Independent of OS reduced-motion (a player can
+  want the flicker gone without wanting all motion gone). It holds `sigflicker`, `flash`, `slowflash`,
+  `pu` and `sigpulse` at a steady opacity, so the *meaning* of the Signal beat survives — dimmed signal
+  bars still read as an unstable signal, they just stop flashing. Covers the Echo cue's `sigFlicker`
+  twin and the S1 `assembly_note` flash by construction, since both ride the same keyframes.
+  *Still outstanding: the measured flash-rate/area audit below — the toggle mitigates, it doesn't
+  substitute for measuring the default.*
 - **Never** stack the flash with a full-screen luminance jump.
 - **Expansion v2 — fold the Echo cue into this audit · build: BUILT 2026-07-10.** The Echo recovery cue's
   visual twin (§6) is planned as a **sibling/extension of the Signal distortion**. If it reuses or
@@ -195,17 +215,47 @@ flicker**.
 
 ## 9. Screen readers & semantics
 
-The gap that needs the most engineering:
+**Built — M-A11Y stage 2 (2026-07-12).** This was the largest engineering piece in the plan. The
+shape of the solution: *the game already says everything out loud in text* — it just wasn't marked up
+so assistive tech could hear it.
 
-- **Live regions for incoming messages.** New chat messages stream in via timers; they must be
-  announced. Wrap the chat log in an `aria-live="polite"` region (or announce each new message) so a
-  screen-reader user hears the conversation as it arrives — this is essential for a text game.
-- **Semantic structure.** Headings/landmarks for menus, the Case File, and the chat; buttons already
-  native. Ensure the **reading order** matches the visual order (narration → choices).
-- **Labels.** Extend the existing `aria-label`s to every control; give HUD registers accessible names
-  (e.g. "battery 34 percent" not just "34%"). Icons/glyphs get text alternatives.
-- **State changes announced.** Resource changes, a new Case File entry, and phase transitions should
-  be perceivable without sight.
+- **The transcript is the live region (`role="log"`).** Everything a player must not miss arrives
+  there as a message: Ellie, narration, `CASE FILE UPDATED`, `ECHO RECOVERED`, the assembly card,
+  `TRUTH UNCOVERED`. Marking the log once therefore carries the whole story — no bespoke
+  announcements, nothing to keep in sync as content grows. It is **`aria-live="polite"`** (a new line
+  queues behind the one being read rather than cutting it off) and **`aria-relevant="additions"`**,
+  which is what stops a screen reader re-reading the entire backlog every time React re-renders the
+  list or a save is restored into it.
+- **The HUD announcer.** The registers — battery, health, water, food, noise, day, area, signal — are
+  chrome *outside* the log, and they change silently. A sighted player watches the number tick; a
+  blind player would simply never learn they'd been hurt. So the registers are diffed each render and
+  **only what actually changed** is spoken, as one polite sentence, from an off-screen
+  `role="status"` region deliberately placed **outside** the log so a resource tick can never
+  interleave with the line being read. The first pass primes the baseline silently: on arrival the HUD
+  isn't news, and the player can read it whenever they like. The one exception is **battery critical**,
+  which is `role="alert"` — assertive, because it's the only state that can end the run.
+- **Meaning, not glyphs.** Every register carries a spoken name — *"battery 34 percent"*, not *"34%"*;
+  *"health 8 of 10, bleeding"*. The things that only draw those values (the signal bars, the battery
+  icon, the avatar, the `▸`/`▾` chevrons, the `›` and `∴` on the assembly card, the `· · ·` typing
+  dots and the `· · ·` continue sentinel) are `aria-hidden` and given a text equivalent where they
+  carry meaning — so AT reads the meaning once, not the picture and then the meaning.
+- **Semantic structure.** One `<main>` landmark, a named `<nav>` for the action bar, `role="heading"`
+  on the screen titles (`role`, not `<h1>`: identical to AT, zero effect on a tightly-tuned layout),
+  and the pause overlay as a proper `role="dialog" aria-modal` so AT stays inside it instead of
+  wandering the frozen chat behind. Reading order follows DOM order, which already matches the visual
+  order (narration → choices).
+- **The Case File is an accordion, so it's marked as one.** Sections and entries are `aria-expanded`
+  expanders named with their label and count. An unlocked **Echo** announces as a Case File entry like
+  any other and its 2–4 lines read in visual order. Locked rows — a dim `———` on screen, *nothing* read
+  aloud — now say **"locked — not found yet"**: that's a state the player needs (how much is left to
+  find), not decoration.
+- **Truth-by-assembly announces as a deduction.** The assembly card reads each supporting piece and
+  then the conclusion, with the `∴` spoken as the word it stands for ("therefore") — so a non-sighted
+  player perceives the *reasoning*, not just the result. The withholding beat ("still missing: …") and
+  every supporting piece already arrive as text in the log, so the assembling is audible end-to-end.
+- **Still to do:** focus management (returning focus sensibly when the Case File / pause overlays
+  close) and the **on-device AT passes** — VoiceOver (iOS/Safari), NVDA, TalkBack. A DOM harness can
+  prove the tree is correct; only a real screen reader can judge whether it's *pleasant to listen to*.
 - **Expansion v2 — the new board content inherits every rule · build: BUILT 2026-07-10.** The new **`ECHOES`**
   Case File category and **truth-by-assembly** (`STORY.md` §6) are additional board/journal content and
   must meet the same bar as the existing categories: keyboard-navigable, screen-reader friendly, and
@@ -257,23 +307,56 @@ intensity rises.
 
 ## 11. The Options roadmap
 
-Today the Options screen offers **volume + mute** (persisted) and a data-reset. Proposed additions,
-all persisted via the existing `window.storage` pattern:
+The Options screen offers **volume + mute** and a data-reset, plus — as of **M-A11Y stage 1
+(2026-07-12)** — an **ACCESSIBILITY** section carrying the four P1 settings. All are persisted via
+the existing `window.storage` pattern (`ds_a11y`), restored on mount, and re-validated on load, so a
+stale or hand-edited payload can never leave the game unplayable.
 
-| Setting | Category | Priority |
-| --- | --- | --- |
-| Text speed (Slow/Normal/Fast/**Instant**) + tap-to-complete | Timing/cognitive | **P1 (highest value)** |
-| Reduce flashing (independent of OS) | Photosensitivity | P1 |
-| Text size / UI scale | Visual | P1 |
-| High-contrast / brighten dim text | Visual | P1 |
-| Dyslexia-friendly font | Visual | P2 |
-| Haptics on/off (mobile) | Hearing/feedback | P2 |
-| Language selector | (Localization) | P2 |
+| Setting | Category | Priority | Status |
+| --- | --- | --- | --- |
+| Text speed (Slow/Normal/Fast/**Instant**) + tap-to-complete | Timing/cognitive | **P1 (highest value)** | ✅ **built** 2026-07-12 |
+| Reduce flashing (independent of OS) | Photosensitivity | P1 | ✅ **built** 2026-07-12 |
+| Text size / UI scale (100/115/130/150%) | Visual | P1 | ✅ **built** 2026-07-12 |
+| High-contrast / brighten dim text | Visual | P1 | ✅ **built** 2026-07-12 |
+| Dyslexia-friendly font | Visual | P2 | 🔜 |
+| Haptics on/off (mobile) | Hearing/feedback | P2 | 🔜 |
+| Language selector | (Localization) | P2 | 🔜 (M-LOC) |
+
+**How they're built** (`src/DeadSignal.jsx`):
+
+- **Text speed** is a uniform multiplier applied inside `setT`, the single funnel every gameplay timer
+  already went through for the pause feature. Because *every* delay scales by the same factor —
+  including the bridges that schedule the next beat off the previous beat's own duration — the
+  authored order is identical at any speed. `Instant` is a near-zero scale (0.04), **not** zero: at a
+  true zero a later beat could clear an earlier one's timers before they rendered.
+- **Tap-to-complete** (`flushDialogue`) doesn't dump text and guess at the state — it *runs the beat's
+  own pending timers in order, immediately*, so the lines, the typing indicator, the choice reveal and
+  any `onShown` hook all land exactly as authored, just without the pacing. It flushes only the current
+  beat's queue (`dialogueRef`), never the bridge timers (`pendingRef`) — so it **completes a beat, it
+  never skips ahead** — and it's a no-op while paused. Reachable by tapping the transcript (the phone
+  gesture) or the **REVEAL** button, which is a real focusable control for keyboard/AT users and sits in
+  the choices slot, so it costs no extra layout.
+- **Reduce flashing** redefines the flashing keyframes by name (a later `@keyframes` of the same name
+  wins), holding `sigflicker`/`flash`/`slowflash`/`pu`/`sigpulse` at a steady opacity. The elements —
+  and their meaning — stay: dimmed signal bars still read as an unstable signal, they just stop
+  flashing. Independent of OS reduced-motion, because a player can want the flicker gone without
+  wanting all motion gone.
+- **Text size** scales the document root font-size; the UI is sized in `rem`/`clamp()` throughout, so
+  the whole interface scales, and it stacks with browser zoom rather than fighting it.
+- **High contrast** lifts the sub-AA greys through CSS custom properties (`A11Y_TOKENS`), overridden on
+  `<html>` — see §3.
 
 ---
 
 ## 12. Testing & audit checklist
 
+- **Automated — `npm run qa:a11y` (built 2026-07-12).** A browserless harness
+  ([`scripts/qa/qa-a11y.mjs`](../../scripts/qa/qa-a11y.mjs), QA.md §6.8): the accessibility surface is
+  DOM, not pixels, so it renders the **real component** into jsdom, drives it to the chat, the Case
+  File and the Options screen, and asserts on the actual accessibility tree — live-region roles, every
+  control named, nothing focusable hidden from AT, `aria-expanded` flipping, and that toggling high
+  contrast really does repaint the token on `<html>`. It catches exactly what a human tester misses (an
+  unnamed button, a glyph read aloud as punctuation) and leaves to real AT what only real AT can judge.
 - **Automated:** axe / Lighthouse a11y pass on each screen (contrast, names, roles, order).
 - **Contrast:** re-measure every text color on `#070707` (see §3 table); fix sub-AA text.
 - **Keyboard-only:** complete a full playthrough with no pointer — reach and activate every control,
@@ -310,6 +393,8 @@ Include an accessibility smoke test in the release gate (PRD §8).
 | --- | --- | --- |
 | 1.0 | 2026-07-06 | First accessibility plan. Credits shipped features (reduced-motion, muted-playable, no-reflex, native buttons, ARIA); measured contrast; scoped the option set + screen-reader + photosensitivity work. |
 | 1.1 | 2026-07-06 | **Expansion v2 (build: PLANNED, docs only).** Widened the content/trauma notes (§10) for the raised intensity — a child among the uploaded, the regretter, the left-behind/*unchosen*, the un-selected dying. Added a visual equivalent for the Echo recovery audio cue (§6) and folded that cue into the photosensitivity audit (§7). Brought the new `ECHOES` board category + truth-by-assembly under the screen-reader/keyboard/contrast bar (§9). Reaffirmed the structural advantage — new content is reading + tapping, no reflexes, pausable (§8). WCAG 2.2 AA framing unchanged. |
+| 1.4 | 2026-07-12 | **M-A11Y stage 2 — screen readers & semantics (§9) BUILT.** The insight that shaped it: the game already says everything in text, it just wasn't marked up to be heard. The **transcript is the live region** (`role="log"`, `aria-live="polite"`, `aria-relevant="additions"`) — so dialogue, narration, CASE FILE UPDATED, ECHO RECOVERED, the assembly card and TRUTH UNCOVERED all announce themselves as they land, with no bespoke per-feature announcements to keep in sync, and the backlog is never re-read on re-render or save-restore. The **HUD registers** (battery/health/water/food/noise/day/area/signal) change silently outside the log, so they're diffed each render and only what changed is spoken, from an off-screen `role="status"` placed **outside** the log so a resource tick can't interleave with the line being read; battery-critical is the one `role="alert"`. Every register speaks meaning, not glyphs ("battery 34 percent", not "34%"); the bars, icons, chevrons, `›`/`∴`, typing dots and the `· · ·` continue sentinel are `aria-hidden` with text equivalents. Structure: one `<main>`, a named `<nav>`, `role="heading"` titles, the pause overlay as a real `role="dialog" aria-modal`. The Case File is marked as the accordion it is (`aria-expanded`, named sections), Echo lines read in visual order, and locked `———` rows now say **"locked — not found yet"**. Truth-by-assembly reads evidence → *therefore* → TRUTH, so the deduction is perceivable, not just its result. **New harness: `npm run qa:a11y`** ([`scripts/qa/qa-a11y.mjs`](../../scripts/qa/qa-a11y.mjs)) renders the real component into jsdom and asserts on the live accessibility tree — 30+ checks green, incl. an end-to-end proof that high contrast repaints the `<html>` token. Full regression green (build 995 modules, map 0 warnings, save 8/8). **Still open:** focus management on overlay close, and the on-device AT passes (VoiceOver/NVDA/TalkBack) — a DOM harness proves the tree is right; only a screen reader can judge whether it's pleasant to listen to. |
+| 1.3 | 2026-07-12 | **M-A11Y stage 1 — the Options set is BUILT.** The four P1 settings from §11 ship in an **ACCESSIBILITY** section of the Options screen, persisted via `window.storage` (`ds_a11y`) and re-validated on load: **text speed** (Slow/Normal/Fast/Instant) + **tap-to-complete**; **reduce flashing**; **text size** (100–150%); **high contrast**. Text speed is a uniform multiplier inside `setT` — the one funnel every gameplay timer already passed through for pause — so authored beat order is identical at any speed; *Instant* is a near-zero (0.04) rather than a true zero, which would let a later beat clear an earlier one before it rendered. Tap-to-complete **runs the current beat's own timers in order, immediately** (lines, typing indicator, choices, `onShown` hooks all land as authored) and touches only that beat's queue — it completes a beat, it never skips ahead; reachable by tapping the transcript or the focusable **REVEAL** control. §3 rewritten with the measured token table: every meaning-bearing grey now resolves through a CSS custom property and high contrast lifts all eight above AA (incl. the locked `———` rows, which carry meaning). Verified: clean build (995 modules), map harness 0 warnings, save 8/8, contrast/target-size/ARIA checks green. **Still open in M-A11Y:** the screen-reader/`aria-live` work (§9), the measured photosensitivity audit (§7), the content/trauma note surface (§10), and the on-device keyboard/muted/zoom passes (§12). |
 | 1.2 | 2026-07-10 | **Expansion v2 content BUILT — a11y delta logged (M-EXP crit: a11y deltas).** Flipped the content flags PLANNED→BUILT. Confirmed the Echo cue's **visual twin exists** (`audioEngine.echo()` + the ECHO RECOVERED text card + `sigFlicker`, §6); folded the echo cue + the S1 `assembly_note` flash into the photosensitivity audit (§7); recorded the specific raised-intensity beats now in the build (§10 — Theo, Priya, Rosa's ward, Marcus/petitions/child's-shoe unchosen, patient-zero consent, Sorkin's warning, the 143 decision); brought the `ECHOES` board category + the S1 assembly card + the prologue midpoint/shelter under the SR/keyboard/contrast/text-speed bar (§8/§9). Structural advantage holds — all reading + tapping, pausable, muted-playable. The **a11y option set + audit (M-A11Y) is still PLANNED** — only the content it must cover has landed. WCAG 2.2 AA framing unchanged. |
 
 *End of document.*

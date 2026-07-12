@@ -1983,7 +1983,59 @@ const messagePacing = (text, msgType) => {
 };
 
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');";
-const KEYFRAMES_FI = "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@keyframes choiceIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
+// ─── Accessibility (M-A11Y) ──────────────────────────────────────────────────────────────────
+// The persisted option set from ACCESSIBILITY.md §11. The defaults reproduce the shipped look and
+// pacing exactly, so an untouched Options screen changes nothing about the game as it ships.
+const A11Y_KEY = "ds_a11y";
+const A11Y_DEFAULTS = { textSpeed: "normal", textScale: 100, reduceFlash: false, highContrast: false };
+
+// Text speed (§5) is a uniform multiplier on every gameplay timer (see setT), so a beat's internal
+// order — typing indicator, each line, then the choices — is preserved at any speed, and so is the
+// order BETWEEN beats (a bridge schedules the next beat off the previous beat's own duration, and
+// both ends scale by the same factor). "Instant" is a near-zero scale rather than a true 0 for that
+// same reason: at exactly 0 a later beat could clear an earlier one's timers before they rendered.
+const SPEED_SCALE = { slow: 1.6, normal: 1, fast: 0.55, instant: 0.04 };
+
+// Text size (§3). The UI is sized in rem/clamp(), so these scale the root font-size; they stack on
+// top of browser zoom rather than replacing it (WCAG 1.4.4 is still satisfied by zoom alone).
+const A11Y_SCALES = [100, 115, 130, 150];
+
+// Text colors that carry meaning go through these tokens, so "high contrast" can lift the sub-AA
+// greys (§3 — `#6a6a6a` measured ≈3.7:1 on the `#070707` canvas, failing AA for small text) without
+// disturbing the signal-green / parchment palette, which already passes. [base, highContrast]
+const A11Y_TOKENS = {
+  "--ds-dim":     ["#6a6a6a", "#a6a6a6"], // ≈3.7:1 → ≈8.2:1 — was failing AA at small sizes
+  "--ds-mid":     ["#7a7a7a", "#b4b4b4"], // ≈4.7:1 (borderline AA) → ≈10:1
+  "--ds-faint":   ["#5a5a5a", "#9a9a9a"],
+  "--ds-locked":  ["#2f2f2f", "#7a7a7a"], // locked "———" board rows: they carry meaning ("not found yet"),
+                                          // so high contrast has to clear AA here too (≈1.5:1 → ≈4.7:1).
+                                          // Still visibly dimmer than the found entries beside them.
+  "--ds-note":    ["#8a8a7a", "#c0c0ae"],
+  "--ds-sub":     ["#7a8a7e", "#adc2b3"],
+  "--ds-subhead": ["#5a7a64", "#93bda0"],
+  "--ds-warm":    ["#7a6a6a", "#b39f9f"],
+};
+// Shipped as :root defaults inside KEYFRAMES_FI (which every screen already injects), so the tokens
+// resolve on the very first paint. High contrast overrides them as inline custom properties on
+// <html>, which win over these.
+const A11Y_ROOT_CSS = ":root{" + Object.entries(A11Y_TOKENS).map(([k, v]) => `${k}:${v[0]}`).join(";") + "}";
+
+// Reduce flashing (§7) — independent of the OS reduced-motion query, because a player can want the
+// flicker gone without wanting all motion gone. Redefining a keyframe by name overrides the earlier
+// definition, so this holds each flashing animation at a steady opacity: the elements stay, and so
+// does their meaning (dimmed signal bars still read as an unstable signal), they just stop flashing.
+const REDUCE_FLASH_CSS = "@keyframes sigflicker{0%,100%{opacity:0.6}}@keyframes flash{0%,100%{opacity:0.85}}@keyframes slowflash{0%,100%{opacity:0.75}}@keyframes pu{0%,100%{opacity:0.7}}@keyframes sigpulse{0%,100%{opacity:0.9}}";
+
+// Screen readers (§9). `.ds-sr` is the standard visually-hidden recipe — present to assistive tech,
+// invisible and zero-footprint on screen. Shipped inside KEYFRAMES_FI because every screen already
+// injects that, so the class resolves everywhere without touching eight <style> blocks.
+const SR_ONLY_CSS = ".ds-sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}";
+
+const KEYFRAMES_FI = A11Y_ROOT_CSS + SR_ONLY_CSS + "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@keyframes choiceIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
+
+// The signal meter is drawn as bars; this is the same reading in words (§9 — the HUD registers must
+// have accessible names, not just glyphs).
+const SIGNAL_WORDS = { 1: "no signal", 2: "weak signal", 3: "fair signal", 4: "strong signal", 5: "full signal" };
 
 // Responsive gameplay-HUD styles (injected into the chat screen's <style>). Static sizing/spacing
 // lives here so the header can shrink on phones via media queries; state-driven bits (colors,
@@ -2002,7 +2054,7 @@ const HUD_CSS = `
 .ds-equip{display:flex;gap:1rem;padding:0.25rem 1rem;border-bottom:1px solid #111;font-size:0.64rem;letter-spacing:0.09em;flex-shrink:0;flex-wrap:wrap}
 .ds-battwarn{padding:0.4rem 1rem;background:#0e0404;border-top:1px solid #2a0a0a;font-size:0.65rem;letter-spacing:0.1em;color:#8b2020}
 .ds-actionbar{display:flex;justify-content:center;align-items:center;gap:0.6rem;padding:0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));border-top:1px solid #111;flex-shrink:0}
-.ds-actionbar button{flex:0 0 auto;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:#7a7a7a;font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
+.ds-actionbar button{flex:0 0 auto;min-height:44px;background:transparent;border:1px solid #1c1c1c;color:var(--ds-mid);font-family:inherit;font-size:0.64rem;letter-spacing:0.14em;cursor:pointer;transition:border-color .15s,color .15s}
 @media(max-width:480px){
 .ds-hud{min-height:84px;padding:calc(0.58rem + env(safe-area-inset-top)) 0.65rem 0.7rem}
 .ds-hud-side{top:calc(0.58rem + env(safe-area-inset-top))}
@@ -2121,10 +2173,14 @@ const MessageRow = memo(function MessageRow({ m }) {
     return (
       <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.9s ease" }}>
         <div style={{ color:"#c8a020", fontSize:"0.6rem", letterSpacing:"0.18em" }}>THE CASE COMES TOGETHER</div>
+        {/* §9 — truth-by-assembly has to be perceivable as a deduction, not just a result. The card
+            reads in visual order: each supporting piece, then the conclusion. The "›" bullets and the
+            "∴" are typography — spoken as punctuation they'd be noise — so they're hidden, and "∴"
+            says the word it stands for. */}
         <div style={{ margin:"0.4rem 0 0.35rem" }}>
-          {(m.evidence || []).map((e, i) => (<div key={i} style={{ color:"#8aaa90", fontSize:"0.68rem", fontStyle:"italic", lineHeight:1.5 }}>&rsaquo; {e}</div>))}
+          {(m.evidence || []).map((e, i) => (<div key={i} style={{ color:"#8aaa90", fontSize:"0.68rem", fontStyle:"italic", lineHeight:1.5 }}><span aria-hidden="true">&rsaquo; </span>{e}</div>))}
         </div>
-        {m.deduction && <div style={{ color:"#e0c89a", fontSize:"0.8rem", fontStyle:"italic", letterSpacing:"0.02em" }}>&there4; {m.deduction}</div>}
+        {m.deduction && <div style={{ color:"#e0c89a", fontSize:"0.8rem", fontStyle:"italic", letterSpacing:"0.02em" }}><span aria-hidden="true">&there4; </span><span className="ds-sr">therefore: </span>{m.deduction}</div>}
       </div>
     );
   }
@@ -2156,6 +2212,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const [muted, setMuted]               = useState(false); // audio — user mute preference (persisted)
   const [volume, setVolume]             = useState(70);    // audio — user volume 0–100 (persisted)
   const [optionsFrom, setOptionsFrom]   = useState("menu"); // where Options was opened from: "menu" | "chat"
+  const [a11y, setA11yState]            = useState(A11Y_DEFAULTS); // M-A11Y — text speed/size, flashing, contrast (persisted)
+  const [streaming, setStreaming]       = useState(false); // M-A11Y — a beat is still revealing → offer tap-to-complete
   const [boardSection, setBoardSection] = useState(null);   // case-file accordion: open section id (null = all collapsed)
   const [boardItem, setBoardItem]       = useState(null);   // expanded item within the open section
   const [slotsFrom, setSlotsFrom]       = useState("menu"); // where the slots screen was opened from: "menu" | "chat"
@@ -2262,6 +2320,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const recoveredEchoesRef  = useRef([]);    // Echoes recovered this run (ids); mirrors the raisedQuestions pattern
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
+  const a11yRef             = useRef(A11Y_DEFAULTS); // M-A11Y — mirror of `a11y`; setT reads it from inside live timers
+  const flushingRef         = useRef(false); // M-A11Y — true while a beat is being flushed; suppresses the per-line blip
   const currentPhase3RegionRef = useRef(null); // Phase 3 — mirrors for async timers / handlers
   const currentPhase3NodeRef   = useRef(null);
   const visitedPhase3NodesRef  = useRef([]);
@@ -2315,8 +2375,11 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // speaking (choices are texts back to her), "action" otherwise. getChoiceKind reads it to
   // classify choices that carry no lexical tell; set in scheduleMessages, reset in clearPending.
   const choiceCtxRef = useRef("action");
+  // Text speed (M-A11Y §5) scales every gameplay timer by the same factor, so dialogue pacing,
+  // bridges and reveals stretch or compress together and the authored order is identical at any
+  // speed. Read from the ref, not state: these timers are armed inside long-lived closures.
   const setT = (fn, delay) => {
-    const d = INSTANT_MODE ? 0 : delay;
+    const d = INSTANT_MODE ? 0 : Math.round(delay * (SPEED_SCALE[a11yRef.current.textSpeed] ?? 1));
     const rec = { fn, remaining: d, fireAt: Date.now() + d, id: 0 };
     if (!pausedRef.current) rec.id = setTimeout(() => { timersRef.current.delete(rec); fn(); }, d);
     timersRef.current.add(rec);
@@ -2349,10 +2412,31 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     pendingPostQuestionNarrationRef.current = [];
     pendingDeferredChoicesRef.current = null;
     choiceCtxRef.current = "action"; // next direct-set menu defaults to action until a beat sets it
+    setStreaming(false);            // nothing is revealing any more — retire the REVEAL affordance
 
     // Pending question cards deliberately survive this: the fallback flush timer may die here,
     // but the stable-point effect re-flushes them — a fast tap can no longer lose a card.
     qFlushArmedRef.current = false;
+  };
+
+  // Tap-to-complete (M-A11Y §5) — finish the beat that's currently revealing, right now. Rather
+  // than dumping the text and guessing at the state, this *runs the beat's own pending timers in
+  // order, immediately*: the lines land, the typing indicator resolves, the choices appear, and any
+  // onShown hook still fires — exactly as authored, just without the pacing. That keeps a flushed
+  // beat indistinguishable from a waited-out one.
+  //
+  // Only this beat's queue (dialogueRef) is flushed. Bridge timers that schedule the NEXT beat live
+  // in pendingRef and are deliberately left alone — so this completes a beat, it never skips ahead.
+  const flushDialogue = () => {
+    if (pausedRef.current) return;          // the pause menu owns the timers while it's open
+    const recs = dialogueRef.current;
+    if (!recs.length) return;
+    dialogueRef.current = [];
+    recs.forEach(rec => { clearTimeout(rec.id); timersRef.current.delete(rec); });
+    flushingRef.current = true;             // one blip for the flush, not one per revealed line
+    try { recs.forEach(rec => rec.fn()); } finally { flushingRef.current = false; }
+    setStreaming(false);
+    audioEngine.blip();
   };
 
   // Freeze the dialogue whenever the bare chat isn't the foreground — the pause menu, or a
@@ -2790,7 +2874,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     (async () => { try { await window.storage.set("ds_volume", JSON.stringify(clamped)); } catch (e) {} })();
   };
 
-  // Restore the mute + volume preferences on mount, applying the (possibly default)
+  // M-A11Y — set one accessibility preference. Mirrored into a11yRef (setT reads the text speed from
+  // inside already-armed timers) and persisted through the same window.storage pattern as mute/volume.
+  const setA11yPref = (key, value) => {
+    const next = { ...a11yRef.current, [key]: value };
+    a11yRef.current = next;
+    setA11yState(next);
+    (async () => { try { await window.storage.set(A11Y_KEY, JSON.stringify(next)); } catch (e) {} })();
+  };
+
+  // Restore the mute + volume + accessibility preferences on mount, applying the (possibly default)
   // volume to the engine so the slider and the actual loudness start in sync.
   useEffect(() => {
     (async () => {
@@ -2805,8 +2898,40 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       } catch (e) {}
       setVolume(v);
       audioEngine.setVolume(v / 100);
+      // A11y prefs — merged over the defaults and re-validated, so a hand-edited or older payload
+      // can never leave the game in an unplayable state (a bad textSpeed would poison every timer).
+      try {
+        const ra = await window.storage.get(A11Y_KEY);
+        if (ra?.value) {
+          const parsed = JSON.parse(ra.value);
+          if (parsed && typeof parsed === "object") {
+            const merged = { ...A11Y_DEFAULTS, ...parsed };
+            if (!SPEED_SCALE[merged.textSpeed]) merged.textSpeed = A11Y_DEFAULTS.textSpeed;
+            const scale = Number(merged.textScale);
+            merged.textScale = A11Y_SCALES.includes(scale) ? scale : A11Y_DEFAULTS.textScale;
+            merged.reduceFlash  = !!merged.reduceFlash;
+            merged.highContrast = !!merged.highContrast;
+            a11yRef.current = merged;
+            setA11yState(merged);
+          }
+        }
+      } catch (e) {}
     })();
   }, []);
+
+  // M-A11Y §3 — text size and high contrast are applied at the document root. The UI is sized in
+  // `rem`/`clamp()` throughout, so scaling the root font-size scales the whole interface (and stacks
+  // with browser zoom rather than fighting it); the color tokens are set as inline custom properties
+  // on <html>, which override the :root defaults shipped in KEYFRAMES_FI. Layout effect so the first
+  // paint after a change is already correct — no flash of the old size or palette.
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.style.fontSize = a11y.textScale === 100 ? "" : `${(16 * a11y.textScale) / 100}px`;
+    Object.entries(A11Y_TOKENS).forEach(([token, [base, hc]]) => {
+      root.style.setProperty(token, a11y.highContrast ? hc : base);
+    });
+  }, [a11y.textScale, a11y.highContrast]);
 
   // Unlock the audio context on the first user gesture (browser autoplay policy).
   // iOS Safari only grants audio activation on touchend/click (not pointerdown), and may
@@ -3002,6 +3127,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const scheduleMessages = (msgs, choiceList, msgType = "ellie", onShown = null) => {
     // C3 — clear only this queue's own timers, leaving addMsg/bridge timers (pendingRef) intact.
     dialogueRef.current.forEach(clearT); dialogueRef.current = [];
+    setStreaming(msgs.length > 0); // M-A11Y — a beat is revealing: offer tap-to-complete / REVEAL
     let t = 350;
 
     if (msgs.length === 0) {
@@ -3017,11 +3143,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       dialogueRef.current.push(setT(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
-        audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
+        if (!flushingRef.current) audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
         onShown?.(text, i);
       }, t));
       t += pace.postGapMs;
     });
+    // The beat has finished revealing — retire the REVEAL affordance (a flush does this itself).
+    if (msgs.length) dialogueRef.current.push(setT(() => setStreaming(false), t));
     // Record the beat's voice so getChoiceKind can classify voice-only choices when they render.
     // Set synchronously here; nothing overwrites it during this beat's own reveal timers, and it
     // survives the deferred-choice path (question cards auto-flush without a player click between).
@@ -4815,39 +4943,51 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const contradictions = BOARD_CONTRADICTIONS.filter(x => x.reveal(cClues, reached, raisedQuestions));
     const openQ = BOARD_QUESTIONS.filter(q => raisedQuestions.includes(q.key));
     const openSection = (id) => { setBoardItem(null); setBoardSection(boardSection === id ? null : id); };
+    // §9 — the board is an accordion, so each section header is a real expander: `aria-expanded`
+    // tells a screen reader whether it's open, and the ▸/▾ chevron (which conveys exactly that,
+    // visually) is hidden from AT rather than read out as punctuation.
     const secRow = (id, label, count) => (
       <button key={id} className="cb" onClick={withMenuSound(()=>openSection(id))}
-        style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"transparent", border:`1px solid ${boardSection===id ? "#1d3a22" : "#1c1c1c"}`, color: boardSection===id ? "#9aba9a" : "#7a8a7e", fontFamily:"inherit", fontSize:compact ? "0.58rem" : "0.62rem", letterSpacing:"0.14em", padding:"0.55rem 0.7rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s", marginTop:"0.4rem", flexShrink:0 }}>
-        <span>{boardSection===id ? "▾" : "▸"}&nbsp;&nbsp;{label}</span>
-        {count != null && <span style={{ color:"#3f4a42", letterSpacing:"0.08em" }}>{count}</span>}
+        aria-expanded={boardSection===id} aria-label={count != null ? `${label}, ${count}` : label}
+        style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"transparent", border:`1px solid ${boardSection===id ? "#1d3a22" : "#1c1c1c"}`, color: boardSection===id ? "#9aba9a" : "var(--ds-sub)", fontFamily:"inherit", fontSize:compact ? "0.58rem" : "0.62rem", letterSpacing:"0.14em", padding:"0.55rem 0.7rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s", marginTop:"0.4rem", flexShrink:0 }}>
+        <span><span aria-hidden="true">{boardSection===id ? "▾" : "▸"}&nbsp;&nbsp;</span>{label}</span>
+        {count != null && <span aria-hidden="true" style={{ color:"#3f4a42", letterSpacing:"0.08em" }}>{count}</span>}
       </button>
     );
     const panel = (children) => (
       <div style={{ flex:compact ? "0 1 auto" : 1, minHeight:0, maxHeight:compact ? "30vh" : undefined, overflowY:"auto", overscrollBehavior:"contain", border:"1px solid #141a15", borderTop:"none", padding:"0.45rem 0.7rem 0.7rem" }}>{children}</div>
     );
     const subHead = (label) => (
-      <div style={{ color:"#5a7a64", fontSize:"0.56rem", letterSpacing:"0.2em", margin:"0.75rem 0 0.35rem" }}>{label}</div>
+      <div style={{ color:"var(--ds-subhead)", fontSize:"0.56rem", letterSpacing:"0.2em", margin:"0.75rem 0 0.35rem" }}>{label}</div>
     );
+    // Each entry expands in place. The category glyph (●/◉/◌/◆) is decoration — the section it sits
+    // in already says what kind of thing it is — so it's hidden; the chevron is replaced by
+    // aria-expanded. When opened, the detail (an Echo's 2–4 lines, a fragment's text) follows the
+    // button in DOM order, so it reads in visual order.
     const itemRow = (id, glyph, label, detail, opts = {}) => {
       const openIt = boardItem === id;
       return (
         <div key={id}>
-          <button className="cb" onClick={withMenuSound(()=>setBoardItem(openIt ? null : id))}
+          <button className="cb" onClick={withMenuSound(()=>setBoardItem(openIt ? null : id))} aria-expanded={openIt}
             style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", background:"transparent", border:"none", color: opts.color || "#c8b896", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem", cursor:"pointer", textAlign:"left", transition:"color 0.15s" }}>
-            <span>{glyph} {label}</span>
-            <span style={{ color:"#333333", flexShrink:0 }}>{openIt ? "▾" : "▸"}</span>
+            <span><span aria-hidden="true">{glyph} </span>{label}</span>
+            <span aria-hidden="true" style={{ color:"#333333", flexShrink:0 }}>{openIt ? "▾" : "▸"}</span>
           </button>
-          {openIt && <div style={{ color: opts.detailColor || "#8a8a7a", fontSize:"0.57rem", lineHeight:1.55, padding:"0.05rem 0.2rem 0.5rem 1.05rem", fontStyle: opts.italic ? "italic" : "normal", animation:"fi 0.35s ease" }}>{detail}</div>}
+          {openIt && <div style={{ color: opts.detailColor || "var(--ds-note)", fontSize:"0.57rem", lineHeight:1.55, padding:"0.05rem 0.2rem 0.5rem 1.05rem", fontStyle: opts.italic ? "italic" : "normal", animation:"fi 0.35s ease" }}>{detail}</div>}
         </div>
       );
     };
+    // A not-yet-found slot. On screen it's a dim "———"; spoken, dashes are nothing — so it says what
+    // it means. This is a state a player needs (how much is left to find), not decoration.
     const lockedRow = (key, glyph, label = "---") => (
-      <div key={key} style={{ color:"#2f2f2f", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem" }}>{glyph} {label}</div>
+      <div key={key} role="img" aria-label="locked — not found yet" style={{ color:"var(--ds-locked)", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem" }}>{glyph} {label}</div>
     );
 
     return (
       <div style={{ width:compact ? "100%" : "min(380px,100%)", flex:compact ? "initial" : 1, minHeight:0, display:"flex", flexDirection:"column", animation:"fi 0.8s ease forwards" }}>
-        <div style={{ fontSize:compact ? "0.72rem" : "0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem", flexShrink:0 }}>CASE FILE</div>
+        {/* role="heading" rather than an <h1>: identical semantics for AT, zero effect on the layout
+            (an <h1> would bring its own margins and font-size into a very tightly tuned screen). */}
+        <div role="heading" aria-level={1} style={{ fontSize:compact ? "0.72rem" : "0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"var(--ds-dim)", textAlign:"center", marginBottom:"0.3rem", flexShrink:0 }}>CASE FILE</div>
         <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em", flexShrink:0 }}>what you've pieced together</div>
         <div style={{ textAlign:"center", color:"#4f5f55", fontSize:"0.6rem", letterSpacing:"0.12em", margin:"0.55rem 0 0.15rem", flexShrink:0 }}>
           <span style={{ color:"#7a9a82" }}>● {cFrags.size}/9</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◉ {cClues.size}/3</span>
@@ -4886,7 +5026,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           {subHead("PEOPLE")}
           {BOARD_PEOPLE.map(p => itemRow(`person:${p.name}`, "·", p.name,
             typeof p.note === "function" ? p.note(cClues, reached, raisedQuestions, discoveredTruths) : p.note,
-            { color:"#c8b896", detailColor:"#8a8a7a" }))}
+            { color:"#c8b896", detailColor:"var(--ds-note)" }))}
           {subHead("LOCATIONS")}
           {(() => {
             const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath) || phase3UnlockedRegions.includes(r.key));
@@ -4898,7 +5038,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
                   <div style={{ color:"#4a6a54" }}>the truth about {r.truth}{discoveredTruths.includes(r.truthId || r.truth) ? " - uncovered." : "."}</div>
                   {r.blurb && <div style={{ marginTop:"0.15rem" }}>{r.blurb}</div>}
                 </>,
-                { color:"#c8b896", detailColor:"#8a8a7a" }))}
+                { color:"#c8b896", detailColor:"var(--ds-note)" }))}
               {shown.length < REGIONS.length && <div style={{ color:"#3a3a3a", fontSize:"0.55rem", fontStyle:"italic", marginTop:"0.25rem" }}>more to find.</div>}
             </>);
           })()}
@@ -5021,6 +5161,44 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const flashAnim  = "flash 0.9s ease infinite";
   const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
   const hasAnySave = slots.some(Boolean); // P4 — at least one occupied slot
+
+  // ── Screen readers: the HUD announcer (§9) ──────────────────────────────────────────────────
+  // The transcript is a live region (role="log"), so everything that arrives as a message — Ellie,
+  // narration, CASE FILE UPDATED, ECHO RECOVERED, the assembly card, TRUTH UNCOVERED — announces
+  // itself as it lands. The HUD registers do not: battery, health, water, food, noise, the day and
+  // the area all change *silently*, in chrome outside the log. A sighted player sees the number tick;
+  // a blind player would simply never learn they were hurt or that the battery is draining.
+  //
+  // So: diff the registers each render and speak only what actually changed, as one polite sentence.
+  // Polite (not assertive) because none of it should interrupt the line being read — it queues behind
+  // it, which is the right priority for ambient state. The first pass primes the baseline without
+  // announcing: on arrival the HUD isn't "news", it's just the starting state, and the player can read
+  // it directly whenever they want.
+  const prevHudRef = useRef(null);
+  const [hudAnnounce, setHudAnnounce] = useState("");
+  useEffect(() => {
+    if (screen !== "chat") { prevHudRef.current = null; return; } // re-prime when the chat comes back
+    const cur = {
+      battery: resources.battery, hp: resources.hp, water: resources.water, food: resources.food,
+      noise, day: displayDay, area, light: inPhase3 ? daylight : null, signal: signalLevel,
+    };
+    const prev = prevHudRef.current;
+    prevHudRef.current = cur;
+    if (!prev) return; // baseline only — nothing has changed yet, so nothing to announce
+    const said = [];
+    if (cur.day !== prev.day)         said.push(`day ${cur.day}`);
+    if (cur.area !== prev.area && cur.area) said.push(String(cur.area).toLowerCase());
+    if (cur.hp !== prev.hp)           said.push(`health ${cur.hp} of 10${injuryLbl ? `, ${injuryLbl}` : ""}`);
+    if (cur.battery !== prev.battery) said.push(`battery ${cur.battery} percent`);
+    if (cur.water !== prev.water)     said.push(`water ${cur.water}`);
+    if (cur.food !== prev.food)       said.push(`food ${cur.food}`);
+    if (cur.noise !== prev.noise)     said.push(`noise ${cur.noise} of 5`);
+    if (cur.light !== prev.light && cur.light != null) said.push(`daylight ${cur.light}`);
+    if (cur.signal !== prev.signal)   said.push(SIGNAL_WORDS[cur.signal] || `signal ${cur.signal}`);
+    // Re-set even when the text repeats (a second identical hit still needs speaking): the trailing
+    // space toggle forces a DOM change so the live region fires again.
+    if (said.length) setHudAnnounce(p => (p.trimEnd() === said.join(" · ") ? `${said.join(" · ")} ` : said.join(" · ")));
+  }, [resources, noise, displayDay, area, daylight, signalLevel, inPhase3, injuryLbl, screen]);
 
   const railRow = (label, value, color = "#d9c88f") => (
     <>
@@ -5200,7 +5378,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
   if (screen === "menu") return (
     <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}${a11y.reduceFlash ? REDUCE_FLASH_CSS : ""}`}</style>
       {/* Logo: DEAD (powered-down grey) + SIGNAL (live green glow), one word */}
       <div style={{ fontSize:"2.4rem", fontWeight:700, letterSpacing:"0.12em", marginBottom:"3rem", animation:"fi 1.2s ease forwards" }}>
         <span style={{ color:"#4a4a4a" }}>DEAD</span><span style={{ color:"#4a9e6b", textShadow:"0 0 10px rgba(74,158,107,0.6), 0 0 26px rgba(74,158,107,0.25)", animation:"sigpulse 3s ease infinite" }}>SIGNAL</span>
@@ -5217,11 +5395,11 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           </button>
         )}
         <button className="rb" onClick={withMenuSound(()=>{ setMenuNote(""); setScreen("story"); })}
-          style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;STORY
         </button>
         <button className="rb" onClick={withMenuSound(()=>{ setMenuNote(""); setOptConfirm(false); setConfirmReset(false); setOptionsFrom("menu"); setScreen("options"); })}
-          style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.7rem 1rem", fontFamily:"inherit", fontSize:"0.72rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ▸&nbsp;&nbsp;OPTIONS
         </button>
         <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#505050", fontSize:"0.58rem", letterSpacing:"0.14em", marginTop:"0.3rem" }}>{menuNote}</div>
@@ -5241,7 +5419,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         {/* BACK sits OUTSIDE the masked scroller (an ancestor mask would capture a fixed child). */}
         <button className="rb" onClick={withMenuSound(()=>{ setScreen("menu"); })}
-          style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"var(--ds-mid)", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
         <div style={{ boxSizing:"border-box", height:"100%", overflowY:"auto", overscrollBehavior:"contain", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(1.5rem + env(safe-area-inset-bottom))", maskImage:"linear-gradient(to bottom, transparent 0, black 14px)", WebkitMaskImage:"linear-gradient(to bottom, transparent 0, black 14px)" }}>
@@ -5284,10 +5462,21 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       if (fromChat) { setScreen("chat"); setMenuOpen(true); } // back to the pause overlay
       else setScreen("menu");
     });
+    // M-A11Y — every control below is a native <button>: keyboard-focusable and Enter/Space-
+    // activatable for free, `aria-pressed` carries the on/off state to a screen reader, and the
+    // 44px floor meets the WCAG 2.5.8 target size the tight terminal styling would otherwise miss.
+    const a11yLabel  = { color:"var(--ds-mid)", fontSize:"0.56rem", letterSpacing:"0.12em" };
+    const a11yHint   = { color:"var(--ds-dim)", fontSize:"0.55rem", letterSpacing:"0.03em", lineHeight:1.5 };
+    const a11yGroup  = { display:"flex", flexDirection:"column", gap:"0.35rem" };
+    const segBtn = (on) => ({ flex:1, minHeight:"44px", background: on ? "#0c1a11" : "transparent",
+      border:`1px solid ${on ? "#2f6b45" : "#1c1c1c"}`, color: on ? "#4a9e6b" : "var(--ds-mid)",
+      padding:"0.5rem 0.15rem", fontFamily:"inherit", fontSize:"0.56rem", letterSpacing:"0.08em",
+      cursor:"pointer", transition:"border-color 0.15s, color 0.15s, background 0.15s" });
+    const toggleBtn = (on) => ({ ...segBtn(on), flex:"0 0 auto", minWidth:"68px", letterSpacing:"0.14em" });
     return (
     <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.dz:hover{border-color:#7a2424!important;color:#ff8a8a!important}`}</style>
-      <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>OPTIONS</div>
+      <div role="heading" aria-level={1} style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"var(--ds-dim)", animation:"fi 0.8s ease forwards" }}>OPTIONS</div>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(300px, 100%)" }}>
 
         {/* AUDIO — volume slider + mute, the single home for sound control. */}
@@ -5296,14 +5485,62 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           <div style={{ display:"flex", alignItems:"center", gap:"0.7rem" }}>
             <button onClick={toggleMute} title={muted ? "unmute" : "mute"} aria-label={muted ? "unmute" : "mute"}
               style={{ background:"transparent", border:"1px solid #1c1c1c", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0.3rem 0.45rem", cursor:"pointer", flexShrink:0 }}>
-              {speakerIcon(muted ? "#5a5a5a" : "#4a9e6b")}
+              {speakerIcon(muted ? "var(--ds-faint)" : "#4a9e6b")}
             </button>
             <input type="range" min="0" max="100" value={volume} disabled={muted}
               onChange={(e)=>setVol(Number(e.target.value))}
               aria-label="volume"
               style={{ flex:1, accentColor:"#4a9e6b", cursor: muted ? "default" : "pointer", opacity: muted ? 0.35 : 1 }} />
-            <span style={{ color: muted ? "#5a5a5a" : "#3a6b40", fontSize:"0.6rem", letterSpacing:"0.06em", width:"2.6rem", textAlign:"right" }}>{muted ? "muted" : `${volume}%`}</span>
+            <span style={{ color: muted ? "var(--ds-faint)" : "#3a6b40", fontSize:"0.6rem", letterSpacing:"0.06em", width:"2.6rem", textAlign:"right" }}>{muted ? "muted" : `${volume}%`}</span>
           </div>
+        </div>
+
+        {/* ACCESSIBILITY — the M-A11Y option set (ACCESSIBILITY.md §11). Persisted like volume/mute. */}
+        <div style={{ border:"1px solid #1d3a22", padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.85rem", animation:"fi 0.8s ease forwards" }}>
+          <span style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.18em" }}>ACCESSIBILITY</span>
+
+          <div style={a11yGroup}>
+            <span id="a11y-speed-label" style={a11yLabel}>TEXT SPEED</span>
+            <div style={{ display:"flex", gap:"0.3rem" }} role="group" aria-labelledby="a11y-speed-label">
+              {[["slow","SLOW"], ["normal","NORMAL"], ["fast","FAST"], ["instant","INSTANT"]].map(([v, label]) => (
+                <button key={v} onClick={withMenuSound(()=>setA11yPref("textSpeed", v))}
+                  aria-pressed={a11y.textSpeed === v} aria-label={`text speed ${v}`} style={segBtn(a11y.textSpeed === v)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span style={a11yHint}>Tap the transcript — or REVEAL — to finish a message straight away.</span>
+          </div>
+
+          <div style={a11yGroup}>
+            <span id="a11y-size-label" style={a11yLabel}>TEXT SIZE</span>
+            <div style={{ display:"flex", gap:"0.3rem" }} role="group" aria-labelledby="a11y-size-label">
+              {A11Y_SCALES.map(v => (
+                <button key={v} onClick={withMenuSound(()=>setA11yPref("textScale", v))}
+                  aria-pressed={a11y.textScale === v} aria-label={`text size ${v} percent`} style={segBtn(a11y.textScale === v)}>
+                  {v}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"0.6rem" }}>
+            <span style={a11yLabel}>REDUCE FLASHING</span>
+            <button onClick={withMenuSound(()=>setA11yPref("reduceFlash", !a11y.reduceFlash))}
+              aria-pressed={a11y.reduceFlash} aria-label="reduce flashing" style={toggleBtn(a11y.reduceFlash)}>
+              {a11y.reduceFlash ? "ON" : "OFF"}
+            </button>
+          </div>
+          <span style={{ ...a11yHint, marginTop:"-0.55rem" }}>Holds the Signal flicker steady. The signal still reads as unstable — it just stops flashing.</span>
+
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"0.6rem" }}>
+            <span style={a11yLabel}>HIGH CONTRAST</span>
+            <button onClick={withMenuSound(()=>setA11yPref("highContrast", !a11y.highContrast))}
+              aria-pressed={a11y.highContrast} aria-label="high contrast" style={toggleBtn(a11y.highContrast)}>
+              {a11y.highContrast ? "ON" : "OFF"}
+            </button>
+          </div>
+          <span style={{ ...a11yHint, marginTop:"-0.55rem" }}>Brightens the dimmest text. The terminal palette stays.</span>
         </div>
 
         {/* Reset THIS run — only mid-run (opened from the pause menu). Two-tap confirm;
@@ -5311,7 +5548,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         {showRunReset && (
           <div style={{ border:`1px solid ${confirmReset ? "#5a2020" : "#3a2020"}`, padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.55rem", animation:"fi 0.8s ease forwards" }}>
             <span style={{ color:"#a87a7a", fontSize:"0.58rem", letterSpacing:"0.18em" }}>RESET THIS RUN</span>
-            <span style={{ color:"#7a6a6a", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Wipes this run's save and the fragments and clues collected in this slot. Other slots are untouched.</span>
+            <span style={{ color:"var(--ds-warm)", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Wipes this run's save and the fragments and clues collected in this slot. Other slots are untouched.</span>
             <button onClick={withMenuSound(async ()=>{ if (confirmReset) { const i = activeSlotRef.current; if (i != null) await deleteSlot(i); resetRunState(); setConfirmReset(false); setOptConfirm(false); setScreen("menu"); } else setConfirmReset(true); })}
               style={{ background:"transparent", border:`1px solid ${confirmReset ? "#5a2020" : "#3a2020"}`, color: confirmReset ? "#e08a8a" : "#a87a7a", padding:"0.6rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
               {confirmReset ? "⚠ TAP AGAIN — RESET THIS RUN" : "RESET THIS RUN"}
@@ -5321,14 +5558,14 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
         <div style={{ border:"1px solid #3a1414", padding:"0.9rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.55rem", animation:"fi 0.8s ease forwards" }}>
           <span style={{ color:"#8b3030", fontSize:"0.58rem", letterSpacing:"0.18em" }}>DANGER ZONE</span>
-          <span style={{ color:"#7a6a6a", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Erases all three save slots and every collected fragment and clue. This cannot be undone.</span>
+          <span style={{ color:"var(--ds-warm)", fontSize:"0.6rem", letterSpacing:"0.04em", lineHeight:1.6 }}>Erases all three save slots and every collected fragment and clue. This cannot be undone.</span>
           <button className="dz" onClick={withMenuSound(()=>{ if (optConfirm) handleFullReset(); else setOptConfirm(true); })}
             style={{ background:"transparent", border:`1px solid ${optConfirm ? "#7a2424" : "#5a2020"}`, color: optConfirm ? "#ff8a8a" : "#c85050", padding:"0.6rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>
             {optConfirm ? "⚠ TAP AGAIN — ERASE EVERYTHING" : "RESET ALL DATA"}
           </button>
         </div>
         <button className="rb" onClick={optBack}
-          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
       </div>
@@ -5350,39 +5587,40 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const openSection = (id) => { setBoardItem(null); setBoardSection(boardSection === id ? null : id); };
     const secRow = (id, label, count) => (
       <button key={id} className="cb" onClick={withMenuSound(()=>openSection(id))}
-        style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"transparent", border:`1px solid ${boardSection===id ? "#1d3a22" : "#1c1c1c"}`, color: boardSection===id ? "#9aba9a" : "#7a8a7e", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", padding:"0.55rem 0.7rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s", marginTop:"0.4rem", flexShrink:0 }}>
-        <span>{boardSection===id ? "▾" : "▸"}&nbsp;&nbsp;{label}</span>
-        {count != null && <span style={{ color:"#3f4a42", letterSpacing:"0.08em" }}>{count}</span>}
+        aria-expanded={boardSection===id} aria-label={count != null ? `${label}, ${count}` : label}
+        style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"transparent", border:`1px solid ${boardSection===id ? "#1d3a22" : "#1c1c1c"}`, color: boardSection===id ? "#9aba9a" : "var(--ds-sub)", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", padding:"0.55rem 0.7rem", cursor:"pointer", transition:"border-color 0.15s, color 0.15s", marginTop:"0.4rem", flexShrink:0 }}>
+        <span><span aria-hidden="true">{boardSection===id ? "▾" : "▸"}&nbsp;&nbsp;</span>{label}</span>
+        {count != null && <span aria-hidden="true" style={{ color:"#3f4a42", letterSpacing:"0.08em" }}>{count}</span>}
       </button>
     );
     const panel = (children) => (
       <div style={{ flex:1, minHeight:0, overflowY:"auto", overscrollBehavior:"contain", border:"1px solid #141a15", borderTop:"none", padding:"0.45rem 0.7rem 0.7rem" }}>{children}</div>
     );
     const subHead = (label) => (
-      <div style={{ color:"#5a7a64", fontSize:"0.56rem", letterSpacing:"0.2em", margin:"0.75rem 0 0.35rem" }}>{label}</div>
+      <div style={{ color:"var(--ds-subhead)", fontSize:"0.56rem", letterSpacing:"0.2em", margin:"0.75rem 0 0.35rem" }}>{label}</div>
     );
     // An expandable item row: tap flips the chevron and reveals the detail block inline.
     const itemRow = (id, glyph, label, detail, opts = {}) => {
       const openIt = boardItem === id;
       return (
         <div key={id}>
-          <button className="cb" onClick={withMenuSound(()=>setBoardItem(openIt ? null : id))}
+          <button className="cb" onClick={withMenuSound(()=>setBoardItem(openIt ? null : id))} aria-expanded={openIt}
             style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", background:"transparent", border:"none", color: opts.color || "#c8b896", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem", cursor:"pointer", textAlign:"left", transition:"color 0.15s" }}>
-            <span>{glyph} {label}</span>
-            <span style={{ color:"#333333", flexShrink:0 }}>{openIt ? "▾" : "▸"}</span>
+            <span><span aria-hidden="true">{glyph} </span>{label}</span>
+            <span aria-hidden="true" style={{ color:"#333333", flexShrink:0 }}>{openIt ? "▾" : "▸"}</span>
           </button>
-          {openIt && <div style={{ color: opts.detailColor || "#8a8a7a", fontSize:"0.57rem", lineHeight:1.55, padding:"0.05rem 0.2rem 0.5rem 1.05rem", fontStyle: opts.italic ? "italic" : "normal", animation:"fi 0.35s ease" }}>{detail}</div>}
+          {openIt && <div style={{ color: opts.detailColor || "var(--ds-note)", fontSize:"0.57rem", lineHeight:1.55, padding:"0.05rem 0.2rem 0.5rem 1.05rem", fontStyle: opts.italic ? "italic" : "normal", animation:"fi 0.35s ease" }}>{detail}</div>}
         </div>
       );
     };
     const lockedRow = (key, glyph, label = "———") => (
-      <div key={key} style={{ color:"#2f2f2f", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem" }}>{glyph} {label}</div>
+      <div key={key} role="img" aria-label="locked — not found yet" style={{ color:"var(--ds-locked)", fontSize:"0.62rem", letterSpacing:"0.06em", padding:"0.34rem 0.15rem" }}>{glyph} {label}</div>
     );
     return (
       <div style={{ background:"#070707", height:"100dvh", position:"relative", overflow:"hidden", fontFamily:font, userSelect:"none" }}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <button className="rb" onClick={withMenuSound(closeCaseFile)}
-          style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"#7a7a7a", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ position:"absolute", top:"calc(0.6rem + env(safe-area-inset-top))", left:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #2a2a2a", color:"var(--ds-mid)", padding:"0.32rem 0.7rem", fontFamily:"inherit", fontSize:"0.62rem", letterSpacing:"0.14em", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
         {/* One fixed page: header + section rows are static chrome; only an open panel scrolls.
@@ -5390,7 +5628,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             (no global box-sizing reset in this app) and push the bottom rows off-screen. */}
         <div style={{ boxSizing:"border-box", height:"100%", display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(2.6rem + env(safe-area-inset-top)) clamp(1rem,4vw,2rem) calc(0.9rem + env(safe-area-inset-bottom))" }}>
           <div style={{ width:"min(380px,100%)", flex:1, minHeight:0, display:"flex", flexDirection:"column", animation:"fi 0.8s ease forwards" }}>
-            <div style={{ fontSize:"0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"#6a6a6a", textAlign:"center", marginBottom:"0.3rem", flexShrink:0 }}>CASE FILE</div>
+            <div role="heading" aria-level={1} style={{ fontSize:"0.8rem", fontWeight:600, letterSpacing:"0.26em", color:"var(--ds-dim)", textAlign:"center", marginBottom:"0.3rem", flexShrink:0 }}>CASE FILE</div>
             <div style={{ textAlign:"center", color:"#3a5a44", fontSize:"0.56rem", letterSpacing:"0.14em", flexShrink:0 }}>what you've pieced together</div>
             <div style={{ textAlign:"center", color:"#4f5f55", fontSize:"0.6rem", letterSpacing:"0.12em", margin:"0.55rem 0 0.15rem", flexShrink:0 }}>
               <span style={{ color:"#7a9a82" }}>◈ {cFrags.size}/9</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span style={{ color:"#5a8a94" }}>◉ {cClues.size}/3</span>
@@ -5430,7 +5668,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
               {subHead("PEOPLE")}
               {BOARD_PEOPLE.map(p => itemRow(`person:${p.name}`, "·", p.name,
                 typeof p.note === "function" ? p.note(cClues, reached, raisedQuestions, discoveredTruths) : p.note,
-                { color:"#c8b896", detailColor:"#8a8a7a" }))}
+                { color:"#c8b896", detailColor:"var(--ds-note)" }))}
               {subHead("LOCATIONS")}
               {(() => {
                 const shown = REGIONS.filter(r => r.reveal(cClues, reached, currentPath) || phase3UnlockedRegions.includes(r.key));
@@ -5442,7 +5680,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
                       <div style={{ color:"#4a6a54" }}>the truth about {r.truth}{discoveredTruths.includes(r.truthId || r.truth) ? " — uncovered." : "."}</div>
                       {r.blurb && <div style={{ marginTop:"0.15rem" }}>{r.blurb}</div>}
                     </>,
-                    { color:"#c8b896", detailColor:"#8a8a7a" }))}
+                    { color:"#c8b896", detailColor:"var(--ds-note)" }))}
                   {shown.length < REGIONS.length && <div style={{ color:"#3a3a3a", fontSize:"0.55rem", fontStyle:"italic", marginTop:"0.25rem" }}>more to find.</div>}
                 </>);
               })()}
@@ -5491,7 +5729,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   if (screen === "slots") return (
     <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.del:hover{border-color:#5a2020!important;color:#e08a8a!important}`}</style>
-      <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"#6a6a6a", animation:"fi 0.8s ease forwards" }}>
+      <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"var(--ds-dim)", animation:"fi 0.8s ease forwards" }}>
         {slotMode === "load" ? "LOAD GAME" : "NEW RUN — SELECT SLOT"}
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(340px, 100%)" }}>
@@ -5503,7 +5741,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           const delPending = slotConfirm && slotConfirm.index === i && slotConfirm.action === "delete";
           const resPending = slotConfirm && slotConfirm.index === i && slotConfirm.action === "reset";
           const progress = occupied && (
-            <div style={{ display:"flex", gap:"1rem", fontSize:"0.58rem", letterSpacing:"0.06em", color:"#6a6a6a" }}>
+            <div style={{ display:"flex", gap:"1rem", fontSize:"0.58rem", letterSpacing:"0.06em", color:"var(--ds-dim)" }}>
               <span>▷ {m.playthroughs} {m.playthroughs === 1 ? "run" : "runs"}</span>
               <span style={{ color: m.frags > 0 ? "#4a9e6b" : "#3a5a44" }}>◈ {m.frags}/9</span>
               <span style={{ color: m.clues > 0 ? "#4ab5c8" : "#2d4a52" }}>◉ {m.clues}/3</span>
@@ -5519,7 +5757,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           return (
             <div key={i} style={{ border:`1px solid ${complete ? "#2a4a32" : "#1c1c1c"}`, padding:"0.7rem 0.85rem", display:"flex", flexDirection:"column", gap:"0.5rem", animation:"fi 0.8s ease forwards" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
-                <span style={{ color:"#7a7a7a", fontSize:"0.6rem", letterSpacing:"0.18em" }}>SLOT {i + 1}</span>
+                <span style={{ color:"var(--ds-mid)", fontSize:"0.6rem", letterSpacing:"0.18em" }}>SLOT {i + 1}</span>
                 {complete
                   ? <span style={{ color:"#4a9e6b", fontSize:"0.6rem", letterSpacing:"0.14em", textShadow:"0 0 8px rgba(74,158,107,0.45)" }}>100% COMPLETE</span>
                   : inProgress && <span style={{ color:"#c8b98a", fontSize:"0.62rem", letterSpacing:"0.07em" }}>DAY {m.day} · {m.location}</span>}
@@ -5538,7 +5776,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
                 </>
               ) : inProgress ? (
                 <>
-                  <div style={{ display:"flex", gap:"1.2rem", fontSize:"0.6rem", letterSpacing:"0.06em", color:"#6a6a6a" }}>
+                  <div style={{ display:"flex", gap:"1.2rem", fontSize:"0.6rem", letterSpacing:"0.06em", color:"var(--ds-dim)" }}>
                     <span>HP {m.hp}/10</span><span>BATT {m.battery}</span>
                   </div>
                   <div style={{ display:"flex", gap:"0.5rem" }}>
@@ -5571,7 +5809,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           );
         })}
         <button className="rb" onClick={withMenuSound(()=>{ setSlotConfirm(null); if (slotsFrom === "chat") { setScreen("chat"); setMenuOpen(true); } else setScreen("menu"); })}
-          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"#6a6a6a", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
       </div>
@@ -5600,7 +5838,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
         <button onClick={toggleMute} title={muted ? "unmute" : "mute"} aria-label={muted ? "unmute" : "mute"}
           style={{ position:"fixed", top:"calc(0.6rem + env(safe-area-inset-top))", right:"0.7rem", zIndex:20, background:"rgba(7,7,7,0.85)", border:"1px solid #1c1c1c", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0.3rem 0.45rem", cursor:"pointer" }}>
-          {speakerIcon(muted ? "#5a5a5a" : "#4a9e6b")}
+          {speakerIcon(muted ? "var(--ds-faint)" : "#4a9e6b")}
         </button>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"0.9rem", textAlign:"center", animation:"fi 1s ease forwards" }}>
           <p style={{ color:"#3a3a3a", fontSize:"0.62rem", letterSpacing:"0.22em", margin:0 }}>-- NIGHT --</p>
@@ -5667,19 +5905,26 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // ─── Gameplay header pieces (responsive via HUD_CSS classes; state-driven bits stay inline) ──
   // The header's center slot is the contact identity (FILE/menu moved to the bottom action
   // bar): nothing competes for the slot, so the avatar/name stay dead-centered.
+  // §9 — the HUD is a status region, not decoration. Each register carries a spoken name
+  // ("battery 34 percent", not "34%"); the glyphs that draw them (bars, battery, avatar) are
+  // aria-hidden so a screen reader reads the meaning once, not the picture and then the meaning.
   const TopHud = () => (
-    <div className="ds-hud">
+    <div className="ds-hud" role="group" aria-label="status">
       <div className="ds-hud-side ds-hud-signal">
-        <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
+        <span className="ds-sr">{SIGNAL_WORDS[signalLevel] || `signal level ${signalLevel}`}</span>
+        <span aria-hidden="true" style={{ display:"inline-flex" }}>
+          <SignalBars level={signalLevel} flicker={sigFlicker || noise >= 4} />
+        </span>
       </div>
       <div className="ds-hud-mid">
         <div className="ds-contact-id">
-          <div className="ds-avatar" style={{ border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
+          <div className="ds-avatar" aria-hidden="true" style={{ border:`1px solid ${contactName==="ELLIE"?"#4a9e6b":"#2f8a58"}`, color:contactName==="ELLIE"?"#2a6a40":"#1e4a2a", boxShadow:contactName==="ELLIE"?"0 0 9px rgba(74,158,107,0.25)":"0 0 6px rgba(47,138,88,0.18)" }}>◉</div>
           <span className="ds-name" style={{ textShadow:contactName==="ELLIE"?"0 0 8px rgba(200,185,138,0.28)":"none" }}>{contactName}</span>
         </div>
       </div>
       <div className="ds-hud-side ds-hud-battery">
-        <span style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
+        <span aria-label={`battery ${resources.battery} percent`} role="img"
+          style={{ display:"inline-flex", alignItems:"center", gap:"0.28rem", animation: battPulse ? "battpop 0.6s ease" : battAnim }}>
           <svg width="24" height="12" viewBox="0 0 24 12" style={{ display:"block", flexShrink:0, filter: battPulse ? "drop-shadow(0 0 5px rgba(74,158,107,0.9))" : resources.battery <= 10 ? "drop-shadow(0 0 3px rgba(180,40,40,0.6))" : "none" }}>
             <rect x="0.7" y="0.7" width="18.6" height="10.6" rx="2" fill="none" stroke={battPulse ? "#7fffa0" : battColor} strokeWidth="1.1"/>
             <rect x="19.6" y="3" width="2.8" height="6" rx="0.7" fill={battPulse ? "#7fffa0" : battColor}/>
@@ -5694,35 +5939,41 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // The bottom action bar — case file + pause, thumb-sized, always visible on the chat
   // screen (dialogue can stream for a while; menu access must not depend on choices).
   const BottomBar = () => (
-    <div className="ds-actionbar">
+    <nav className="ds-actionbar" aria-label="game controls">
       <button className="cb" onClick={withMenuSound(openCaseFile)} title="case file" aria-label="case file" style={{ padding:"0 1.6rem" }}>CASE FILE</button>
-      <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu" style={{ width:"56px", fontSize:"0.95rem" }}>☰</button>
-    </div>
+      <button className="cb" onClick={withMenuSound(()=>{ setMenuMsg(""); setConfirmReset(false); setMenuOpen(true); })} title="menu" aria-label="menu" style={{ width:"56px", fontSize:"0.95rem" }}><span aria-hidden="true">☰</span></button>
+    </nav>
   );
 
+  // The vitals read as "HP 8/10" on screen — terse, and right for the terminal look. Spoken, that
+  // wants expanding ("health 8 of 10"), so each register gets an aria-label and the abbreviated text
+  // is hidden from AT. The meaning is identical; only the phrasing differs.
   const ResourceStrip = () => (
-    <div className="ds-vitals" style={{ borderBottom: showRow2 ? "none" : "1px solid #111" }}>
-      <span style={{ color:"#4a9e6b" }}>DAY {displayDay}</span>
-      <span style={{ color:hpColor, animation:resources.hp<=2?flashAnim:"none" }}>HP {resources.hp}/10{injuryLbl ? ` · ${injuryLbl}` : ""}</span>
-      <span style={{ color:watColor }}>WATER {resources.water}</span>
-      <span style={{ color:fooColor }}>FOOD {resources.food}</span>
+    <div className="ds-vitals" role="group" aria-label="vitals" style={{ borderBottom: showRow2 ? "none" : "1px solid #111" }}>
+      <span style={{ color:"#4a9e6b" }} aria-label={`day ${displayDay}`} role="img">DAY {displayDay}</span>
+      <span style={{ color:hpColor, animation:resources.hp<=2?flashAnim:"none" }} role="img"
+        aria-label={`health ${resources.hp} of 10${injuryLbl ? `, ${injuryLbl}` : ""}`}>HP {resources.hp}/10{injuryLbl ? ` · ${injuryLbl}` : ""}</span>
+      <span style={{ color:watColor }} aria-label={`water ${resources.water}`} role="img">WATER {resources.water}</span>
+      <span style={{ color:fooColor }} aria-label={`food ${resources.food}`} role="img">FOOD {resources.food}</span>
       {/* Phase 3 day clock — daylight left to reach shelter (the final day has no night). */}
       {inPhase3 && gamePhase !== "phase3_finale" && (phase3Day >= PHASE3_FINAL_DAY
         ? <span style={{ color:"#c87a40", letterSpacing:"0.08em" }}>FINAL DAY</span>
-        : <span style={{ color: daylight<=PHASE3_DUSK?"#8b2020":daylight<=5?"#7a6020":"#3a7a52", animation: daylight<=PHASE3_DUSK?flashAnim:"none" }}>LIGHT {daylight}</span>)}
+        : <span role="img" aria-label={`daylight ${daylight} remaining`} style={{ color: daylight<=PHASE3_DUSK?"#8b2020":daylight<=5?"#7a6020":"#3a7a52", animation: daylight<=PHASE3_DUSK?flashAnim:"none" }}>LIGHT {daylight}</span>)}
     </div>
   );
 
   const EquipmentStrip = () => showRow2 ? (
-    <div className="ds-equip">
-      {weapon && <span style={{ color:"#8a7a58" }}>{weapon.shortName} ·{weapon.damage}dmg</span>}
-      {noise > 0 && <span style={{ color:noiseColor, animation:noise>=4?flashAnim:"none" }}>noise {noise}/5</span>}
-      {resources.charger !== null && <span style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"needs power"}</span>}
+    <div className="ds-equip" role="group" aria-label="equipment">
+      {weapon && <span style={{ color:"#8a7a58" }} role="img" aria-label={`weapon ${weapon.shortName}, ${weapon.damage} damage`}>{weapon.shortName} ·{weapon.damage}dmg</span>}
+      {noise > 0 && <span role="img" aria-label={`noise ${noise} of 5`} style={{ color:noiseColor, animation:noise>=4?flashAnim:"none" }}>noise {noise}/5</span>}
+      {resources.charger !== null && <span role="img" aria-label={`charger ${resources.charger>0?`${resources.charger} percent`:"needs power"}`} style={{ color:resources.charger>0?"#3a6b40":"#484848" }}>charger {resources.charger>0?`${resources.charger}%`:"needs power"}</span>}
     </div>
   ) : null;
 
+  // A genuine alert: the run can end here. `role="alert"` is assertive by definition — this is the one
+  // place in the game where cutting into the current line is the correct behavior.
   const BatteryWarning = () => (resources.battery<=10 && resources.battery>0 && !inPhase3) ? (
-    <div className={`ds-battwarn${resources.battery<=5 ? " ds-crit" : ""}`} style={{ animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>
+    <div className={`ds-battwarn${resources.battery<=5 ? " ds-crit" : ""}`} role="alert" style={{ animation:battAnim }}>▸ battery critical — {resources.charger===null ? "find a charger" : "find power"}</div>
   ) : null;
 
   const gameRootStyle = {
@@ -5762,8 +6013,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   };
 
   const gamePanel = (
-    <div className={isDesktopDemo ? "demo-game--desktop" : undefined} data-edition={edition} style={gameRootStyle}>
-      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}`}</style>
+    <main className={isDesktopDemo ? "demo-game--desktop" : undefined} data-edition={edition} style={gameRootStyle} aria-label="Dead Signal">
+      <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}@keyframes flash{0%,100%{opacity:1}50%{opacity:.2}}@keyframes slowflash{0%,100%{opacity:1}50%{opacity:.08}}@keyframes sigflicker{0%,100%{opacity:1}40%{opacity:.05}65%{opacity:.7}}@keyframes sigpulse{0%,100%{opacity:0.75}50%{opacity:1}}@keyframes battpop{0%{transform:scale(1)}30%{transform:scale(1.28)}100%{transform:scale(1)}}.cb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}::-webkit-scrollbar{width:2px}::-webkit-scrollbar-track{background:#070707}::-webkit-scrollbar-thumb{background:#242424}${HUD_CSS}${a11y.reduceFlash ? REDUCE_FLASH_CSS : ""}`}</style>
       <AudioDebug />
 
       {/* Gameplay header — responsive pieces (see HUD_CSS). TopHud = signal · contact identity
@@ -5772,23 +6023,53 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       {!isDesktopDemo && ResourceStrip()}
       {!isDesktopDemo && EquipmentStrip()}
 
-      {/* Location strip — current area (hidden in the phase-1 apartment) */}
+      {/* Location strip — current area (hidden in the phase-1 apartment). The flanking rules are
+          pure ornament; only the area name is content. */}
       {area && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:"0.6rem", padding:"0.3rem 1rem", borderBottom:"1px solid #111", flexShrink:0 }}>
-          <span style={{ flex:1, height:"1px", background:"linear-gradient(90deg, transparent, #1d3a22)" }} />
-          <span style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.22em", whiteSpace:"nowrap", textShadow:"0 0 7px rgba(74,158,107,0.3)" }}>{area}</span>
-          <span style={{ flex:1, height:"1px", background:"linear-gradient(90deg, #1d3a22, transparent)" }} />
+          <span aria-hidden="true" style={{ flex:1, height:"1px", background:"linear-gradient(90deg, transparent, #1d3a22)" }} />
+          <span aria-label={`location: ${String(area).toLowerCase()}`} role="img" style={{ color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.22em", whiteSpace:"nowrap", textShadow:"0 0 7px rgba(74,158,107,0.3)" }}>{area}</span>
+          <span aria-hidden="true" style={{ flex:1, height:"1px", background:"linear-gradient(90deg, #1d3a22, transparent)" }} />
         </div>
       )}
 
-      {/* Messages */}
-      <div ref={chatScrollRef} className="ds-message-pane" style={messagePaneStyle}>
+      {/* Messages. Tapping the transcript completes the beat that's still revealing (M-A11Y §5) —
+          the natural phone gesture; the REVEAL button below is its keyboard/AT-reachable twin.
+
+          §9 — this is the game's live region. `role="log"` is the exact semantic for a transcript
+          that grows at the bottom, and `aria-relevant="additions"` means a screen reader announces
+          only newly-arrived messages, never re-reads the backlog when React re-renders the list or
+          when a save is restored into it. Everything the player must hear arrives here as text —
+          dialogue, narration, CASE FILE UPDATED, ECHO RECOVERED, the assembly card, TRUTH UNCOVERED
+          — so the log carries the story without a single bespoke announcement. Polite: it queues
+          behind whatever is being read instead of cutting it off. */}
+      <div ref={chatScrollRef} className="ds-message-pane" style={messagePaneStyle}
+        onClick={streaming ? flushDialogue : undefined}
+        role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false" aria-label="conversation">
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
-        {isTyping && !INSTANT_MODE && <div style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
+        {/* The typing dots are decoration — "· · ·" is meaningless read aloud, and it would fire the
+            live region on every beat. The state itself is still conveyed: the message follows. */}
+        {isTyping && !INSTANT_MODE && <div aria-hidden="true" style={{ alignSelf:"flex-start", padding:"0.55rem 0.9rem", background:"#0d0d0d", border:"1px solid #222", color:"#333", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", animation:"pu 1.1s ease infinite" }}>· · ·</div>}
         <div ref={bottomRef} />
       </div>
 
+      {/* The HUD announcer (§9) — see the effect above. Outside the log so a resource tick never
+          interleaves with the line being read; polite so it never interrupts it. */}
+      <div className="ds-sr" role="status" aria-live="polite" aria-atomic="true">{hudAnnounce}</div>
+
       {BatteryWarning()}
+
+      {/* REVEAL — tap-to-complete as a real, focusable control. It occupies the choices slot while a
+          beat streams (the choices aren't there yet), so it costs no extra layout and can't shift
+          anything under the player's thumb. */}
+      {streaming && choices.length === 0 && !INSTANT_MODE && (
+        <div style={choicesPaneStyle}>
+          <button className="cb" onClick={flushDialogue} aria-label="reveal the rest of this message now"
+            style={{ width:"100%", minHeight:"44px", background:"transparent", border:"1px solid #1c1c1c", color:"var(--ds-mid)", padding:"0.6rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.16em", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>
+            ▸ REVEAL
+          </button>
+        </div>
+      )}
 
       {choices.length>0 && !isTyping && (
         <div className="ds-choices-pane" style={choicesPaneStyle}>
@@ -5806,7 +6087,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             .sort((a, b) => (a.kind === "dialogue" ? 0 : 1) - (b.kind === "dialogue" ? 0 : 1) || a.i - b.i)
             .map(({ c, i, kind }, sortedIdx) => {
               if (c === "·") {
-                return <button key={i} className="cb" onClick={()=>handleChoice(c)} style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}>· · ·</button>;
+                // The lone continue sentinel. On screen it's three dots; spoken, "· · ·" is nothing —
+                // so it names itself "continue" (which is exactly what getChoiceKind already calls it).
+                return <button key={i} className="cb" onClick={()=>handleChoice(c)} aria-label="continue" style={{ background:"transparent", border:"none", color:"#252525", padding:"0.85rem", textAlign:"center", cursor:"pointer", fontFamily:"inherit", fontSize:"1.5rem", letterSpacing:"0.4em", width:"100%", transition:"color 0.15s" }}><span aria-hidden="true">· · ·</span></button>;
               }
               return (
                 <button key={i} className={`cb choice-btn choice-${kind}`} onClick={()=>handleChoice(c)} style={choiceButtonStyle(kind, sortedIdx + (canUseCharger ? 1 : 0))}>
@@ -5819,13 +6102,15 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
       {!isDesktopDemo && BottomBar()}
 
-      {/* Pause menu — save / load / exit / restart. Sits above the chat as an overlay. */}
+      {/* Pause menu — save / load / exit / restart. Sits above the chat as an overlay, so it's a modal
+          dialog: `aria-modal` keeps a screen reader inside it instead of wandering the frozen chat
+          behind, and the heading gives it a name. */}
       {menuOpen && (
         <div onClick={()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); }}
           style={{ position:"fixed", inset:0, background:"rgba(3,5,3,0.82)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, fontFamily:font }}>
-          <div onClick={e=>e.stopPropagation()}
+          <div onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="ds-pause-title"
             style={{ background:"#080a08", border:"1px solid #1d3a22", padding:"1.4rem 1.3rem", width:"260px", display:"flex", flexDirection:"column", gap:"0.55rem", boxShadow:"0 0 40px rgba(0,0,0,0.8)" }}>
-            <div style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
+            <div id="ds-pause-title" role="heading" aria-level={2} style={{ color:"#4a9e6b", fontSize:"0.66rem", letterSpacing:"0.24em", textAlign:"center", marginBottom:"0.5rem", textShadow:"0 0 8px rgba(74,158,107,0.4)" }}>— PAUSED —</div>
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setConfirmReset(false); setConfirmPrologueRestart(false); setMenuMsg(""); })} style={menuBtn}>Resume</button>
             {isDay1Demo && <button className="cb" onClick={withMenuSound(restartDay1Demo)} style={menuBtn}>Restart demo</button>}
             {isDay1Demo && onDemoExit && <button className="cb" onClick={withMenuSound(onDemoExit)} style={menuBtn}>Exit demo</button>}
@@ -5844,11 +6129,11 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             )}
             {/* Options — audio (volume + mute) and "reset this run" live here now. */}
             <button className="cb" onClick={withMenuSound(()=>{ setMenuOpen(false); setMenuMsg(""); setOptConfirm(false); setConfirmReset(false); setOptionsFrom("chat"); setScreen("options"); })} style={menuBtn}>Options</button>
-            <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>{menuMsg}</div>
+            <div role="status" aria-live="polite" style={{ minHeight:"0.9rem", textAlign:"center", color:"#4a9e6b", fontSize:"0.58rem", letterSpacing:"0.12em", marginTop:"0.2rem" }}>{menuMsg}</div>
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
   if (isDesktopDemo) return renderDesktopFrame(gamePanel, { mode:"chat" });
   return gamePanel;
