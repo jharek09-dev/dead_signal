@@ -2717,6 +2717,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     chatStartedRef.current    = true; // prevent the chat-start effect from re-firing exchange 0
     // state
     setMessages(run.messages || []); setChoices(capVisibleChoices(run.choices || [], "resumeSlot")); setLastMessage(run.lastMessage || "");
+    // choiceCtxRef (the beat's voice — see getChoiceKind) isn't persisted, and clearPending() above
+    // reset it to "action". Re-derive it from the restored transcript's last speaker so resumed
+    // choices classify like a fresh run: if Ellie spoke last, the choices are texts back to her.
+    // Without this, a save parked on non-question replies (the DAY1_OPENING openers) resumes with
+    // those replies mis-styled as bold actions and echoing as "›" stage-directions.
+    {
+      const restored = run.messages || [];
+      const lastSpeaker = [...restored].reverse().find(m => m.from === "ellie" || m.from === "narrator" || m.from === "system");
+      choiceCtxRef.current = lastSpeaker?.from === "ellie" ? "reply" : "action";
+    }
     setResources(run.resources); setWeapon(run.weapon || null); setNoise(run.noise || 0);
     setContactName(run.contactName || "KIM");
     setGamePhase(run.gamePhase || "phase1"); setChosenPath(run.chosenPath || null);
