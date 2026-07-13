@@ -1977,9 +1977,25 @@ const ellieChatPacing = (text) => {
   const postGapMs = clamp(650 + s.length * 8 + Math.round(extra * 0.25), 650, 1300);
   return { typingMs, postGapMs, choiceDelayMs: 900 };
 };
+// Narration isn't typed by anyone — there are no dots, so `typingMs` here is just the beat of quiet
+// BEFORE the line lands, and `postGapMs` is the room to read it once it has. The old numbers were flat
+// (1200 / 400): a four-word line and a full paragraph sat there for exactly as long, so short lines
+// dragged and long ones got trampled by the next one arriving mid-sentence.
+//
+// Now the anticipation stays roughly constant — that's a breath, and it shouldn't grow with the line —
+// while the room AFTER a line scales with how much there is to read. Prose gets time; a stab like "the
+// door gives." moves on quickly.
+const narratorPacing = (text) => {
+  const len = String(text).length;
+  return {
+    typingMs:  clamp(650 + len * 6,  750, 1250),   // the held breath before it lands
+    postGapMs: clamp(480 + len * 13, 620, 1600),   // reading time, then the next line
+    choiceDelayMs: CHOICE_SETTLE_MS,
+  };
+};
 const messagePacing = (text, msgType) => {
   if (msgType === "ellie") return ellieChatPacing(text);
-  if (msgType === "narrator") return { typingMs: 1200, postGapMs: 400, choiceDelayMs: 80 };
+  if (msgType === "narrator") return narratorPacing(text);
   return { typingMs: Math.min(500 + String(text).length * 22, 1800), postGapMs: 280, choiceDelayMs: 80 };
 };
 
@@ -2002,14 +2018,12 @@ const SPEED_SCALE = { slow: 1.6, normal: 1, fast: 0.55, instant: 0.04 };
 // the beat plays out on its own, not when the player taps to hurry it along, not when a card and its
 // narration land together. These are the tempos that enforce it.
 //
-// CHOICE_SETTLE_MS is the gap between a beat's last line and its choice buttons: at the old 80ms
-// they rose in the same frame as the line, which is what read as "two things popping in at once".
-// TAP_CHOICE_MS is that same gap when the player taps the tail of a beat in — shorter, because they
-// asked for it. BATCH_STAGGER_MS stairs the rows of a single multi-row commit (a question card plus
-// the narration under it). Fixed milliseconds, all three: they're responses to a tap, not authored
-// pacing, so they don't scale with text speed.
-const TAP_CHOICE_MS     = 240;
-const CHOICE_SETTLE_MS  = 420;
+// CHOICE_SETTLE_MS is the gap between a beat's last line and its choice buttons: at the old 80ms they
+// rose in the same frame as the line, which is what read as "two things popping in at once". A tap
+// during that gap pulls the buttons up early — the player never has to wait out a pause they've
+// already decided to skip. BATCH_STAGGER_MS stairs the rows of a single multi-row commit (a question
+// card plus the narration under it) so they arrive one after another rather than together.
+const CHOICE_SETTLE_MS  = 520;
 const BATCH_STAGGER_MS  = 150;
 
 // Text size (§3). The UI is sized in rem/clamp(), so these scale the root font-size; they stack on
@@ -2475,11 +2489,12 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const queued = dialogueRef.current.filter(rec => !rec.done).sort((a, b) => a.fireAt - b.fireAt);
     if (!queued.length) { setStreaming(false); return; }
 
-    // The next thing the player is actually waiting on: the next line. If the lines are all in and
-    // only the tail is left (the beat closing, the choices arriving), the tap pulls THAT in instead.
-    const target  = queued.find(rec => rec.kind === "msg") || queued[0];
-    const tailOnly = target.kind !== "msg";
-    const now = Date.now();
+    // What is the player actually waiting on? The next thing with CONTENT — the next line, or, once
+    // the lines are all in, the choices (which may themselves be sitting behind a question card).
+    // Everything else in the queue is pacing. `end` only clears `streaming`; typing ticks only drive
+    // the dots. Neither is worth a tap, so neither can be a target.
+    const CONTENT = (rec) => rec.kind === "msg" || rec.kind === "choices";
+    const target = queued.find(CONTENT) || queued[0];
 
     const rearm = (rec, d) => Object.assign(armT(rec.fn, Math.max(0, Math.round(d))), { kind: rec.kind });
     const drop  = (rec) => { clearTimeout(rec.id); rec.done = true; timersRef.current.delete(rec); };
@@ -2487,24 +2502,18 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     queued.forEach(drop);                   // nothing from the old schedule survives; we re-arm below
     dialogueRef.current = [];
 
-    if (tailOnly) {
-      // Every line has landed — close the beat out now and let the choices follow a beat later, so
-      // they still rise on their own frame instead of under the tap.
-      let at = 0;
-      queued.forEach((rec, i) => { if (i > 0) at += rec.kind === "choices" ? TAP_CHOICE_MS : 0; dialogueRef.current.push(rearm(rec, at)); });
-      return;
-    }
-
     setIsTyping(false);
-    target.fn();                            // the awaited line, now — it blips and scrolls like any other
+    target.fn();                            // the awaited line (or the choices), now
 
-    // Re-hang the rest of the beat off the line that just landed, keeping the authored spacing.
+    // Re-hang the rest of the beat off what just landed, keeping the authored spacing behind it. Note
+    // target.fn() may itself have queued something (a card's choices re-arm inside it) — those records
+    // are already in dialogueRef and are left exactly where they are.
     queued.forEach(rec => {
       if (rec === target) return;
       if (rec.fireAt <= target.fireAt) return;            // pacing we've already overtaken — drop it
       dialogueRef.current.push(rearm(rec, rec.fireAt - target.fireAt));
     });
-    if (!dialogueRef.current.length) setStreaming(false); // that was the last line of the beat
+    if (!dialogueRef.current.length) setStreaming(false); // nothing left in the beat to wait for
   };
 
   // Freeze the dialogue whenever the bare chat isn't the foreground — the pause menu, or a
@@ -2536,7 +2545,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // signal_core raises three; the 143 record fires two updates) share ONE box instead of a
   // staggered stack splitting the dialogue. If a reveal needs atmospheric narration after that
   // box, append both in one ordered React update so timers cannot reorder them visually.
-  const POST_QUESTION_CHOICE_DELAY_MS = 450;
+  // How long a question card holds the floor before the choices arrive under it. At the old 450ms the
+  // buttons rose while the card was still fading in, so the two read as one event — the card never got
+  // its own moment. A card is a story beat; it gets the pause a story beat gets.
+  const POST_QUESTION_CHOICE_DELAY_MS = 1100;
   const queuePostQuestionNarration = (text) => {
     pendingPostQuestionNarrationRef.current = [...pendingPostQuestionNarrationRef.current, text];
   };
@@ -2549,11 +2561,17 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       .filter(Boolean);
   };
 
+  // The choices, re-armed behind the card that displaced them. They go back into the BEAT's queue
+  // (dialogueRef), not the bridge queue: that keeps them tappable — the pause after a card is exactly
+  // when an impatient player reaches for the screen — and it's the choices landing that ends the beat.
   const flushDeferredChoices = (delay = POST_QUESTION_CHOICE_DELAY_MS) => {
     const deferredChoices = pendingDeferredChoicesRef.current;
     pendingDeferredChoicesRef.current = null;
-    if (!deferredChoices?.length) return;
-    pendingRef.current.push(setT(() => setChoices(deferredChoices), delay));
+    if (!deferredChoices?.length) { setStreaming(false); return; }
+    dialogueRef.current.push(Object.assign(setT(() => {
+      setChoices(deferredChoices);
+      setStreaming(false);
+    }, delay), { kind: "choices" }));
   };
 
   // A card and the narration under it are appended in ONE ordered React update, so no timer can ever
@@ -3237,8 +3255,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       }, t, "msg");
       t += pace.postGapMs;
     });
-    // The beat has finished revealing — retire the REVEAL affordance (a flush does this itself).
-    if (msgs.length) push(() => setStreaming(false), t, "end");
     // Record the beat's voice so getChoiceKind can classify voice-only choices when they render.
     // Set synchronously here; nothing overwrites it during this beat's own reveal timers, and it
     // survives the deferred-choice path (question cards auto-flush without a player click between).
@@ -3251,15 +3267,27 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const choiceDelay = !msgs.length ? 80
       : msgType === "ellie" ? ellieChatPacing(msgs[msgs.length - 1] || "").choiceDelayMs
       : CHOICE_SETTLE_MS;
-    if (visibleChoices?.length) dialogueRef.current.push(Object.assign(setT(() => {
-      if (pendingQuestionCardsRef.current.length || pendingPostQuestionNarrationRef.current.length) {
-        pendingDeferredChoicesRef.current = visibleChoices;
-        if (pendingQuestionCardsRef.current.length) flushQuestionCards();
-        else flushPostQuestionNarration();
-        return;
-      }
-      setChoices(visibleChoices);
-    }, t + choiceDelay), { kind: "choices" }));
+    // The beat isn't over when the last line lands — it's over when the thing the player is waiting
+    // FOR lands. So the choices carry the end of the beat (they clear `streaming`, which is what
+    // keeps the transcript tappable): a tap during the pause before them pulls them up, exactly like
+    // a tap pulls up a line. A beat with no choices ends on its last line instead.
+    if (visibleChoices?.length) {
+      push(() => {
+        // A question card owes the player a beat of its own. When one is pending, it takes this slot
+        // and the choices re-arm behind it (flushDeferredChoices) — still inside this beat's queue,
+        // so `streaming` stays true and a tap can pull them up from behind the card.
+        if (pendingQuestionCardsRef.current.length || pendingPostQuestionNarrationRef.current.length) {
+          pendingDeferredChoicesRef.current = visibleChoices;
+          if (pendingQuestionCardsRef.current.length) flushQuestionCards();
+          else flushPostQuestionNarration();
+          return;
+        }
+        setChoices(visibleChoices);
+        setStreaming(false);
+      }, t + choiceDelay, "choices");
+    } else if (msgs.length) {
+      push(() => setStreaming(false), t, "end");
+    }
     return t;
   };
 
