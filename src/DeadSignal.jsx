@@ -1998,17 +1998,17 @@ const A11Y_DEFAULTS = { textSpeed: "normal", textScale: 100, reduceFlash: false,
 const SPEED_SCALE = { slow: 1.6, normal: 1, fast: 0.55, instant: 0.04 };
 
 // ─── Reveal cadence ──────────────────────────────────────────────────────────────────────────
-// One rule, everywhere: exactly one thing enters the transcript per tick. Never a burst — not when
-// the beat plays out on its own, not when it's flushed, not when a card and its narration land
-// together. These are the tempos that enforce it.
+// One rule, everywhere: exactly one thing enters the transcript at a time. Never a burst — not when
+// the beat plays out on its own, not when the player taps to hurry it along, not when a card and its
+// narration land together. These are the tempos that enforce it.
 //
-// FLUSH_STEP_MS / FLUSH_CHOICE_MS are the compressed rhythm tap-to-complete replays a beat at
-// (fixed — they're a UI response, so they don't scale with text speed). CHOICE_SETTLE_MS is the
-// gap between a narrator beat's last line and its choice buttons: at the old 80ms they rose in the
-// same frame as the line, which is what read as "two things popping in at once". BATCH_STAGGER_MS
-// stairs the rows of a single multi-row commit (a question card plus the narration under it).
-const FLUSH_STEP_MS     = 130;
-const FLUSH_CHOICE_MS   = 240;
+// CHOICE_SETTLE_MS is the gap between a beat's last line and its choice buttons: at the old 80ms
+// they rose in the same frame as the line, which is what read as "two things popping in at once".
+// TAP_CHOICE_MS is that same gap when the player taps the tail of a beat in — shorter, because they
+// asked for it. BATCH_STAGGER_MS stairs the rows of a single multi-row commit (a question card plus
+// the narration under it). Fixed milliseconds, all three: they're responses to a tap, not authored
+// pacing, so they don't scale with text speed.
+const TAP_CHOICE_MS     = 240;
 const CHOICE_SETTLE_MS  = 420;
 const BATCH_STAGGER_MS  = 150;
 
@@ -2347,7 +2347,6 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const legacyMemoriesRef   = useRef(null);  // one-time migration: legacy global ds_memories, used to seed a resumed v:1 save
   const mutedRef            = useRef(false); // audio — mirror of `muted` for the one-time unlock listener
   const a11yRef             = useRef(A11Y_DEFAULTS); // M-A11Y — mirror of `a11y`; setT reads it from inside live timers
-  const flushingRef         = useRef(false); // M-A11Y — true while a beat is being flushed; suppresses the per-line blip
   const currentPhase3RegionRef = useRef(null); // Phase 3 — mirrors for async timers / handlers
   const currentPhase3NodeRef   = useRef(null);
   const visitedPhase3NodesRef  = useRef([]);
@@ -2448,51 +2447,64 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     pendingPostQuestionNarrationRef.current = [];
     pendingDeferredChoicesRef.current = null;
     choiceCtxRef.current = "action"; // next direct-set menu defaults to action until a beat sets it
-    flushingRef.current = false;    // a cascade killed mid-flight must not leave the blip suppressed
-    setStreaming(false);            // nothing is revealing any more — retire the REVEAL affordance
+    setStreaming(false);            // nothing is revealing any more — a tap has nothing to advance
 
     // Pending question cards deliberately survive this: the fallback flush timer may die here,
     // but the stable-point effect re-flushes them — a fast tap can no longer lose a card.
     qFlushArmedRef.current = false;
   };
 
-  // Tap-to-complete (M-A11Y §5) — finish the beat that's currently revealing, right now. Rather
-  // than dumping the text and guessing at the state, this *replays the beat's own remaining timers
-  // in order, on a compressed rhythm*: the lines land, the choices appear, and any onShown hook
-  // still fires — exactly as authored, just fast. That keeps a flushed beat indistinguishable from
-  // a waited-out one.
+  // Tap-to-advance (M-A11Y §5) — a tap on the transcript pulls in the NEXT line, and only that one.
+  // It's a "hurry up", not a "show me everything": you stay inside the conversation, one message at
+  // a time, and the beat keeps its authored shape behind the line you just pulled forward.
   //
-  // It re-arms rather than firing them all synchronously on purpose. A synchronous dump lands every
-  // remaining line in one React commit, so four boxes pop into the transcript in the same frame and
-  // animate on top of each other. Re-armed at FLUSH_STEP_MS, the beat still reads as one-line-at-a-
-  // time — the reveal is the same, only the clock changed.
+  // How it works: the line that's currently being typed fires right now, and everything still queued
+  // behind it slides earlier by exactly the time we skipped — so the gap between this line and the
+  // next is the gap the writer wrote, it just starts sooner. Tap again for the line after that.
   //
-  // Records that ALREADY fired are filtered out (rec.done): re-running them re-appends lines that
-  // are on screen already, which is what used to duplicate a message when you tapped to skip.
+  // Two details that matter:
+  //   · Typing ticks scheduled at or before the line we're pulling in are pure pacing — they're
+  //     dropped, not replayed, so the dots don't strobe on their way out.
+  //   · Records that ALREADY fired are skipped (rec.done). Re-running one re-appends a line that's
+  //     on screen already — that was the duplicate-on-skip bug.
   //
-  // Only this beat's queue (dialogueRef) is flushed. Bridge timers that schedule the NEXT beat live
-  // in pendingRef and are deliberately left alone — so this completes a beat, it never skips ahead.
-  const flushDialogue = () => {
+  // Only this beat's queue (dialogueRef) moves. Bridge timers that schedule the NEXT beat live in
+  // pendingRef and are left alone — so a tap advances a line, it can never skip ahead to a new beat.
+  const advanceDialogue = () => {
     if (pausedRef.current) return;          // the pause menu owns the timers while it's open
-    const recs = dialogueRef.current.filter(rec => !rec.done);
+    const queued = dialogueRef.current.filter(rec => !rec.done).sort((a, b) => a.fireAt - b.fireAt);
+    if (!queued.length) { setStreaming(false); return; }
+
+    // The next thing the player is actually waiting on: the next line. If the lines are all in and
+    // only the tail is left (the beat closing, the choices arriving), the tap pulls THAT in instead.
+    const target  = queued.find(rec => rec.kind === "msg") || queued[0];
+    const tailOnly = target.kind !== "msg";
+    const now = Date.now();
+
+    const rearm = (rec, d) => Object.assign(armT(rec.fn, Math.max(0, Math.round(d))), { kind: rec.kind });
+    const drop  = (rec) => { clearTimeout(rec.id); rec.done = true; timersRef.current.delete(rec); };
+
+    queued.forEach(drop);                   // nothing from the old schedule survives; we re-arm below
     dialogueRef.current = [];
-    if (!recs.length) { setStreaming(false); return; }
-    recs.forEach(rec => { clearTimeout(rec.id); rec.done = true; timersRef.current.delete(rec); });
 
-    // The typing-indicator timers are pacing, not content: replaying them would strobe the dots once
-    // per line on the way down. Drop them and settle the indicator once, here.
+    if (tailOnly) {
+      // Every line has landed — close the beat out now and let the choices follow a beat later, so
+      // they still rise on their own frame instead of under the tap.
+      let at = 0;
+      queued.forEach((rec, i) => { if (i > 0) at += rec.kind === "choices" ? TAP_CHOICE_MS : 0; dialogueRef.current.push(rearm(rec, at)); });
+      return;
+    }
+
     setIsTyping(false);
-    flushingRef.current = true;             // one blip for the flush, not one per revealed line
-    audioEngine.blip();
+    target.fn();                            // the awaited line, now — it blips and scrolls like any other
 
-    let at = 0;
-    recs.filter(rec => rec.kind !== "typing").forEach((rec, i) => {
-      if (i > 0) at += rec.kind === "choices" ? FLUSH_CHOICE_MS : FLUSH_STEP_MS;
-      // The re-armed record keeps its kind, so a second tap mid-cascade compresses what's left the
-      // same way (the choices still land a beat behind the last line, not on top of it).
-      dialogueRef.current.push(Object.assign(armT(rec.fn, at), { kind: rec.kind }));
+    // Re-hang the rest of the beat off the line that just landed, keeping the authored spacing.
+    queued.forEach(rec => {
+      if (rec === target) return;
+      if (rec.fireAt <= target.fireAt) return;            // pacing we've already overtaken — drop it
+      dialogueRef.current.push(rearm(rec, rec.fireAt - target.fireAt));
     });
-    dialogueRef.current.push(Object.assign(armT(() => { flushingRef.current = false; setStreaming(false); }, at + 20), { kind: "end" }));
+    if (!dialogueRef.current.length) setStreaming(false); // that was the last line of the beat
   };
 
   // Freeze the dialogue whenever the bare chat isn't the foreground — the pause menu, or a
@@ -3200,8 +3212,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const scheduleMessages = (msgs, choiceList, msgType = "ellie", onShown = null) => {
     // C3 — clear only this queue's own timers, leaving addMsg/bridge timers (pendingRef) intact.
     dialogueRef.current.forEach(clearT); dialogueRef.current = [];
-    flushingRef.current = false;   // a previous beat's flush cascade is over the moment a new beat opens
-    setStreaming(msgs.length > 0); // M-A11Y — a beat is revealing: offer tap-to-complete / REVEAL
+    setStreaming(msgs.length > 0); // M-A11Y — a beat is revealing: a tap on the transcript advances it
     let t = 350;
 
     // Every record is tagged with what it is, so flushDialogue can replay the beat intelligently:
@@ -3221,7 +3232,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       push(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
-        if (!flushingRef.current) audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
+        audioEngine.blip();   // ultra-quiet incoming-message blip — one per line, tapped or waited out
         onShown?.(text, i);
       }, t, "msg");
       t += pace.postGapMs;
@@ -5618,7 +5629,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
                 </button>
               ))}
             </div>
-            <span style={a11yHint}>Tap the transcript — or REVEAL — to finish a message straight away.</span>
+            <span style={a11yHint}>Tap the conversation to bring the next message in straight away.</span>
           </div>
 
           <div style={a11yGroup}>
@@ -6147,8 +6158,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         </div>
       )}
 
-      {/* Messages. Tapping the transcript completes the beat that's still revealing (M-A11Y §5) —
-          the natural phone gesture; the REVEAL button below is its keyboard/AT-reachable twin.
+      {/* Messages. Tapping the transcript pulls in the next line (M-A11Y §5) — the natural phone
+          gesture, and a hurry-up rather than a fast-forward: one message per tap, and the beat keeps
+          its shape behind it. The hidden button below the pane is its keyboard/AT-reachable twin.
 
           §9 — this is the game's live region. `role="log"` is the exact semantic for a transcript
           that grows at the bottom, and `aria-relevant="additions"` means a screen reader announces
@@ -6158,7 +6170,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           — so the log carries the story without a single bespoke announcement. Polite: it queues
           behind whatever is being read instead of cutting it off. */}
       <div ref={chatScrollRef} className="ds-message-pane" style={messagePaneStyle}
-        onClick={streaming ? flushDialogue : undefined}
+        onClick={streaming ? advanceDialogue : undefined}
         role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false" aria-label="conversation">
         {messages.map(m => <MessageRow key={m.id} m={m} />)}
         {/* The typing dots are decoration — "· · ·" is meaningless read aloud, and it would fire the
@@ -6173,16 +6185,13 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
       {BatteryWarning()}
 
-      {/* REVEAL — tap-to-complete as a real, focusable control. It occupies the choices slot while a
-          beat streams (the choices aren't there yet), so it costs no extra layout and can't shift
-          anything under the player's thumb. */}
-      {streaming && choices.length === 0 && !INSTANT_MODE && (
-        <div style={choicesPaneStyle}>
-          <button className="cb" onClick={flushDialogue} aria-label="reveal the rest of this message now"
-            style={{ width:"100%", minHeight:"44px", background:"transparent", border:"1px solid #1c1c1c", color:"var(--ds-mid)", padding:"0.6rem", fontFamily:"inherit", fontSize:"0.64rem", letterSpacing:"0.16em", cursor:"pointer", transition:"border-color 0.15s, color 0.15s" }}>
-            ▸ REVEAL
-          </button>
-        </div>
+      {/* Tap-to-advance, as a real focusable control — the gesture above is a bare div, which a
+          keyboard can't reach and a screen reader won't offer. This is the same action, named. It's
+          visually hidden on purpose: the screen already says everything it needs to (a message is
+          arriving; tap it), and a button sitting in the choices slot was noise the player had to
+          read past on every single beat. */}
+      {streaming && !INSTANT_MODE && (
+        <button className="ds-sr" onClick={advanceDialogue}>show the next message now</button>
       )}
 
       {choices.length>0 && !isTyping && (
