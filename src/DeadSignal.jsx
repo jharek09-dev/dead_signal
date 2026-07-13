@@ -1955,7 +1955,8 @@ const choiceButtonStyle = (kind, index = 0, overrides = {}) => {
     letterSpacing:"0.04em",
     lineHeight:"1.5",
     transition:"border-color 0.15s, color 0.15s, box-shadow 0.15s",
-    animation:`choiceIn 0.24s ease ${Math.min(index, 5) * 45}ms both`,
+    // The choice list is a cascade, not a slab: each button waits its turn behind the one above it.
+    animation:`choiceIn 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) ${Math.min(index, 6) * 65}ms both`,
     ...overrides,
   };
 };
@@ -1996,6 +1997,21 @@ const A11Y_DEFAULTS = { textSpeed: "normal", textScale: 100, reduceFlash: false,
 // same reason: at exactly 0 a later beat could clear an earlier one's timers before they rendered.
 const SPEED_SCALE = { slow: 1.6, normal: 1, fast: 0.55, instant: 0.04 };
 
+// ─── Reveal cadence ──────────────────────────────────────────────────────────────────────────
+// One rule, everywhere: exactly one thing enters the transcript per tick. Never a burst — not when
+// the beat plays out on its own, not when it's flushed, not when a card and its narration land
+// together. These are the tempos that enforce it.
+//
+// FLUSH_STEP_MS / FLUSH_CHOICE_MS are the compressed rhythm tap-to-complete replays a beat at
+// (fixed — they're a UI response, so they don't scale with text speed). CHOICE_SETTLE_MS is the
+// gap between a narrator beat's last line and its choice buttons: at the old 80ms they rose in the
+// same frame as the line, which is what read as "two things popping in at once". BATCH_STAGGER_MS
+// stairs the rows of a single multi-row commit (a question card plus the narration under it).
+const FLUSH_STEP_MS     = 130;
+const FLUSH_CHOICE_MS   = 240;
+const CHOICE_SETTLE_MS  = 420;
+const BATCH_STAGGER_MS  = 150;
+
 // Text size (§3). The UI is sized in rem/clamp(), so these scale the root font-size; they stack on
 // top of browser zoom rather than replacing it (WCAG 1.4.4 is still satisfied by zoom alone).
 const A11Y_SCALES = [100, 115, 130, 150];
@@ -2031,7 +2047,11 @@ const REDUCE_FLASH_CSS = "@keyframes sigflicker{0%,100%{opacity:0.6}}@keyframes 
 // injects that, so the class resolves everywhere without touching eight <style> blocks.
 const SR_ONLY_CSS = ".ds-sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}";
 
-const KEYFRAMES_FI = A11Y_ROOT_CSS + SR_ONLY_CSS + "@keyframes fi{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}@keyframes choiceIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
+// `fi` (and its sibling `choiceIn`) is the one entrance in the game: a short rise out of nothing. It
+// travels a little further than it used to (6px, not 3) and lands on an ease-out curve, so a row
+// *arrives* instead of blinking on — the difference between a burst and a cadence is mostly here.
+// The reduced-motion clause still collapses the whole thing to a cut.
+const KEYFRAMES_FI = A11Y_ROOT_CSS + SR_ONLY_CSS + "@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes choiceIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation-duration:0.001ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}}";
 
 // The signal meter is drawn as bars; this is the same reading in words (§9 — the HUD registers must
 // have accessible names, not just glyphs).
@@ -2112,17 +2132,23 @@ const SignalBars = ({ level, flicker }) => {
 // #4 — a single chat row, memoized so the growing message list doesn't fully
 // re-render when only isTyping / choices change. Depends solely on `m`.
 const MessageRow = memo(function MessageRow({ m }) {
+  // Every row enters the same way: a short rise out of nothing, on one easing curve. `seq` is the
+  // row's place inside a multi-row commit (a question card plus the narration under it) — it becomes
+  // an animation-delay, so those rows stair in one at a time instead of popping together. `both`
+  // holds a waiting row at the `from` keyframe (invisible) until its turn, so it never flashes in
+  // at full opacity first.
+  const enter = (dur = "0.34s") => `fi ${dur} cubic-bezier(0.22, 0.61, 0.36, 1) ${(m.seq || 0) * BATCH_STAGGER_MS}ms both`;
   if (m.from === "system")
-    return <div style={{ alignSelf:"center", fontSize:"0.63rem", letterSpacing:"0.09em", color:"#2a3d2c", padding:"0.25rem 0", animation:"fi 0.6s ease" }}>{m.text}</div>;
+    return <div style={{ alignSelf:"center", fontSize:"0.63rem", letterSpacing:"0.09em", color:"#2a3d2c", padding:"0.25rem 0", animation:enter("0.55s") }}>{m.text}</div>;
   if (m.from === "narrator")
-    return <div style={{ alignSelf:"center", textAlign:"center", fontSize:"0.78rem", letterSpacing:"0.12em", color:"#c8b98a", opacity:0.4, padding:"0.6rem 0", fontStyle:"italic", animation:"fi 1.2s ease" }}>{parseText(m.text, "msg")}</div>;
+    return <div style={{ alignSelf:"center", textAlign:"center", fontSize:"0.78rem", letterSpacing:"0.12em", color:"#c8b98a", opacity:0.4, padding:"0.6rem 0", fontStyle:"italic", animation:enter("0.75s") }}>{parseText(m.text, "msg")}</div>;
   // A tapped ACTION (what you DID) — a dim, centered stage-direction line. Greenish-grey + a lead
   // chevron set it apart from tan environmental narration above and the green "sent text" bubble.
   if (m.from === "player_action")
-    return <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", fontSize:"0.76rem", letterSpacing:"0.1em", color:"#7d8f74", opacity:0.85, padding:"0.45rem 0", fontStyle:"italic", animation:"fi 0.5s ease" }}>› {parseText(m.text, "msg")}</div>;
+    return <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", fontSize:"0.76rem", letterSpacing:"0.1em", color:"#7d8f74", opacity:0.85, padding:"0.45rem 0", fontStyle:"italic", animation:enter("0.5s") }}>› {parseText(m.text, "msg")}</div>;
   if (m.from === "memory_note")
     return (
-      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:`1px solid ${m.kind==="discovery"?"#1a4a52":"#1a3a24"}`, background:m.kind==="discovery"?"#010a0d":"#010a04", animation:"fi 0.8s ease" }}>
+      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:`1px solid ${m.kind==="discovery"?"#1a4a52":"#1a3a24"}`, background:m.kind==="discovery"?"#010a0d":"#010a04", animation:enter("0.7s") }}>
         <div style={{ color:m.kind==="discovery"?"#4ab5c8":"#4a9e6b", fontSize:"0.62rem", letterSpacing:"0.14em" }}>{m.kind==="discovery"?"DISCOVERY":"MEMORY FRAGMENT"}</div>
         <div style={{ color:m.kind==="discovery"?"#7accd4":"#6aba8a", fontSize:"0.78rem", fontStyle:"italic", margin:"0.2rem 0" }}>"{m.name}"</div>
         {m.kind==="fragment" && <div style={{ color:"#2a6a3a", fontSize:"0.58rem", letterSpacing:"0.1em" }}>{m.count} of 9 recovered</div>}
@@ -2137,7 +2163,7 @@ const MessageRow = memo(function MessageRow({ m }) {
       : cards.every(c => c.kind !== "new") ? (cards.length > 1 ? "QUESTIONS UPDATED" : "QUESTION UPDATED")
       : "CASE FILE UPDATED";
     return (
-      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.8s ease" }}>
+      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.55rem 1.2rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:enter("0.7s") }}>
         <div style={{ color:"#c8a020", fontSize:"0.62rem", letterSpacing:"0.14em" }}>{header}</div>
         {cards.map((c, i) => (
           <div key={i} style={i === 0 ? { marginTop:"0.25rem" } : { marginTop:"0.4rem", paddingTop:"0.4rem", borderTop:"1px solid #241d10" }}>
@@ -2159,7 +2185,7 @@ const MessageRow = memo(function MessageRow({ m }) {
     const e = ECHO_BY_ID[m.echoId];
     if (!e) return null;
     return (
-      <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #1a4a52", background:"#02090c", boxShadow:"0 0 16px rgba(74,181,200,0.14)", animation:"fi 1s ease" }}>
+      <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #1a4a52", background:"#02090c", boxShadow:"0 0 16px rgba(74,181,200,0.14)", animation:enter("0.85s") }}>
         <div style={{ color:"#4ab5c8", fontSize:"0.6rem", letterSpacing:"0.2em", textShadow:"0 0 8px rgba(74,181,200,0.45)" }}>ECHO RECOVERED</div>
         <div style={{ color:"#6a8a90", fontSize:"0.56rem", letterSpacing:"0.1em", margin:"0.28rem 0 0.45rem" }}>{e.who} · {e.kind}</div>
         {e.lines.map((ln, i) => (
@@ -2171,7 +2197,7 @@ const MessageRow = memo(function MessageRow({ m }) {
   }
   if (m.from === "assembly_note") {
     return (
-      <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:"fi 0.9s ease" }}>
+      <div style={{ alignSelf:"center", textAlign:"center", maxWidth:"88%", padding:"0.6rem 1.3rem", border:"1px solid #3a2f1a", background:"#0a0805", animation:enter("0.8s") }}>
         <div style={{ color:"#c8a020", fontSize:"0.6rem", letterSpacing:"0.18em" }}>THE CASE COMES TOGETHER</div>
         {/* §9 — truth-by-assembly has to be perceivable as a deduction, not just a result. The card
             reads in visual order: each supporting piece, then the conclusion. The "›" bullets and the
@@ -2186,13 +2212,13 @@ const MessageRow = memo(function MessageRow({ m }) {
   }
   if (m.from === "truth_note")
     return (
-      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.7rem 1.4rem", border:"1px solid #5a3a1a", background:"#0d0703", boxShadow:"0 0 18px rgba(200,120,40,0.18)", animation:"fi 1s ease" }}>
+      <div style={{ alignSelf:"center", textAlign:"center", padding:"0.7rem 1.4rem", border:"1px solid #5a3a1a", background:"#0d0703", boxShadow:"0 0 18px rgba(200,120,40,0.18)", animation:enter("0.85s") }}>
         <div style={{ color:"#c87a40", fontSize:"0.62rem", letterSpacing:"0.2em", textShadow:"0 0 8px rgba(200,122,64,0.5)" }}>TRUTH UNCOVERED</div>
         <div style={{ color:"#e0c89a", fontSize:"0.86rem", fontStyle:"italic", marginTop:"0.3rem", letterSpacing:"0.04em" }}>{m.title}</div>
       </div>
     );
   return (
-    <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.55rem 0.9rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", lineHeight:"1.7", fontWeight:300, animation:"fi 0.35s ease" }}>
+    <div style={{ alignSelf:m.from==="ellie"?"flex-start":"flex-end", maxWidth:"82%", padding:"0.55rem 0.9rem", background:m.from==="ellie"?"#0d0d0d":"#0b110b", border:`1px solid ${m.from==="ellie"?"#222222":"#1c2a1c"}`, color:m.from==="ellie"?"#d8c79b":"#79b580", fontSize:"clamp(0.85rem, 3.6vw, 0.92rem)", lineHeight:"1.7", fontWeight:300, animation:enter("0.34s") }}>
       {m.from==="player" ? parseText(m.text,"sent") : parseText(m.text,"msg")}
     </div>
   );
@@ -2378,12 +2404,22 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   // Text speed (M-A11Y §5) scales every gameplay timer by the same factor, so dialogue pacing,
   // bridges and reveals stretch or compress together and the authored order is identical at any
   // speed. Read from the ref, not state: these timers are armed inside long-lived closures.
-  const setT = (fn, delay) => {
-    const d = INSTANT_MODE ? 0 : Math.round(delay * (SPEED_SCALE[a11yRef.current.textSpeed] ?? 1));
-    const rec = { fn, remaining: d, fireAt: Date.now() + d, id: 0 };
-    if (!pausedRef.current) rec.id = setTimeout(() => { timersRef.current.delete(rec); fn(); }, d);
+  // Arm a timer at a literal delay, unscaled by text speed — the flush cascade below is a fixed
+  // rhythm, not authored pacing, so it must not stretch with SLOW/compress with FAST.
+  //
+  // `done` is load-bearing: a record that has already fired must never run a second time. A fired
+  // timer removes itself from timersRef but stays in whichever queue (dialogueRef/pendingRef) is
+  // holding it, and flushDialogue used to re-run that whole queue — which replayed every line that
+  // had already landed. That was the duplicated-message-on-skip bug.
+  const armT = (fn, d) => {
+    const rec = { fn, remaining: d, fireAt: Date.now() + d, id: 0, done: false, kind: "msg" };
+    if (!pausedRef.current) rec.id = setTimeout(() => { rec.done = true; timersRef.current.delete(rec); fn(); }, d);
     timersRef.current.add(rec);
     return rec;
+  };
+  const setT = (fn, delay) => {
+    const d = INSTANT_MODE ? 0 : Math.round(delay * (SPEED_SCALE[a11yRef.current.textSpeed] ?? 1));
+    return armT(fn, d);
   };
   const clearT = (rec) => {
     if (rec == null) return;
@@ -2402,7 +2438,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const now = Date.now();
     timersRef.current.forEach(rec => {
       rec.fireAt = now + rec.remaining;
-      rec.id = setTimeout(() => { timersRef.current.delete(rec); rec.fn(); }, rec.remaining);
+      rec.id = setTimeout(() => { rec.done = true; timersRef.current.delete(rec); rec.fn(); }, rec.remaining);
     });
   };
 
@@ -2412,6 +2448,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     pendingPostQuestionNarrationRef.current = [];
     pendingDeferredChoicesRef.current = null;
     choiceCtxRef.current = "action"; // next direct-set menu defaults to action until a beat sets it
+    flushingRef.current = false;    // a cascade killed mid-flight must not leave the blip suppressed
     setStreaming(false);            // nothing is revealing any more — retire the REVEAL affordance
 
     // Pending question cards deliberately survive this: the fallback flush timer may die here,
@@ -2420,23 +2457,42 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   };
 
   // Tap-to-complete (M-A11Y §5) — finish the beat that's currently revealing, right now. Rather
-  // than dumping the text and guessing at the state, this *runs the beat's own pending timers in
-  // order, immediately*: the lines land, the typing indicator resolves, the choices appear, and any
-  // onShown hook still fires — exactly as authored, just without the pacing. That keeps a flushed
-  // beat indistinguishable from a waited-out one.
+  // than dumping the text and guessing at the state, this *replays the beat's own remaining timers
+  // in order, on a compressed rhythm*: the lines land, the choices appear, and any onShown hook
+  // still fires — exactly as authored, just fast. That keeps a flushed beat indistinguishable from
+  // a waited-out one.
+  //
+  // It re-arms rather than firing them all synchronously on purpose. A synchronous dump lands every
+  // remaining line in one React commit, so four boxes pop into the transcript in the same frame and
+  // animate on top of each other. Re-armed at FLUSH_STEP_MS, the beat still reads as one-line-at-a-
+  // time — the reveal is the same, only the clock changed.
+  //
+  // Records that ALREADY fired are filtered out (rec.done): re-running them re-appends lines that
+  // are on screen already, which is what used to duplicate a message when you tapped to skip.
   //
   // Only this beat's queue (dialogueRef) is flushed. Bridge timers that schedule the NEXT beat live
   // in pendingRef and are deliberately left alone — so this completes a beat, it never skips ahead.
   const flushDialogue = () => {
     if (pausedRef.current) return;          // the pause menu owns the timers while it's open
-    const recs = dialogueRef.current;
-    if (!recs.length) return;
+    const recs = dialogueRef.current.filter(rec => !rec.done);
     dialogueRef.current = [];
-    recs.forEach(rec => { clearTimeout(rec.id); timersRef.current.delete(rec); });
+    if (!recs.length) { setStreaming(false); return; }
+    recs.forEach(rec => { clearTimeout(rec.id); rec.done = true; timersRef.current.delete(rec); });
+
+    // The typing-indicator timers are pacing, not content: replaying them would strobe the dots once
+    // per line on the way down. Drop them and settle the indicator once, here.
+    setIsTyping(false);
     flushingRef.current = true;             // one blip for the flush, not one per revealed line
-    try { recs.forEach(rec => rec.fn()); } finally { flushingRef.current = false; }
-    setStreaming(false);
     audioEngine.blip();
+
+    let at = 0;
+    recs.filter(rec => rec.kind !== "typing").forEach((rec, i) => {
+      if (i > 0) at += rec.kind === "choices" ? FLUSH_CHOICE_MS : FLUSH_STEP_MS;
+      // The re-armed record keeps its kind, so a second tap mid-cascade compresses what's left the
+      // same way (the choices still land a beat behind the last line, not on top of it).
+      dialogueRef.current.push(Object.assign(armT(rec.fn, at), { kind: rec.kind }));
+    });
+    dialogueRef.current.push(Object.assign(armT(() => { flushingRef.current = false; setStreaming(false); }, at + 20), { kind: "end" }));
   };
 
   // Freeze the dialogue whenever the bare chat isn't the foreground — the pause menu, or a
@@ -2488,10 +2544,16 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     pendingRef.current.push(setT(() => setChoices(deferredChoices), delay));
   };
 
+  // A card and the narration under it are appended in ONE ordered React update, so no timer can ever
+  // reorder them visually. That's why they can't be spaced apart with timers — instead each row in
+  // the commit carries its position (`seq`), and MessageRow turns that into an animation-delay: the
+  // rows stair in one after another out of a single commit, instead of all popping at once.
+  const staggered = (rows) => rows.map((m, i) => (i ? { ...m, seq: i } : m));
+
   const flushPostQuestionNarration = () => {
     const postQuestionMessages = takePostQuestionNarrationMessages();
-    if (postQuestionMessages.length) setMessages(p => [...p, ...postQuestionMessages]);
-    flushDeferredChoices();
+    if (postQuestionMessages.length) setMessages(p => [...p, ...staggered(postQuestionMessages)]);
+    flushDeferredChoices(POST_QUESTION_CHOICE_DELAY_MS + Math.max(0, postQuestionMessages.length - 1) * BATCH_STAGGER_MS);
   };
 
   const flushQuestionCards = () => {
@@ -2504,8 +2566,8 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     const body = cards.length === 1 ? { ...cards[0] } : { kind: "batch", cards };
     const questionMessage = { id: nextId("q"), from: "question_note", ...body, ...(hint ? { hint: true } : {}) };
     const postQuestionMessages = takePostQuestionNarrationMessages();
-    setMessages(p => [...p, questionMessage, ...postQuestionMessages]);
-    flushDeferredChoices();
+    setMessages(p => [...p, ...staggered([questionMessage, ...postQuestionMessages])]);
+    flushDeferredChoices(POST_QUESTION_CHOICE_DELAY_MS + postQuestionMessages.length * BATCH_STAGGER_MS);
   };
   const armQuestionFlushFallback = () => {
     qFlushArmedRef.current = true;
@@ -3050,13 +3112,24 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     restoreChatScrollRef.current = false;
   }, [screen]);
 
+  // Follow the transcript down. Scroll the pane itself (not scrollIntoView on a child — that walks up
+  // the ancestors and can nudge the page), and do it on the next frame, once the new row has been laid
+  // out and its entrance has started: scrolling to a height React hasn't committed yet is what makes
+  // the last line jump into place a beat late.
   useEffect(() => {
     if (screen !== "chat") return;
     if (suppressNextAutoScrollRef.current) {
       suppressNextAutoScrollRef.current = false;
       return;
     }
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const raf = requestAnimationFrame(() => {
+      try { el.scrollTo({ top: el.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" }); }
+      catch (e) { el.scrollTop = el.scrollHeight; } // older WebKit: no options bag on scrollTo
+    });
+    return () => cancelAnimationFrame(raf);
   }, [messages, isTyping, choices, screen]);
 
   useEffect(() => {
@@ -3127,36 +3200,47 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   const scheduleMessages = (msgs, choiceList, msgType = "ellie", onShown = null) => {
     // C3 — clear only this queue's own timers, leaving addMsg/bridge timers (pendingRef) intact.
     dialogueRef.current.forEach(clearT); dialogueRef.current = [];
+    flushingRef.current = false;   // a previous beat's flush cascade is over the moment a new beat opens
     setStreaming(msgs.length > 0); // M-A11Y — a beat is revealing: offer tap-to-complete / REVEAL
     let t = 350;
 
+    // Every record is tagged with what it is, so flushDialogue can replay the beat intelligently:
+    // drop the typing-indicator ticks (pure pacing), stair the lines, land the choices last.
+    const push = (fn, at, kind) => { const rec = setT(fn, at); rec.kind = kind; dialogueRef.current.push(rec); };
+
     if (msgs.length === 0) {
       // No messages — still need to clear typing indicator
-      dialogueRef.current.push(setT(() => setIsTyping(false), t));
+      push(() => setIsTyping(false), t, "typing");
       t += 50;
     }
 
     msgs.forEach((text, i) => {
       const pace = messagePacing(text, msgType);
-      dialogueRef.current.push(setT(() => setIsTyping(msgType !== "narrator"), t));
+      push(() => setIsTyping(msgType !== "narrator"), t, "typing");
       t += pace.typingMs;
-      dialogueRef.current.push(setT(() => {
+      push(() => {
         setIsTyping(false);
         setMessages(p => [...p, { id: nextId("e"), from: msgType, text }]);
         if (!flushingRef.current) audioEngine.blip(); // ultra-quiet incoming-message blip (ellie/narrator only)
         onShown?.(text, i);
-      }, t));
+      }, t, "msg");
       t += pace.postGapMs;
     });
     // The beat has finished revealing — retire the REVEAL affordance (a flush does this itself).
-    if (msgs.length) dialogueRef.current.push(setT(() => setStreaming(false), t));
+    if (msgs.length) push(() => setStreaming(false), t, "end");
     // Record the beat's voice so getChoiceKind can classify voice-only choices when they render.
     // Set synchronously here; nothing overwrites it during this beat's own reveal timers, and it
     // survives the deferred-choice path (question cards auto-flush without a player click between).
     choiceCtxRef.current = msgType === "ellie" ? "reply" : "action";
     const visibleChoices = capVisibleChoices(choiceList, `scheduleMessages:${msgType}`);
-    const choiceDelay = msgType === "ellie" ? ellieChatPacing(msgs[msgs.length - 1] || "").choiceDelayMs : 80;
-    if (visibleChoices?.length) dialogueRef.current.push(setT(() => {
+    // Choices are their own beat, so they get their own tick. Under Ellie that's her thinking pause;
+    // under the narrator it's CHOICE_SETTLE_MS — long enough for the last line to finish its entrance
+    // before the buttons rise under the player's thumb. A menu with no lines above it (msgs empty) is
+    // the screen's only content, so it doesn't wait on anything.
+    const choiceDelay = !msgs.length ? 80
+      : msgType === "ellie" ? ellieChatPacing(msgs[msgs.length - 1] || "").choiceDelayMs
+      : CHOICE_SETTLE_MS;
+    if (visibleChoices?.length) dialogueRef.current.push(Object.assign(setT(() => {
       if (pendingQuestionCardsRef.current.length || pendingPostQuestionNarrationRef.current.length) {
         pendingDeferredChoicesRef.current = visibleChoices;
         if (pendingQuestionCardsRef.current.length) flushQuestionCards();
@@ -3164,7 +3248,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
         return;
       }
       setChoices(visibleChoices);
-    }, t + choiceDelay));
+    }, t + choiceDelay), { kind: "choices" }));
     return t;
   };
 
@@ -5159,6 +5243,28 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
     exchangePhase >= 10 ? 2 : 1;
   const font       = "'IBM Plex Mono', 'Courier New', monospace";
   const flashAnim  = "flash 0.9s ease infinite";
+
+  // ─── Full-height screens that scroll (Options, Slots, Title, Ending) ─────────────────────────
+  // Two layers, on purpose. The OUTER box owns the height and the scrolling and nothing else. The
+  // INNER column owns the padding — including the safe-area insets — and centres itself.
+  //
+  // The single div these replace did both, and broke twice on a phone: its bottom padding sat inside
+  // the scroll box (so the last control, BACK, ended up under the home indicator with nothing below
+  // it to scroll to), and `justify-content:center` on an overflowing flex column pushes the overflow
+  // out of BOTH ends — the part that spills past the top of a scroll container is unreachable.
+  //
+  // With min-height:100% on the inner column, short content still centres (there's free space to
+  // distribute); tall content simply grows the column past the viewport and centring becomes a no-op,
+  // so it scrolls top-to-bottom like an ordinary page — padding, safe area and all.
+  const scrollScreen = (extra = {}) => ({
+    background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain",
+    WebkitOverflowScrolling:"touch", fontFamily:font, userSelect:"none", ...extra,
+  });
+  const scrollScreenInner = {
+    minHeight:"100%", boxSizing:"border-box", width:"100%",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+    padding:"calc(clamp(1.25rem, 5vw, 2.5rem) + env(safe-area-inset-top)) clamp(1.25rem, 5vw, 2.5rem) calc(clamp(1.5rem, 5vw, 2.5rem) + env(safe-area-inset-bottom))",
+  };
   const menuBtn    = { background:"transparent", border:"1px solid #1c1c1c", color:"#c8b98a", padding:"0.55rem 0.9rem", textAlign:"left", cursor:"pointer", fontFamily:"inherit", fontSize:"0.74rem", letterSpacing:"0.06em", transition:"border-color 0.15s, color 0.15s" };
   const hasAnySave = slots.some(Boolean); // P4 — at least one occupied slot
 
@@ -5377,8 +5483,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
   }
 
   if (screen === "menu") return (
-    <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div style={scrollScreen()}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}@keyframes sigpulse{0%,100%{opacity:0.78}50%{opacity:1}}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}${a11y.reduceFlash ? REDUCE_FLASH_CSS : ""}`}</style>
+      <div style={scrollScreenInner}>
       {/* Logo: DEAD (powered-down grey) + SIGNAL (live green glow), one word */}
       <div style={{ fontSize:"2.4rem", fontWeight:700, letterSpacing:"0.12em", marginBottom:"3rem", animation:"fi 1.2s ease forwards" }}>
         <span style={{ color:"#4a4a4a" }}>DEAD</span><span style={{ color:"#4a9e6b", textShadow:"0 0 10px rgba(74,158,107,0.6), 0 0 26px rgba(74,158,107,0.25)", animation:"sigpulse 3s ease infinite" }}>SIGNAL</span>
@@ -5403,6 +5510,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           ▸&nbsp;&nbsp;OPTIONS
         </button>
         <div style={{ minHeight:"0.9rem", textAlign:"center", color:"#505050", fontSize:"0.58rem", letterSpacing:"0.14em", marginTop:"0.3rem" }}>{menuNote}</div>
+      </div>
       </div>
     </div>
   );
@@ -5474,8 +5582,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       cursor:"pointer", transition:"border-color 0.15s, color 0.15s, background 0.15s" });
     const toggleBtn = (on) => ({ ...segBtn(on), flex:"0 0 auto", minWidth:"68px", letterSpacing:"0.14em" });
     return (
-    <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div style={scrollScreen()}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.dz:hover{border-color:#7a2424!important;color:#ff8a8a!important}`}</style>
+      <div style={scrollScreenInner}>
       <div role="heading" aria-level={1} style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"var(--ds-dim)", animation:"fi 0.8s ease forwards" }}>OPTIONS</div>
       <div style={{ display:"flex", flexDirection:"column", gap:"0.7rem", width:"min(300px, 100%)" }}>
 
@@ -5565,9 +5674,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           </button>
         </div>
         <button className="rb" onClick={optBack}
-          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ marginTop:"0.6rem", minHeight:"44px", background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
+      </div>
       </div>
     </div>
     );
@@ -5727,8 +5837,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
 
   // ─── Slot screen — 3 save profiles. Each tracks playthroughs + fragments/clues.
   if (screen === "slots") return (
-    <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+    <div style={scrollScreen()}>
       <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}.del:hover{border-color:#5a2020!important;color:#e08a8a!important}`}</style>
+      <div style={scrollScreenInner}>
       <div style={{ fontSize:"0.78rem", fontWeight:600, letterSpacing:"0.26em", marginBottom:"2rem", color:"var(--ds-dim)", animation:"fi 0.8s ease forwards" }}>
         {slotMode === "load" ? "LOAD GAME" : "NEW RUN — SELECT SLOT"}
       </div>
@@ -5809,9 +5920,10 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
           );
         })}
         <button className="rb" onClick={withMenuSound(()=>{ setSlotConfirm(null); if (slotsFrom === "chat") { setScreen("chat"); setMenuOpen(true); } else setScreen("menu"); })}
-          style={{ marginTop:"0.6rem", background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+          style={{ marginTop:"0.6rem", minHeight:"44px", background:"transparent", border:"1px solid #2a2a2a", color:"var(--ds-dim)", padding:"0.55rem", fontFamily:"inherit", fontSize:"0.66rem", letterSpacing:"0.16em", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
           ◂ BACK
         </button>
+      </div>
       </div>
     </div>
   );
@@ -5878,8 +5990,9 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
       ? (i) => i === 0 ? "#a83232" : "#7a1f1f"
       : () => (endingKind === "accept" ? "#6a9a78" : "#7a7a82");
     return (
-      <div style={{ background:"#070707", height:"100dvh", overflowY:"auto", overscrollBehavior:"contain", fontFamily:font, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(1.25rem, 5vw, 2.5rem)", userSelect:"none" }}>
+      <div style={scrollScreen()}>
         <style>{`${FONT_IMPORT}${KEYFRAMES_FI}.rb:hover{border-color:#4a9e6b!important;color:#4a9e6b!important}`}</style>
+        <div style={scrollScreenInner}>
         <div style={{ display:"flex", flexDirection:"column", gap:"0.1rem", textAlign:"center" }}>
           {lines.map((l,i) => <p key={i} style={{ color:colors(i), fontSize:"0.9rem", lineHeight:"2.2", letterSpacing:"0.06em", animation:"fi 1s ease forwards", margin:0, fontWeight:300 }}>{l}</p>)}
           {screen === "offline" && lastMessage && lines.length >= 3 && (
@@ -5898,6 +6011,7 @@ export default function DeadSignal({ presentation = "mobile", edition = "full", 
             <button className="rb" onClick={withMenuSound(handleRestart)} style={{ background:"transparent", border:"1px solid #2a2a2a", color:"#505050", padding:"0.55rem 1.5rem", fontFamily:"inherit", fontSize:"0.68rem", letterSpacing:"0.12em", cursor:"pointer", transition:"all 0.2s" }}>▸&nbsp;&nbsp;return to title</button>
           </div>
         )}
+        </div>
       </div>
     );
   }
