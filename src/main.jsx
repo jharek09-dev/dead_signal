@@ -23,3 +23,16 @@ createRoot(document.getElementById("root")).render(
     <DeadSignal />
   </StrictMode>
 );
+
+// ── offline service worker ────────────────────────────────────────────────────
+// PRD §8.5 — the installed PWA must run with the network disabled. `sw.js` is generated at
+// build time by the offlinePrecache plugin (vite.config.js) and precaches the whole app,
+// including the lazily-imported Tone.js chunk. Production only: a SW in dev would serve stale
+// modules and fight Vite's HMR.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
+      .catch(() => { /* offline support is additive — never block the game on it */ });
+  });
+}
